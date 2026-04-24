@@ -2,1104 +2,988 @@
 <html lang="en">
 <head>
 <meta charset="UTF-8"/>
-<meta name="viewport" content="width=device-width, initial-scale=1.0"/>
+<meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0"/>
 <title>HomeBase</title>
 <style>
 *{box-sizing:border-box;margin:0;padding:0;-webkit-tap-highlight-color:transparent}
-body{font-family:-apple-system,BlinkMacSystemFont,system-ui,sans-serif;background:#1a1a1a;display:flex;align-items:center;justify-content:center;min-height:100vh;padding:20px}
-#phone{width:390px;min-height:844px;border-radius:48px;overflow:hidden;position:relative;background:#F2F2F7;box-shadow:0 40px 80px rgba(0,0,0,0.5);display:flex;flex-direction:column}
+body{font-family:-apple-system,BlinkMacSystemFont,'SF Pro Text',system-ui,sans-serif;background:#1a1a1a;display:flex;align-items:center;justify-content:center;min-height:100vh;padding:16px}
+#phone{width:390px;height:844px;border-radius:48px;overflow:hidden;position:relative;background:#F2F2F7;box-shadow:0 40px 80px rgba(0,0,0,0.6);display:flex;flex-direction:column}
 .island{position:absolute;top:11px;left:50%;transform:translateX(-50%);width:126px;height:37px;border-radius:24px;background:#000;z-index:50;pointer-events:none}
-.statusbar{position:absolute;top:0;left:0;right:0;height:59px;display:flex;align-items:flex-end;justify-content:space-between;padding:0 28px 8px;z-index:10;pointer-events:none}
-.statusbar span{font-size:17px;font-weight:600;color:#1C1C1E}
+.sb{position:absolute;top:0;left:0;right:0;height:59px;display:flex;align-items:flex-end;justify-content:space-between;padding:0 28px 8px;z-index:20;pointer-events:none}
+.sb-time{font-size:17px;font-weight:600;color:#1C1C1E}
 .main{display:flex;flex-direction:column;flex:1;padding-top:59px;overflow:hidden;position:relative}
-.screen{flex:1;display:flex;flex-direction:column;overflow:hidden;position:relative}
-.scroll{overflow-y:auto;-ms-overflow-style:none;scrollbar-width:none}
+.screen{flex:1;display:flex;flex-direction:column;overflow:hidden;position:relative;background:#F2F2F7}
+.scroll{overflow-y:auto;-ms-overflow-style:none;scrollbar-width:none;-webkit-overflow-scrolling:touch}
 .scroll::-webkit-scrollbar{display:none}
-.tabbar{background:rgba(249,249,249,0.95);backdrop-filter:blur(20px);border-top:0.5px solid rgba(0,0,0,0.12);display:flex;flex-shrink:0}
-.tab{flex:1;display:flex;flex-direction:column;align-items:center;padding:8px 0 4px;border:none;background:transparent;cursor:pointer;gap:2px;font-family:inherit;font-size:10px;font-weight:500;color:#8E8E93}
+.tabbar{background:rgba(249,249,249,0.95);backdrop-filter:blur(20px);-webkit-backdrop-filter:blur(20px);border-top:0.5px solid rgba(0,0,0,0.12);display:flex;flex-shrink:0}
+.tab{flex:1;display:flex;flex-direction:column;align-items:center;padding:8px 0 6px;border:none;background:transparent;cursor:pointer;gap:2px;font-family:inherit;font-size:10px;font-weight:500;color:#8E8E93;transition:color 0.15s}
 .tab.active{color:#007AFF}
-.homebar{height:8px;display:flex;justify-content:center;align-items:center;background:rgba(249,249,249,0.95);flex-shrink:0}
-.homebar-pill{width:139px;height:5px;border-radius:100px;background:rgba(0,0,0,0.2)}
+.hb{height:8px;display:flex;justify-content:center;align-items:center;background:rgba(249,249,249,0.95);flex-shrink:0}
+.hb-p{width:139px;height:5px;border-radius:100px;background:rgba(0,0,0,0.2)}
+
+/* Cards & Layout */
 .card{background:#fff;border-radius:16px;margin:0 16px;box-shadow:0 1px 4px rgba(0,0,0,0.08);overflow:hidden}
-.sh{padding:6px 16px 4px;font-size:13px;font-weight:600;color:#8E8E93;text-transform:uppercase;letter-spacing:0.4px}
-.btn{border:none;cursor:pointer;font-family:inherit;background:none}
-.back-btn{border:none;cursor:pointer;color:#007AFF;font-size:17px;font-family:inherit;display:flex;align-items:center;gap:4px;padding:0;background:none}
-.toggle{width:51px;height:31px;border-radius:16px;position:relative;cursor:pointer;transition:background 0.2s;flex-shrink:0;border:none}
-.toggle-thumb{position:absolute;top:2px;width:27px;height:27px;border-radius:50%;background:#fff;box-shadow:0 2px 6px rgba(0,0,0,0.2);transition:left 0.2s}
+.sh{padding:8px 16px 4px;font-size:13px;font-weight:600;color:#8E8E93;text-transform:uppercase;letter-spacing:0.5px}
+.row{display:flex;align-items:center;gap:12px;padding:13px 16px;border-bottom:1px solid #F2F2F7}
+.row:last-child{border-bottom:none}
+
+/* Buttons */
+.btn{border:none;cursor:pointer;font-family:inherit;background:none;-webkit-appearance:none}
+.back-btn{border:none;cursor:pointer;color:#007AFF;font-size:17px;font-family:inherit;display:flex;align-items:center;gap:2px;padding:0;background:none}
+.primary-btn{width:100%;padding:16px;border:none;border-radius:14px;background:#007AFF;color:#fff;font-size:17px;font-weight:600;cursor:pointer;font-family:inherit}
+.primary-btn:active{opacity:0.85}
+.secondary-btn{width:100%;padding:16px;border:none;border-radius:14px;background:#F2F2F7;color:#1C1C1E;font-size:17px;font-weight:600;cursor:pointer;font-family:inherit}
+.danger-btn{width:100%;padding:16px;border:none;border-radius:14px;background:#FFF0F0;color:#FF3B30;font-size:17px;font-weight:600;cursor:pointer;font-family:inherit}
+
+/* Inputs */
+.input{width:100%;padding:14px 16px;border:1.5px solid #E5E5EA;border-radius:12px;font-size:16px;font-family:inherit;outline:none;background:#fff;-webkit-appearance:none}
+.input:focus{border-color:#007AFF}
+.err{color:#FF3B30;font-size:13px;text-align:center;min-height:18px;margin-top:4px}
+
+/* Toggle */
+.toggle{width:51px;height:31px;border-radius:16px;position:relative;cursor:pointer;transition:background 0.2s;flex-shrink:0;border:none;padding:0}
+.toggle-t{position:absolute;top:2px;width:27px;height:27px;border-radius:50%;background:#fff;box-shadow:0 2px 6px rgba(0,0,0,0.22);transition:left 0.2s}
+
+/* Checkbox */
+.cb{width:26px;height:26px;border-radius:8px;display:flex;align-items:center;justify-content:center;cursor:pointer;flex-shrink:0;transition:all 0.15s;border:2px solid #C7C7CC}
+.cb.on{border:none}
+
+/* Avatar */
+.av{border-radius:50%;display:flex;align-items:center;justify-content:center;font-weight:700;flex-shrink:0;font-size:16px}
+
+/* FAB */
 .fab{position:absolute;bottom:16px;right:20px;z-index:10}
-.fab-btn{width:56px;height:56px;border-radius:28px;border:none;cursor:pointer;display:flex;align-items:center;justify-content:center;box-shadow:0 4px 16px rgba(0,122,255,0.4);font-size:28px;color:#fff;transition:all 0.2s;font-family:inherit}
-.fab-menu{position:absolute;bottom:64px;right:0;display:flex;flex-direction:column;gap:8px;align-items:flex-end}
-.fab-item{display:flex;align-items:center;gap:10px;padding:10px 16px;background:#1C1C1E;border-radius:24px;border:none;cursor:pointer;box-shadow:0 4px 16px rgba(0,0,0,0.3);font-family:inherit;white-space:nowrap;color:#fff;font-size:15px;font-weight:600}
-.notif{position:absolute;top:12px;left:12px;right:12px;z-index:999;background:rgba(30,30,32,0.92);border-radius:16px;padding:12px 14px;box-shadow:0 8px 32px rgba(0,0,0,0.35);cursor:pointer;animation:slideDown 0.35s ease}
-.input-field{width:100%;padding:14px 16px;border:1.5px solid #E5E5EA;border-radius:12px;font-size:16px;font-family:inherit;outline:none;transition:border 0.2s;background:#fff}
-.input-field:focus{border-color:#007AFF}
-.primary-btn{width:100%;padding:15px;border:none;border-radius:14px;background:#007AFF;color:#fff;font-size:17px;font-weight:600;cursor:pointer;font-family:inherit;transition:opacity 0.2s}
-.primary-btn:disabled{opacity:0.5;cursor:not-allowed}
-.secondary-btn{width:100%;padding:15px;border:none;border-radius:14px;background:#F2F2F7;color:#1C1C1E;font-size:17px;font-weight:600;cursor:pointer;font-family:inherit}
-.error-msg{color:#FF3B30;font-size:13px;text-align:center;margin-top:8px}
-.loading{display:flex;align-items:center;justify-content:center;flex:1;font-size:17px;color:#8E8E93}
-@keyframes slideDown{from{transform:translateY(-120%);opacity:0}to{transform:translateY(0);opacity:1}}
-@keyframes allPacked{0%{transform:scale(0.95);opacity:0}60%{transform:scale(1.02)}100%{transform:scale(1);opacity:1}}
-@keyframes spin{from{transform:rotate(0deg)}to{transform:rotate(360deg)}}
-.spinner{width:32px;height:32px;border:3px solid #F2F2F7;border-top-color:#007AFF;border-radius:50%;animation:spin 0.8s linear infinite;margin:auto}
+.fab-btn{width:56px;height:56px;border-radius:28px;border:none;cursor:pointer;display:flex;align-items:center;justify-content:center;font-size:28px;color:#fff;transition:all 0.2s;font-family:inherit;box-shadow:0 4px 16px rgba(0,122,255,0.45)}
+.fab-menu{position:absolute;bottom:66px;right:0;display:flex;flex-direction:column;gap:8px;align-items:flex-end}
+.fab-item{display:flex;align-items:center;gap:10px;padding:11px 18px;background:#1C1C1E;border-radius:24px;border:none;cursor:pointer;box-shadow:0 4px 20px rgba(0,0,0,0.35);font-family:inherit;color:#fff;font-size:15px;font-weight:600;white-space:nowrap}
+
+/* Notif */
+.notif{position:absolute;top:12px;left:12px;right:12px;z-index:999;background:rgba(28,28,30,0.92);border-radius:16px;padding:12px 14px;box-shadow:0 8px 32px rgba(0,0,0,0.4);cursor:pointer;animation:sdown 0.35s cubic-bezier(.2,.8,.4,1)}
+
+/* Child pill */
+.cpill{display:flex;align-items:center;gap:8px;padding:8px 14px 8px 8px;border-radius:24px;border:2px solid transparent;cursor:pointer;background:none;font-family:inherit;transition:all 0.15s;white-space:nowrap}
+
+/* Status badge */
+.status{font-size:11px;font-weight:700;padding:3px 10px;border-radius:20px}
+
+/* Animations */
+@keyframes sdown{from{transform:translateY(-110%);opacity:0}to{transform:translateY(0);opacity:1}}
+@keyframes packed{0%{transform:scale(0.95);opacity:0}60%{transform:scale(1.02)}100%{transform:scale(1);opacity:1}}
+@keyframes spin{to{transform:rotate(360deg)}}
+.spinner{width:28px;height:28px;border:3px solid #E5E5EA;border-top-color:#007AFF;border-radius:50%;animation:spin 0.75s linear infinite}
+
+/* Chev */
+.chev::after{content:'';display:inline-block;width:7px;height:7px;border-right:2px solid #C7C7CC;border-top:2px solid #C7C7CC;transform:rotate(45deg);margin-left:4px;vertical-align:middle}
 </style>
 </head>
 <body>
 <div id="phone">
   <div class="island"></div>
-  <div class="statusbar">
-    <span>9:41</span>
-    <svg width="17" height="12" viewBox="0 0 17 12"><rect x="0" y="7" width="3" height="5" rx="1" fill="#1C1C1E"/><rect x="4.5" y="5" width="3" height="7" rx="1" fill="#1C1C1E"/><rect x="9" y="2.5" width="3" height="9.5" rx="1" fill="#1C1C1E"/><rect x="13.5" y="0" width="3" height="12" rx="1" fill="#1C1C1E"/></svg>
+  <div class="sb">
+    <span class="sb-time" id="clock">9:41</span>
+    <svg width="17" height="12" viewBox="0 0 17 12" fill="none"><rect x="0" y="7" width="3" height="5" rx="1" fill="#1C1C1E"/><rect x="4.5" y="5" width="3" height="7" rx="1" fill="#1C1C1E"/><rect x="9" y="2.5" width="3" height="9.5" rx="1" fill="#1C1C1E"/><rect x="13.5" y="0" width="3" height="12" rx="1" fill="#1C1C1E"/></svg>
   </div>
   <div class="main">
-    <div class="screen" id="screen"><div class="loading"><div class="spinner"></div></div></div>
+    <div class="screen" id="screen"><div style="flex:1;display:flex;align-items:center;justify-content:center"><div class="spinner"></div></div></div>
     <div class="tabbar" id="tabbar" style="display:none"></div>
-    <div class="homebar" id="homebar" style="display:none"><div class="homebar-pill"></div></div>
+    <div class="hb" id="hb" style="display:none"><div class="hb-p"></div></div>
   </div>
 </div>
 
-<!-- Firebase SDKs -->
 <script type="module">
-import { initializeApp } from 'https://www.gstatic.com/firebasejs/10.7.1/firebase-app.js';
-import { getAuth, createUserWithEmailAndPassword, signInWithEmailAndPassword, signOut, onAuthStateChanged, updateProfile } from 'https://www.gstatic.com/firebasejs/10.7.1/firebase-auth.js';
-import { getFirestore, doc, setDoc, getDoc, collection, addDoc, onSnapshot, updateDoc, deleteDoc, query, where, orderBy } from 'https://www.gstatic.com/firebasejs/10.7.1/firebase-firestore.js';
+import{initializeApp}from'https://www.gstatic.com/firebasejs/10.7.1/firebase-app.js';
+import{getAuth,createUserWithEmailAndPassword,signInWithEmailAndPassword,signOut,onAuthStateChanged,updateProfile}from'https://www.gstatic.com/firebasejs/10.7.1/firebase-auth.js';
+import{getFirestore,doc,setDoc,getDoc,collection,addDoc,onSnapshot,updateDoc,deleteDoc,query,orderBy}from'https://www.gstatic.com/firebasejs/10.7.1/firebase-firestore.js';
 
-const firebaseConfig = {
-  apiKey: "AIzaSyA2lrJJ0T_y_CBk8kOqRmwejCqHx6RVPXA",
-  authDomain: "homebase-56151.firebaseapp.com",
-  projectId: "homebase-56151",
-  storageBucket: "homebase-56151.firebasestorage.app",
-  messagingSenderId: "647157335008",
-  appId: "1:647157335008:web:a15452fabd943bf5a8a185",
-  measurementId: "G-2HN2XRMP54"
+const app=initializeApp({apiKey:"AIzaSyA2lrJJ0T_y_CBk8kOqRmwejCqHx6RVPXA",authDomain:"homebase-56151.firebaseapp.com",projectId:"homebase-56151",storageBucket:"homebase-56151.firebasestorage.app",messagingSenderId:"647157335008",appId:"1:647157335008:web:a15452fabd943bf5a8a185"});
+const auth=getAuth(app);
+const db=getFirestore(app);
+
+// ── Live clock ──────────────────────────────────────────────
+function updateClock(){const n=new Date();document.getElementById('clock').textContent=n.toLocaleTimeString('en-AU',{hour:'numeric',minute:'2-digit',hour12:false});}
+updateClock();setInterval(updateClock,10000);
+
+// ── State ───────────────────────────────────────────────────
+const S={
+  user:null,familyId:null,family:null,
+  children:[],packing:{},events:[],notes:[],assessments:[],
+  tab:'today',stack:[],
+  activeChild:null,morningMode:false,
+  calWeekOffset:0,selectedDate:null,
+  listSection:null,listFilter:'all',
+  fabOpen:false,notif:null,notifTimer:null,
+  toggles:{faceID:true,notifs:true,loc:false,email:false},
+  unsubs:[],
 };
 
-const app = initializeApp(firebaseConfig);
-const auth = getAuth(app);
-const db = getFirestore(app);
+// ── Helpers ─────────────────────────────────────────────────
+const $=id=>document.getElementById(id);
+const CHILD_COLORS=['#007AFF','#34C759','#FF9500','#FF6B9D','#AF52DE','#FF3B30','#5856D6'];
+const DAY_NAMES=['Sunday','Monday','Tuesday','Wednesday','Thursday','Friday','Saturday'];
+const DAY_SHORT=['Sun','Mon','Tue','Wed','Thu','Fri','Sat'];
+const MONTH_SHORT=['Jan','Feb','Mar','Apr','May','Jun','Jul','Aug','Sep','Oct','Nov','Dec'];
+const today=new Date();
+const todayStr=fmtDate(today);
 
-// ── STATE ──────────────────────────────────────────────────────
-let state = {
-  user: null,
-  family: null,
-  familyId: null,
-  children: [],
-  packing: {},
-  events: [],
-  notes: [],
-  assessments: [],
-  tab: 'today',
-  stack: [],
-  morningMode: false,
-  morningChild: null,
-  calDay: new Date().getDay() || 1,
-  listSection: null,
-  listFilter: 'all',
-  notif: null,
-  notifTimer: null,
-  fabOpen: false,
-  unsubscribers: [],
-  loading: false,
-};
+function fmtDate(d){return`${d.getFullYear()}-${String(d.getMonth()+1).padStart(2,'0')}-${String(d.getDate()).padStart(2,'0')}`;}
+function fmtDisplay(d){return`${DAY_NAMES[d.getDay()]} ${d.getDate()} ${MONTH_SHORT[d.getMonth()]}`;}
 
-// ── HELPERS ───────────────────────────────────────────────────
-const $ = id => document.getElementById(id);
-const COLORS = ['#007AFF','#34C759','#FF9500','#FF3B30','#AF52DE','#FF6B9D','#5856D6'];
-const DAYS = ['Sun','Mon','Tue','Wed','Thu','Fri','Sat'];
-const today = new Date();
-const todayDay = today.getDay();
-
-function chev(){return `<svg width="8" height="13" viewBox="0 0 8 13"><polyline points="1,1 7,6.5 1,12" stroke="#C7C7CC" stroke-width="2" fill="none" stroke-linecap="round"/></svg>`;}
-function backSVG(){return `<svg width="10" height="17" viewBox="0 0 10 17"><polyline points="9,1 1,8.5 9,16" stroke="#007AFF" stroke-width="2.2" fill="none" stroke-linecap="round" stroke-linejoin="round"/></svg>`;}
-function avatar(name, color, size=36){
-  const initials = name ? name.split(' ').map(w=>w[0]).join('').toUpperCase().slice(0,2) : '?';
-  const bg = color+'20';
-  return `<div style="width:${size}px;height:${size}px;border-radius:50%;background:${bg};border:2px solid ${color};display:flex;align-items:center;justify-content:center;font-size:${size*0.35}px;font-weight:700;color:${color};flex-shrink:0">${initials}</div>`;
+function av(name,color,size=36){
+  const bg=color+'22';
+  const fs=size*0.38;
+  const ini=(name||'?').split(' ').map(w=>w[0]).join('').toUpperCase().slice(0,2);
+  return`<div class="av" style="width:${size}px;height:${size}px;background:${bg};border:2px solid ${color};color:${color};font-size:${fs}px;flex-shrink:0">${ini}</div>`;
 }
-function toggle(val, onclick){
-  return `<button class="toggle" style="background:${val?'#34C759':'#E5E5EA'}" onclick="${onclick}"><div class="toggle-thumb" style="left:${val?22:2}px"></div></button>`;
-}
+function chev(){return`<span class="chev"></span>`;}
+function back(){return`<svg width="10" height="17" viewBox="0 0 10 17"><polyline points="9,1 1,8.5 9,16" stroke="#007AFF" stroke-width="2.2" fill="none" stroke-linecap="round" stroke-linejoin="round"/></svg>`;}
+function checkSvg(color='white'){return`<svg width="14" height="10" viewBox="0 0 14 10"><polyline points="1,5 5,9 13,1" stroke="${color}" stroke-width="2.2" fill="none" stroke-linecap="round" stroke-linejoin="round"/></svg>`;}
+function tog(val,fn){return`<button class="toggle" style="background:${val?'#34C759':'#E5E5EA'}" onclick="${fn}"><div class="toggle-t" style="left:${val?22:2}px"></div></button>`;}
+
 function showNotif(msg){
-  if(state.notifTimer) clearTimeout(state.notifTimer);
-  state.notif = msg;
-  renderNotif();
-  state.notifTimer = setTimeout(()=>{state.notif=null;renderNotif();}, 4000);
+  if(S.notifTimer)clearTimeout(S.notifTimer);
+  S.notif=msg;_notif();
+  S.notifTimer=setTimeout(()=>{S.notif=null;_notif();},4000);
 }
-function renderNotif(){
-  const existing = document.querySelector('.notif');
-  if(existing) existing.remove();
-  if(state.notif){
-    const el = document.createElement('div');
-    el.className = 'notif';
-    el.onclick = ()=>{state.notif=null;el.remove();};
-    el.innerHTML = `<div style="display:flex;gap:10px;align-items:flex-start">
-      <div style="width:36px;height:36px;border-radius:10px;background:#007AFF;display:flex;align-items:center;justify-content:center;font-size:18px;flex-shrink:0">🏠</div>
-      <div style="flex:1">
-        <div style="display:flex;justify-content:space-between"><span style="font-size:13px;font-weight:700;color:#fff">HomeBase</span><span style="font-size:12px;color:rgba(255,255,255,0.5)">now</span></div>
-        <div style="font-size:13px;color:rgba(255,255,255,0.85);margin-top:2px;line-height:1.4">${state.notif}</div>
-      </div>
-    </div>`;
-    $('screen').appendChild(el);
-  }
+function _notif(){
+  document.querySelectorAll('.notif').forEach(e=>e.remove());
+  if(!S.notif)return;
+  const el=document.createElement('div');
+  el.className='notif';
+  el.onclick=()=>{S.notif=null;el.remove();};
+  el.innerHTML=`<div style="display:flex;gap:10px;align-items:flex-start"><div style="width:36px;height:36px;border-radius:10px;background:#007AFF;display:flex;align-items:center;justify-content:center;font-size:18px;flex-shrink:0">🏠</div><div style="flex:1"><div style="display:flex;justify-content:space-between"><span style="font-size:13px;font-weight:700;color:#fff">HomeBase</span><span style="font-size:12px;color:rgba(255,255,255,0.45)">now</span></div><div style="font-size:13px;color:rgba(255,255,255,0.9);margin-top:2px;line-height:1.4">${S.notif}</div></div></div>`;
+  $('screen').appendChild(el);
 }
 
-function nav(screen, params={}){state.stack.push({screen,params});state.fabOpen=false;render();}
-function goBack(){state.stack.pop();render();}
-function setTab(t){state.tab=t;state.stack=[];state.morningMode=false;state.fabOpen=false;render();}
+function nav(sc,params={}){S.stack.push({screen:sc,params});S.fabOpen=false;render();}
+function goBack(){S.stack.pop();render();}
+function setTab(t){S.tab=t;S.stack=[];S.morningMode=false;S.fabOpen=false;render();}
+function activeChild(){return S.children.find(c=>c.id===S.activeChild)||S.children[0];}
 
-// ── FIREBASE OPERATIONS ────────────────────────────────────────
-async function createFamily(familyName){
-  const ref = await addDoc(collection(db,'families'),{
-    name: familyName, createdBy: state.user.uid, createdAt: new Date(),
-    members: {[state.user.uid]: {name: state.user.displayName, role:'admin', color:'#007AFF'}}
-  });
-  await setDoc(doc(db,'users',state.user.uid),{familyId: ref.id, name: state.user.displayName, role:'admin'});
+// ── Firebase ops ────────────────────────────────────────────
+async function createFamily(name){
+  const ref=await addDoc(collection(db,'families'),{name,createdBy:S.user.uid,createdAt:new Date(),members:{[S.user.uid]:{name:S.user.displayName,role:'Admin',color:'#007AFF'}}});
+  await setDoc(doc(db,'users',S.user.uid),{familyId:ref.id,name:S.user.displayName});
   return ref.id;
 }
-
-async function joinFamily(familyId){
-  const ref = doc(db,'families',familyId);
-  const snap = await getDoc(ref);
-  if(!snap.exists()) throw new Error('Family not found');
-  await updateDoc(ref,{[`members.${state.user.uid}`]:{name:state.user.displayName,role:'member',color:COLORS[Math.floor(Math.random()*COLORS.length)]}});
-  await setDoc(doc(db,'users',state.user.uid),{familyId,name:state.user.displayName,role:'member'});
-  return familyId;
+async function joinFamily(fid){
+  const snap=await getDoc(doc(db,'families',fid));
+  if(!snap.exists())throw new Error('Family not found');
+  await updateDoc(doc(db,'families',fid),{[`members.${S.user.uid}`]:{name:S.user.displayName,role:'Member',color:CHILD_COLORS[Math.floor(Math.random()*CHILD_COLORS.length)]}});
+  await setDoc(doc(db,'users',S.user.uid),{familyId:fid,name:S.user.displayName});
+  return fid;
 }
+async function addChild(data){await addDoc(collection(db,'families',S.familyId,'children'),{...data,createdAt:new Date()});}
+async function addPackItem(childId,label){await addDoc(collection(db,'families',S.familyId,'children',childId,'packing'),{label,checked:false,pinned:false,section:'school',createdAt:new Date()});}
+async function togglePack(childId,itemId,val){await updateDoc(doc(db,'families',S.familyId,'children',childId,'packing',itemId),{checked:val});}
+async function deletePack(childId,itemId){await deleteDoc(doc(db,'families',S.familyId,'children',childId,'packing',itemId));}
+async function addEvent(data){await addDoc(collection(db,'families',S.familyId,'events'),{...data,createdAt:new Date()});}
+async function deleteEvent(id){await deleteDoc(doc(db,'families',S.familyId,'events',id));}
+async function addNote(data){await addDoc(collection(db,'families',S.familyId,'notes'),{...data,date:todayStr,createdAt:new Date()});}
+async function deleteNote(id){await deleteDoc(doc(db,'families',S.familyId,'notes',id));}
+async function addAssessment(data){await addDoc(collection(db,'families',S.familyId,'assessments'),{...data,createdAt:new Date()});}
+async function deleteAssessment(id){await deleteDoc(doc(db,'families',S.familyId,'assessments',id));}
 
-async function addChild(name, year, school, color){
-  await addDoc(collection(db,'families',state.familyId,'children'),{
-    name, year, school, color, initials: name.slice(0,1).toUpperCase(), createdAt: new Date()
-  });
-}
-
-async function addPackingItem(childId, label){
-  await addDoc(collection(db,'families',state.familyId,'children',childId,'packing'),{
-    label, checked: false, pinned: false, createdAt: new Date()
-  });
-}
-
-async function togglePackingItem(childId, itemId, checked){
-  await updateDoc(doc(db,'families',state.familyId,'children',childId,'packing',itemId),{checked});
-}
-
-async function addEvent(eventData){
-  await addDoc(collection(db,'families',state.familyId,'events'),{...eventData, createdAt: new Date()});
-}
-
-async function addNote(childId, text){
-  await addDoc(collection(db,'families',state.familyId,'notes'),{
-    childId, text, date: today.toDateString(), createdAt: new Date(), createdBy: state.user.uid
-  });
-}
-
-async function addAssessment(childId, subject, title, due, daysLeft){
-  await addDoc(collection(db,'families',state.familyId,'assessments'),{
-    childId, subject, title, due, daysLeft, reminder: true, calendar: true, createdAt: new Date()
-  });
-}
-
-function subscribeToFamily(){
-  // Unsubscribe previous
-  state.unsubscribers.forEach(u=>u());
-  state.unsubscribers = [];
-
+function subscribe(){
+  S.unsubs.forEach(u=>u());S.unsubs=[];
+  // Family
+  S.unsubs.push(onSnapshot(doc(db,'families',S.familyId),snap=>{S.family=snap.data();render();}));
   // Children
-  const childUnsub = onSnapshot(collection(db,'families',state.familyId,'children'), snap=>{
-    state.children = snap.docs.map(d=>({id:d.id,...d.data()}));
-    if(!state.morningChild && state.children.length > 0) state.morningChild = state.children[0].id;
-    // Subscribe to packing for each child
-    state.children.forEach(child=>{
-      const packUnsub = onSnapshot(collection(db,'families',state.familyId,'children',child.id,'packing'), psnap=>{
-        state.packing[child.id] = psnap.docs.map(d=>({id:d.id,...d.data()}));
-        render();
+  S.unsubs.push(onSnapshot(collection(db,'families',S.familyId,'children'),snap=>{
+    S.children=snap.docs.map(d=>({id:d.id,...d.data()}));
+    if(!S.activeChild&&S.children.length)S.activeChild=S.children[0].id;
+    // sub packing per child
+    S.children.forEach(c=>{
+      const u=onSnapshot(collection(db,'families',S.familyId,'children',c.id,'packing'),ps=>{
+        S.packing[c.id]=ps.docs.map(d=>({id:d.id,...d.data()}));render();
       });
-      state.unsubscribers.push(packUnsub);
+      S.unsubs.push(u);
     });
     render();
-  });
-  state.unsubscribers.push(childUnsub);
-
-  // Events
-  const evUnsub = onSnapshot(collection(db,'families',state.familyId,'events'), snap=>{
-    state.events = snap.docs.map(d=>({id:d.id,...d.data()}));
-    render();
-  });
-  state.unsubscribers.push(evUnsub);
-
-  // Notes
-  const noteUnsub = onSnapshot(collection(db,'families',state.familyId,'notes'), snap=>{
-    state.notes = snap.docs.map(d=>({id:d.id,...d.data()}));
-    render();
-  });
-  state.unsubscribers.push(noteUnsub);
-
-  // Assessments
-  const assUnsub = onSnapshot(collection(db,'families',state.familyId,'assessments'), snap=>{
-    state.assessments = snap.docs.map(d=>({id:d.id,...d.data()}));
-    render();
-  });
-  state.unsubscribers.push(assUnsub);
-
-  // Family doc
-  const famUnsub = onSnapshot(doc(db,'families',state.familyId), snap=>{
-    state.family = snap.data();
-    render();
-  });
-  state.unsubscribers.push(famUnsub);
+  }));
+  S.unsubs.push(onSnapshot(collection(db,'families',S.familyId,'events'),snap=>{S.events=snap.docs.map(d=>({id:d.id,...d.data()}));render();}));
+  S.unsubs.push(onSnapshot(collection(db,'families',S.familyId,'notes'),snap=>{S.notes=snap.docs.map(d=>({id:d.id,...d.data()}));render();}));
+  S.unsubs.push(onSnapshot(collection(db,'families',S.familyId,'assessments'),snap=>{S.assessments=snap.docs.map(d=>({id:d.id,...d.data()}));render();}));
 }
 
-// ── AUTH SCREENS ───────────────────────────────────────────────
+// ── SCREENS ─────────────────────────────────────────────────
+
+// Login
 function renderLogin(){
-  return `
-    <div style="flex:1;display:flex;flex-direction:column;align-items:center;justify-content:center;background:#fff;padding:40px 32px">
-      <div style="width:80px;height:80px;border-radius:22px;background:linear-gradient(135deg,#007AFF,#5856D6);display:flex;align-items:center;justify-content:center;font-size:38px;box-shadow:0 8px 32px rgba(0,122,255,0.3);margin-bottom:28px">🏠</div>
-      <div style="font-size:26px;font-weight:800;color:#1C1C1E;letter-spacing:-0.5px;text-align:center;margin-bottom:8px">Welcome to HomeBase</div>
-      <div style="font-size:14px;color:#8E8E93;line-height:1.5;text-align:center;margin-bottom:32px">Family logistics, made simple.</div>
-      <div style="width:100%;display:flex;flex-direction:column;gap:12px">
-        <input class="input-field" id="login-email" type="email" placeholder="Email address"/>
-        <input class="input-field" id="login-password" type="password" placeholder="Password"/>
-        <div id="login-error" class="error-msg"></div>
-        <button class="primary-btn" id="login-btn" onclick="handleLogin()">Sign In</button>
-        <button class="secondary-btn" onclick="nav('signup')">Create Account</button>
-      </div>
-    </div>`;
+  return`<div style="flex:1;display:flex;flex-direction:column;align-items:center;justify-content:center;background:#fff;padding:40px 28px">
+    <div style="width:84px;height:84px;border-radius:22px;background:linear-gradient(145deg,#007AFF,#5856D6);display:flex;align-items:center;justify-content:center;font-size:40px;box-shadow:0 8px 32px rgba(0,122,255,0.3);margin-bottom:24px">🏠</div>
+    <div style="font-size:26px;font-weight:800;color:#1C1C1E;letter-spacing:-0.5px;text-align:center;margin-bottom:6px">Welcome to HomeBase</div>
+    <div style="font-size:14px;color:#8E8E93;text-align:center;line-height:1.5;margin-bottom:32px">Family logistics, made simple.<br>School mornings sorted in 30 seconds.</div>
+    <div style="width:100%;display:flex;flex-direction:column;gap:12px">
+      <input class="input" id="le" type="email" placeholder="Email address"/>
+      <input class="input" id="lp" type="password" placeholder="Password"/>
+      <div id="lerr" class="err"></div>
+      <button class="primary-btn" onclick="hLogin()">Sign In</button>
+      <button class="secondary-btn" onclick="nav('signup')">Create Account</button>
+    </div>
+  </div>`;
 }
 
+// Signup
 function renderSignup(){
-  return `
-    <div style="flex:1;display:flex;flex-direction:column;background:#F2F2F7;overflow:hidden">
-      <div style="background:#fff;padding:12px 16px 14px;display:flex;align-items:center;gap:12px;border-bottom:1px solid #F2F2F7">
-        <button class="back-btn" onclick="goBack()">${backSVG()} Back</button>
-        <div style="flex:1;text-align:center;font-size:17px;font-weight:600">Create Account</div>
-        <div style="width:60px"></div>
+  return`<div style="flex:1;display:flex;flex-direction:column;background:#F2F2F7">
+    <div style="background:#fff;padding:12px 16px 14px;display:flex;align-items:center;gap:12px;border-bottom:1px solid #F2F2F7;flex-shrink:0">
+      <button class="back-btn" onclick="goBack()">${back()}</button>
+      <div style="flex:1;text-align:center;font-size:17px;font-weight:600">Create Account</div>
+      <div style="width:44px"></div>
+    </div>
+    <div class="scroll" style="flex:1;overflow-y:auto;padding:24px 16px">
+      <div style="display:flex;flex-direction:column;gap:12px">
+        <input class="input" id="sn" type="text" placeholder="Your full name"/>
+        <input class="input" id="se" type="email" placeholder="Email address"/>
+        <input class="input" id="sp" type="password" placeholder="Password (min 6 characters)"/>
+        <div id="serr" class="err"></div>
+        <button class="primary-btn" onclick="hSignup()">Create Account</button>
       </div>
-      <div class="scroll" style="flex:1;overflow-y:auto;padding:24px 16px">
-        <div style="display:flex;flex-direction:column;gap:12px">
-          <input class="input-field" id="signup-name" type="text" placeholder="Your full name"/>
-          <input class="input-field" id="signup-email" type="email" placeholder="Email address"/>
-          <input class="input-field" id="signup-password" type="password" placeholder="Password (min 6 characters)"/>
-          <div id="signup-error" class="error-msg"></div>
-          <button class="primary-btn" onclick="handleSignup()">Create Account</button>
-        </div>
-      </div>
-    </div>`;
+    </div>
+  </div>`;
 }
 
+// Family setup
 function renderFamilySetup(){
-  return `
-    <div style="flex:1;display:flex;flex-direction:column;background:#F2F2F7;overflow:hidden">
-      <div style="background:#fff;padding:12px 16px 14px;border-bottom:1px solid #F2F2F7;text-align:center">
-        <div style="font-size:22px;font-weight:800;color:#1C1C1E">Set up your family</div>
-        <div style="font-size:14px;color:#8E8E93;margin-top:4px">Hi ${state.user?.displayName}! 👋</div>
+  return`<div style="flex:1;display:flex;flex-direction:column;background:#F2F2F7">
+    <div style="background:#fff;padding:16px;border-bottom:1px solid #F2F2F7;text-align:center;flex-shrink:0">
+      <div style="font-size:22px;font-weight:800;color:#1C1C1E">Set up your family</div>
+      <div style="font-size:14px;color:#8E8E93;margin-top:4px">Hi ${S.user?.displayName||'there'}! 👋</div>
+    </div>
+    <div class="scroll" style="flex:1;overflow-y:auto;padding:20px 16px;display:flex;flex-direction:column;gap:16px">
+      <div style="background:#fff;border-radius:16px;padding:20px;box-shadow:0 1px 4px rgba(0,0,0,0.08)">
+        <div style="font-size:17px;font-weight:700;color:#1C1C1E;margin-bottom:4px">Create a new family</div>
+        <div style="font-size:14px;color:#8E8E93;margin-bottom:14px">Start fresh and invite others to join</div>
+        <input class="input" id="fn" type="text" placeholder="Family name (e.g. The Clarks)" style="margin-bottom:10px"/>
+        <div id="ferr" class="err" style="margin-bottom:8px"></div>
+        <button class="primary-btn" onclick="hCreateFamily()">Create Family</button>
       </div>
-      <div class="scroll" style="flex:1;overflow-y:auto;padding:24px 16px">
-        <div style="background:#fff;border-radius:16px;padding:20px;box-shadow:0 1px 4px rgba(0,0,0,0.08);margin-bottom:16px">
-          <div style="font-size:17px;font-weight:700;color:#1C1C1E;margin-bottom:8px">Create a new family</div>
-          <div style="font-size:14px;color:#8E8E93;margin-bottom:16px">Start fresh and invite others to join</div>
-          <input class="input-field" id="family-name" type="text" placeholder="Family name (e.g. The Clarks)" style="margin-bottom:12px"/>
-          <div id="create-error" class="error-msg" style="margin-bottom:8px"></div>
-          <button class="primary-btn" onclick="handleCreateFamily()">Create Family</button>
-        </div>
-        <div style="text-align:center;color:#8E8E93;font-size:15px;margin:16px 0">or</div>
-        <div style="background:#fff;border-radius:16px;padding:20px;box-shadow:0 1px 4px rgba(0,0,0,0.08)">
-          <div style="font-size:17px;font-weight:700;color:#1C1C1E;margin-bottom:8px">Join existing family</div>
-          <div style="font-size:14px;color:#8E8E93;margin-bottom:16px">Enter the family code shared by your partner</div>
-          <input class="input-field" id="family-code" type="text" placeholder="Family code" style="margin-bottom:12px"/>
-          <div id="join-error" class="error-msg" style="margin-bottom:8px"></div>
-          <button class="primary-btn" style="background:#34C759" onclick="handleJoinFamily()">Join Family</button>
-        </div>
+      <div style="text-align:center;color:#8E8E93;font-size:14px">— or —</div>
+      <div style="background:#fff;border-radius:16px;padding:20px;box-shadow:0 1px 4px rgba(0,0,0,0.08)">
+        <div style="font-size:17px;font-weight:700;color:#1C1C1E;margin-bottom:4px">Join existing family</div>
+        <div style="font-size:14px;color:#8E8E93;margin-bottom:14px">Enter the family code shared by your partner</div>
+        <input class="input" id="fc" type="text" placeholder="Family code" style="margin-bottom:10px;font-family:monospace"/>
+        <div id="jerr" class="err" style="margin-bottom:8px"></div>
+        <button class="primary-btn" style="background:#34C759" onclick="hJoinFamily()">Join Family</button>
       </div>
-    </div>`;
+    </div>
+  </div>`;
 }
 
+// Add child
 function renderAddChild(){
-  const childColors = ['#007AFF','#34C759','#FF9500','#FF3B30','#AF52DE','#FF6B9D'];
-  return `
-    <div style="flex:1;display:flex;flex-direction:column;background:#F2F2F7;overflow:hidden">
-      <div style="background:#fff;padding:12px 16px 14px;display:flex;align-items:center;gap:12px;border-bottom:1px solid #F2F2F7">
-        <button class="back-btn" onclick="goBack()">${backSVG()} Back</button>
-        <div style="flex:1;text-align:center;font-size:17px;font-weight:600">Add Child</div>
-        <div style="width:60px"></div>
-      </div>
-      <div class="scroll" style="flex:1;overflow-y:auto;padding:24px 16px">
-        <div style="display:flex;flex-direction:column;gap:12px">
-          <input class="input-field" id="child-name" type="text" placeholder="Child's name"/>
-          <input class="input-field" id="child-year" type="text" placeholder="Year / Grade (e.g. Year 4)"/>
-          <input class="input-field" id="child-school" type="text" placeholder="School name"/>
-          <div style="font-size:15px;font-weight:600;color:#1C1C1E;margin-top:4px">Choose colour</div>
-          <div style="display:flex;gap:10px;flex-wrap:wrap" id="color-picker">
-            ${childColors.map((c,i)=>`<button onclick="selectColor('${c}')" id="color-${c.replace('#','')}" style="width:44px;height:44px;border-radius:22px;background:${c};border:3px solid ${i===0?'#000':'transparent'};cursor:pointer"></button>`).join('')}
+  return`<div style="flex:1;display:flex;flex-direction:column;background:#F2F2F7">
+    <div style="background:#fff;padding:12px 16px 14px;display:flex;align-items:center;gap:12px;border-bottom:1px solid #F2F2F7;flex-shrink:0">
+      <button class="back-btn" onclick="goBack()">${back()}</button>
+      <div style="flex:1;text-align:center;font-size:17px;font-weight:600">Add Child</div>
+      <div style="width:44px"></div>
+    </div>
+    <div class="scroll" style="flex:1;overflow-y:auto;padding:24px 16px">
+      <div style="display:flex;flex-direction:column;gap:12px">
+        <input class="input" id="cname" type="text" placeholder="Child's name"/>
+        <input class="input" id="cyear" type="text" placeholder="Year / Grade (e.g. Year 4)"/>
+        <input class="input" id="cschool" type="text" placeholder="School name"/>
+        <div>
+          <div style="font-size:15px;font-weight:600;color:#1C1C1E;margin-bottom:10px">Choose colour</div>
+          <div style="display:flex;gap:10px;flex-wrap:wrap" id="cpicker">
+            ${CHILD_COLORS.map((c,i)=>`<button onclick="selColor('${c}')" id="cp${i}" style="width:44px;height:44px;border-radius:22px;background:${c};border:${i===0?'4px solid #1C1C1E':'4px solid transparent'};cursor:pointer;transition:border 0.15s"></button>`).join('')}
           </div>
-          <input type="hidden" id="child-color" value="${childColors[0]}"/>
-          <div id="child-error" class="error-msg"></div>
-          <button class="primary-btn" onclick="handleAddChild()">Add Child</button>
-          <button class="secondary-btn" onclick="setTab('today')">Skip for now</button>
+          <input type="hidden" id="ccolor" value="${CHILD_COLORS[0]}"/>
         </div>
+        <div id="cerr" class="err"></div>
+        <button class="primary-btn" onclick="hAddChild()">Add Child</button>
+        <button class="secondary-btn" onclick="setTab('today')">Skip for now</button>
       </div>
-    </div>`;
+    </div>
+  </div>`;
 }
 
-// ── TODAY SCREEN ───────────────────────────────────────────────
+// ── TODAY ───────────────────────────────────────────────────
 function renderToday(){
-  const members = state.family?.members || {};
-  const todayEvents = state.events.filter(e => {
-    if(!e.date) return false;
-    const d = new Date(e.date);
-    return d.toDateString() === today.toDateString();
-  });
+  const child=activeChild();
+  if(!child){
+    return`<div style="background:#fff;padding:12px 16px 0;border-bottom:1px solid #F0F0F0;flex-shrink:0">
+      <div style="font-size:26px;font-weight:800;color:#1C1C1E">${DAY_NAMES[today.getDay()]}</div>
+      <div style="font-size:14px;color:#8E8E93;margin-top:1px">${fmtDisplay(today)}</div>
+    </div>
+    <div style="flex:1;display:flex;flex-direction:column;align-items:center;justify-content:center;padding:32px">
+      <div style="font-size:56px;margin-bottom:16px">🏠</div>
+      <div style="font-size:20px;font-weight:700;color:#1C1C1E;margin-bottom:8px;text-align:center">Welcome to HomeBase!</div>
+      <div style="font-size:15px;color:#8E8E93;text-align:center;line-height:1.5;margin-bottom:28px">Add your first child to get started with packing lists, school day tracking and pick-up coordination.</div>
+      <button class="primary-btn" style="max-width:280px" onclick="nav('addChild')">Add Your First Child</button>
+    </div>`;
+  }
 
-  return `
+  const pk=S.packing[child.id]||[];
+  const packed=pk.filter(p=>p.checked).length;
+  const pct=pk.length?packed/pk.length:0;
+  const todayEvs=S.events.filter(e=>e.date===todayStr&&e.childId===child.id).sort((a,b)=>(a.time||'').localeCompare(b.time||''));
+  const allEvs=S.events.filter(e=>e.date===todayStr).sort((a,b)=>(a.time||'').localeCompare(b.time||''));
+
+  return`
     <div style="background:#fff;padding:12px 16px 0;border-bottom:1px solid #F0F0F0;flex-shrink:0">
-      <div style="display:flex;justify-content:space-between;align-items:flex-start">
+      <div style="display:flex;justify-content:space-between;align-items:flex-start;margin-bottom:12px">
         <div>
-          <div style="font-size:26px;font-weight:800;letter-spacing:-0.5px;color:#1C1C1E">${DAYS[todayDay]}</div>
-          <div style="font-size:14px;color:#8E8E93;margin-top:1px">${today.toLocaleDateString('en-AU',{day:'numeric',month:'long'})}</div>
+          <div style="font-size:26px;font-weight:800;color:#1C1C1E;letter-spacing:-0.3px">${DAY_NAMES[today.getDay()]}</div>
+          <div style="font-size:14px;color:#8E8E93;margin-top:1px">${fmtDisplay(today)} ${allEvs.length>0?'· <span style="color:#FF9500;font-weight:600">'+allEvs.length+' events today</span>':''}</div>
         </div>
-        <div style="display:flex;gap:6px;margin-top:4px">
-          <button class="btn" onclick="handleSignOut()" style="background:#F2F2F7;border-radius:10px;padding:5px 10px;font-size:11px;font-weight:600;color:#8E8E93">Sign Out</button>
-          ${state.children.length>0?`<button class="btn" onclick="state.morningMode=true;render()" style="background:#007AFF;border-radius:10px;padding:5px 10px;font-size:10px;font-weight:700;color:#fff">☀️ Morning</button>`:''}
-        </div>
+        <button class="btn" onclick="state_morningMode()" style="background:#007AFF;border-radius:12px;padding:7px 12px;font-size:11px;font-weight:700;color:#fff;margin-top:4px">☀️ Morning</button>
+      </div>
+      <!-- Child Switcher Pills -->
+      <div style="display:flex;gap:8px;overflow-x:auto;padding-bottom:10px;-ms-overflow-style:none;scrollbar-width:none">
+        ${S.children.map(c=>`<button class="cpill" onclick="switchChild('${c.id}')" style="border-color:${S.activeChild===c.id?c.color:'#E5E5EA'};background:${S.activeChild===c.id?c.color+'15':'transparent'}">
+          ${av(c.name,c.color,28)}
+          <span style="font-size:15px;font-weight:600;color:${S.activeChild===c.id?c.color:'#1C1C1E'}">${c.name}</span>
+        </button>`).join('')}
+        <button class="cpill" onclick="nav('addChild')" style="border-color:#E5E5EA;color:#007AFF;font-size:14px;font-weight:600;padding:8px 14px">＋ Add</button>
       </div>
     </div>
-    <div class="scroll" style="flex:1;overflow-y:auto;padding-top:14px;padding-bottom:90px">
-      ${state.children.length === 0 ? `
-        <div style="text-align:center;padding:40px 20px">
-          <div style="font-size:48px;margin-bottom:16px">👧</div>
-          <div style="font-size:18px;font-weight:700;color:#1C1C1E;margin-bottom:8px">Add your first child</div>
-          <div style="font-size:15px;color:#8E8E93;margin-bottom:24px">Start tracking school days, packing lists and pickups</div>
-          <button class="primary-btn" style="max-width:280px;margin:auto" onclick="nav('addChild')">Add Child</button>
-        </div>` : `
-        <div class="sh">Children</div>
-        <div style="display:flex;gap:10px;padding:0 16px;margin-bottom:14px;flex-wrap:wrap">
-          ${state.children.map(child=>{
-            const pk = state.packing[child.id] || [];
-            const packed = pk.filter(p=>p.checked).length;
-            const pct = pk.length ? packed/pk.length : 0;
-            const color = child.color || '#007AFF';
-            return `<button class="btn" onclick="nav('childDetail',{childId:'${child.id}'})" style="flex:1;min-width:150px;background:#fff;border-radius:20px;padding:16px 14px;text-align:left;box-shadow:0 2px 10px rgba(0,0,0,0.08);border-top:4px solid ${color}">
-              <div style="display:flex;align-items:center;gap:10px;margin-bottom:12px">
-                ${avatar(child.name, color, 40)}
-                <div style="flex:1">
-                  <div style="font-size:17px;font-weight:700;color:#1C1C1E">${child.name}</div>
-                  <div style="font-size:12px;color:#8E8E93">${child.year||''}</div>
-                </div>
-              </div>
-              <div style="margin-bottom:8px">
-                <div style="display:flex;justify-content:space-between;margin-bottom:4px">
-                  <div style="font-size:11px;font-weight:700;color:#8E8E93">PACKED</div>
-                  <div style="font-size:11px;font-weight:700;color:${pct===1?'#34C759':color}">${packed}/${pk.length}</div>
-                </div>
-                <div style="height:4px;background:#F2F2F7;border-radius:2px;overflow:hidden">
-                  <div style="height:100%;width:${pct*100}%;background:${pct===1?'#34C759':color};border-radius:2px;transition:width 0.3s"></div>
-                </div>
-              </div>
-              <div style="font-size:12px;color:${color};font-weight:600">${pk.length} items to pack</div>
-            </button>`;
-          }).join('')}
-          <button class="btn" onclick="nav('addChild')" style="min-width:80px;background:#fff;border-radius:20px;padding:16px 14px;text-align:center;box-shadow:0 2px 10px rgba(0,0,0,0.08);border:2px dashed #C7C7CC;color:#007AFF;font-size:13px;font-weight:600">+ Add Child</button>
-        </div>`
-      }
-      
-      <div class="sh">Family Members</div>
-      <div class="card" style="margin-bottom:14px">
-        ${Object.entries(members).map(([uid,member],i,arr)=>`
-          <div style="display:flex;align-items:center;gap:12px;padding:13px 16px;border-bottom:${i<arr.length-1?'1px solid #F2F2F7':'none'}">
-            ${avatar(member.name, member.color||'#007AFF', 40)}
-            <div style="flex:1">
-              <div style="font-size:16px;font-weight:600;color:#1C1C1E">${member.name}${uid===state.user.uid?' (You)':''}</div>
-              <div style="font-size:13px;color:#8E8E93;text-transform:capitalize">${member.role||'member'}</div>
-            </div>
-          </div>`).join('')}
-        <button class="btn" onclick="showFamilyCode()" style="width:100%;padding:13px 16px;display:flex;align-items:center;justify-content:center;gap:8px;border-top:1px solid #F2F2F7;color:#007AFF;font-size:15px;font-weight:600">
-          <span>🔗</span> Share Family Code
-        </button>
+
+    <div class="scroll" style="flex:1;overflow-y:auto;padding:14px 0 90px">
+      <!-- Daily Overview Card -->
+      <div class="sh">Today's Overview</div>
+      <div class="card" style="margin-bottom:12px;padding:0">
+        <div style="padding:14px 16px;border-bottom:1px solid #F2F2F7">
+          <div style="font-size:13px;font-weight:600;color:#8E8E93;margin-bottom:6px">SCHOOL DAY</div>
+          <div style="font-size:16px;font-weight:600;color:#1C1C1E">${child.year||'School'} · ${child.school||''}</div>
+        </div>
+        ${todayEvs.length>0?`<div style="padding:14px 16px">
+          <div style="font-size:13px;font-weight:600;color:#8E8E93;margin-bottom:8px">AFTER SCHOOL</div>
+          ${todayEvs.slice(0,2).map(e=>`<div style="display:flex;align-items:center;gap:8px;margin-bottom:4px"><span style="font-size:13px;color:#8E8E93;min-width:36px">${e.time||''}</span><span style="font-size:14px;color:#1C1C1E;font-weight:500">${e.title}</span>${e.location?`<span style="font-size:12px;color:#8E8E93">· ${e.location}</span>`:''}</div>`).join('')}
+          ${todayEvs.length>2?`<div style="font-size:13px;color:#007AFF;font-weight:600;margin-top:4px">+${todayEvs.length-2} more</div>`:''}
+        </div>`:'<div style="padding:14px 16px;color:#8E8E93;font-size:14px">No after-school events today 🎉</div>'}
       </div>
 
-      ${todayEvents.length > 0 ? `
-        <div class="sh">Today's Events</div>
-        <div class="card" style="margin-bottom:14px;padding:8px 0">
-          ${todayEvents.map((ev,i,arr)=>{
-            const child = state.children.find(c=>c.id===ev.childId);
-            const color = child?.color || '#007AFF';
-            return `<div style="display:flex;gap:12px;padding:10px 16px;border-bottom:${i<arr.length-1?'1px solid #F2F2F7':'none'}">
-              <div style="width:4px;border-radius:2px;background:${color};flex-shrink:0"></div>
-              <div style="flex:1">
-                <div style="font-size:15px;font-weight:600;color:#1C1C1E">${ev.title}</div>
-                <div style="font-size:13px;color:#8E8E93">${ev.time||''} ${child?'· '+child.name:''}</div>
-                ${ev.location?`<div style="font-size:13px;color:#8E8E93">📍 ${ev.location}</div>`:''}
-              </div>
-            </div>`;
-          }).join('')}
-        </div>` : ''}
+      <!-- Packing Checklist -->
+      <div style="display:flex;align-items:center;justify-content:space-between;padding:8px 16px 4px">
+        <div class="sh" style="padding:0">Packing Checklist</div>
+        <div style="font-size:12px;font-weight:700;color:${pct===1?'#34C759':child.color}">${packed}/${pk.length} packed</div>
+      </div>
+      <div class="card" style="margin-bottom:12px">
+        ${pk.length===0?`<div style="padding:20px 16px;text-align:center">
+          <div style="font-size:14px;color:#8E8E93;margin-bottom:12px">No items yet — add what ${child.name} needs for school</div>
+          <button class="btn" onclick="nav('addPackItem',{childId:'${child.id}'})" style="color:#007AFF;font-size:15px;font-weight:600">+ Add Items</button>
+        </div>`:''}
+        ${pk.map((item,i)=>`<div style="display:flex;align-items:center;gap:12px;padding:13px 16px;border-bottom:${i<pk.length-1?'1px solid #F2F2F7':'none'}">
+          <div class="cb ${item.checked?'on':''}" style="${item.checked?'background:'+child.color+';':''}border-color:${item.checked?child.color:'#C7C7CC'}" onclick="togglePackItem('${child.id}','${item.id}',${!item.checked})">
+            ${item.checked?checkSvg():''}
+          </div>
+          <span style="flex:1;font-size:16px;color:${item.checked?'#8E8E93':'#1C1C1E'};text-decoration:${item.checked?'line-through':'none'}">${item.label}</span>
+          ${item.pinned?'<span style="font-size:12px">📌</span>':''}
+          <button onclick="deletePk('${child.id}','${item.id}')" style="background:none;border:none;cursor:pointer;color:#FF3B30;font-size:20px;line-height:1;padding:0 2px;opacity:0.6">×</button>
+        </div>`).join('')}
+        ${pct===1&&pk.length>0?`<div style="padding:12px 16px;background:#EAFAF0;text-align:center;font-size:14px;font-weight:700;color:#34C759;animation:packed 0.4s ease">✅ All packed for ${child.name}!</div>`:''}
+      </div>
+      <button class="btn" onclick="nav('addPackItem',{childId:'${child.id}'})" style="width:calc(100% - 32px);margin:0 16px 16px;padding:13px;border-radius:14px;border:2px dashed #C7C7CC;color:#007AFF;font-size:15px;font-weight:600">+ Add Packing Item</button>
+
+      <!-- After-School Timeline -->
+      ${allEvs.length>0?`
+      <div class="sh">After-School Timeline</div>
+      <div class="card" style="margin-bottom:16px;padding:8px 0">
+        ${allEvs.map((ev,i,arr)=>{
+          const ec=S.children.find(c=>c.id===ev.childId);
+          const col=ec?.color||'#007AFF';
+          return`<div style="display:flex;gap:12px;padding:10px 16px;position:relative;border-bottom:${i<arr.length-1?'1px solid #F2F2F7':'none'}">
+            ${i<arr.length-1?`<div style="position:absolute;left:46px;top:36px;bottom:-1px;width:2px;background:#F2F2F7"></div>`:''}
+            <div style="text-align:right;width:36px;padding-top:5px;flex-shrink:0;font-size:12px;font-weight:600;color:#8E8E93">${ev.time||''}</div>
+            <div style="width:28px;height:28px;border-radius:14px;background:${col}18;border:2px solid ${col};display:flex;align-items:center;justify-content:center;font-size:13px;flex-shrink:0">${ev.icon||'📅'}</div>
+            <div style="flex:1">
+              <div style="font-size:15px;font-weight:600;color:#1C1C1E">${ev.title}</div>
+              <div style="font-size:12px;color:#8E8E93">${ec?.name||''} ${ev.location?'· 📍'+ev.location:''}</div>
+              ${ev.pickup?`<div style="font-size:12px;color:#007AFF;font-weight:500;margin-top:2px">🚗 Pickup: ${ev.pickup}</div>`:''}
+            </div>
+          </div>`;
+        }).join('')}
+      </div>`:''}
     </div>
+
     <div class="fab">
-      ${state.fabOpen?`<div class="fab-menu">
+      ${S.fabOpen?`<div class="fab-menu">
         <button class="fab-item" onclick="nav('addEvent')"><span style="font-size:18px">📆</span>Add Event</button>
-        <button class="fab-item" onclick="nav('addNote')"><span style="font-size:18px">📝</span>Add Note</button>
+        <button class="fab-item" onclick="nav('addNote')"><span style="font-size:18px">📝</span>Quick Note</button>
         <button class="fab-item" onclick="nav('addAssessment')"><span style="font-size:18px">📚</span>Add Assessment</button>
       </div>`:''}
-      <button class="fab-btn" style="background:${state.fabOpen?'#636366':'#007AFF'};transform:${state.fabOpen?'rotate(45deg)':'none'}" onclick="state.fabOpen=!state.fabOpen;render()">+</button>
+      <button class="fab-btn" style="background:${S.fabOpen?'#636366':'#007AFF'};transform:${S.fabOpen?'rotate(45deg)':'none'}" onclick="S.fabOpen=!S.fabOpen;render()">+</button>
     </div>`;
 }
 
-// ── MORNING MODE ───────────────────────────────────────────────
+// Morning Mode
 function renderMorning(){
-  const child = state.children.find(c=>c.id===state.morningChild) || state.children[0];
-  if(!child) return renderToday();
-  const color = child.color || '#007AFF';
-  const pk = state.packing[child.id] || [];
-  const packed = pk.filter(p=>p.checked).length;
-  const pct = pk.length ? packed/pk.length : 0;
-  return `
-    <div style="background:${color};padding:16px 20px 12px;flex-shrink:0">
+  const child=activeChild();
+  if(!child){S.morningMode=false;return renderToday();}
+  const color=child.color||'#007AFF';
+  const pk=S.packing[child.id]||[];
+  const packed=pk.filter(p=>p.checked).length;
+  const pct=pk.length?packed/pk.length:0;
+  const nxt=S.events.filter(e=>e.date===todayStr&&e.childId===child.id).sort((a,b)=>(a.time||'').localeCompare(b.time||''))[0];
+  return`
+    <div style="background:${color};padding:16px 20px 14px;flex-shrink:0">
       <div style="display:flex;justify-content:space-between;align-items:flex-start">
         <div>
-          <div style="font-size:13px;font-weight:600;color:rgba(255,255,255,0.7);margin-bottom:2px">MORNING MODE</div>
-          <div style="font-size:24px;font-weight:800;color:#fff;letter-spacing:-0.5px">${DAYS[todayDay]} ${today.toLocaleDateString('en-AU',{day:'numeric',month:'short'})}</div>
+          <div style="font-size:12px;font-weight:700;color:rgba(255,255,255,0.7);letter-spacing:1px;margin-bottom:2px">MORNING MODE</div>
+          <div style="font-size:24px;font-weight:800;color:#fff;letter-spacing:-0.5px">${DAY_NAMES[today.getDay()]} ${today.getDate()} ${MONTH_SHORT[today.getMonth()]}</div>
         </div>
-        <button class="btn" onclick="state.morningMode=false;render()" style="background:rgba(255,255,255,0.2);border-radius:20px;padding:6px 14px;color:#fff;font-size:14px;font-weight:600">Done</button>
+        <button class="btn" onclick="S.morningMode=false;render()" style="background:rgba(255,255,255,0.22);border-radius:20px;padding:7px 16px;color:#fff;font-size:14px;font-weight:600">Done</button>
       </div>
-      <div style="display:flex;gap:8px;margin-top:14px;flex-wrap:wrap">
-        ${state.children.map(c=>`<button class="btn" onclick="state.morningChild='${c.id}';render()" style="display:flex;align-items:center;gap:8px;padding:7px 14px 7px 7px;border-radius:24px;border:2px solid ${state.morningChild===c.id?'#fff':'rgba(255,255,255,0.3)'};background:${state.morningChild===c.id?'rgba(255,255,255,0.25)':'transparent'}">
-          ${avatar(c.name, c.color||'#007AFF', 28)}
+      <div style="display:flex;gap:8px;margin-top:14px;overflow-x:auto;padding-bottom:2px">
+        ${S.children.map(c=>`<button class="btn" onclick="S.activeChild='${c.id}';render()" style="display:flex;align-items:center;gap:7px;padding:7px 14px 7px 7px;border-radius:24px;border:2px solid ${S.activeChild===c.id?'#fff':'rgba(255,255,255,0.35)'};background:${S.activeChild===c.id?'rgba(255,255,255,0.22)':'transparent'};white-space:nowrap">
+          ${av(c.name,S.activeChild===c.id?'#fff':c.color,28)}
           <span style="font-size:15px;font-weight:700;color:#fff">${c.name}</span>
         </button>`).join('')}
       </div>
     </div>
-    <div style="flex:1;background:#F2F2F7;border-radius:24px 24px 0 0;padding:20px 0 0;overflow:hidden;display:flex;flex-direction:column">
-      <div style="display:flex;justify-content:space-between;align-items:center;padding:0 16px 6px">
-        <div class="sh" style="padding:0">PACKING ${packed}/${pk.length}</div>
-        ${pct===1?'<span style="font-size:13px;font-weight:700;color:#34C759;padding-right:16px">All packed! ✅</span>':''}
+    <div style="flex:1;background:#F2F2F7;border-radius:24px 24px 0 0;margin-top:-8px;padding:20px 0 0;overflow:hidden;display:flex;flex-direction:column">
+      ${nxt?`<div style="margin:0 16px 14px;background:#fff;border-radius:16px;padding:12px 16px;display:flex;align-items:center;gap:12px;box-shadow:0 1px 4px rgba(0,0,0,0.08)">
+        <div style="font-size:26px">🚗</div>
+        <div><div style="font-size:12px;color:#8E8E93;font-weight:600">NEXT EVENT</div><div style="font-size:16px;font-weight:700;color:#1C1C1E">${nxt.time||''} · ${nxt.title}</div></div>
+      </div>`:''}
+      <div style="display:flex;align-items:center;justify-content:space-between;padding:0 16px 8px">
+        <div style="font-size:13px;font-weight:600;color:#8E8E93;text-transform:uppercase;letter-spacing:0.5px">Packing · ${packed}/${pk.length}</div>
+        ${pct===1&&pk.length>0?`<span style="font-size:13px;font-weight:700;color:#34C759">All packed! ✅</span>`:`<div style="height:4px;background:#E5E5EA;border-radius:2px;width:80px;overflow:hidden"><div style="height:100%;width:${pct*100}%;background:${color};border-radius:2px;transition:width 0.3s"></div></div>`}
       </div>
       <div class="scroll" style="flex:1;overflow-y:auto">
         <div class="card">
-          ${pk.length===0?`<div style="padding:20px;text-align:center;color:#8E8E93;font-size:15px">No packing items yet.<br><button class="btn" onclick="nav('childDetail',{childId:'${child.id}'})" style="color:#007AFF;margin-top:8px;font-size:15px;font-weight:600">Add items</button></div>`:''}
-          ${pk.map((item,i)=>`<div style="display:flex;align-items:center;gap:12px;padding:13px 16px;border-bottom:${i<pk.length-1?'1px solid #F2F2F7':'none'}">
-            <div onclick="togglePackItem('${child.id}','${item.id}',${!item.checked})" style="width:26px;height:26px;border-radius:8px;border:${item.checked?'none':'2px solid #C7C7CC'};background:${item.checked?color:'transparent'};display:flex;align-items:center;justify-content:center;cursor:pointer;flex-shrink:0">
-              ${item.checked?`<svg width="14" height="10" viewBox="0 0 14 10"><polyline points="1,5 5,9 13,1" stroke="white" stroke-width="2.2" fill="none" stroke-linecap="round" stroke-linejoin="round"/></svg>`:''}
+          ${pk.length===0?`<div style="padding:24px;text-align:center;color:#8E8E93;font-size:15px">No packing items<br><button class="btn" onclick="nav('addPackItem',{childId:'${child.id}'})" style="color:#007AFF;margin-top:8px;font-size:15px;font-weight:600">+ Add items</button></div>`:''}
+          ${pk.map((item,i)=>`<div style="display:flex;align-items:center;gap:12px;padding:14px 16px;border-bottom:${i<pk.length-1?'1px solid #F2F2F7':'none'}">
+            <div class="cb ${item.checked?'on':''}" style="${item.checked?'background:'+color+';':''}border-color:${item.checked?color:'#C7C7CC'}" onclick="togglePackItem('${child.id}','${item.id}',${!item.checked})">
+              ${item.checked?checkSvg():''}
             </div>
-            <span style="font-size:16px;color:${item.checked?'#8E8E93':'#1C1C1E'};text-decoration:${item.checked?'line-through':'none'};flex:1">${item.label}</span>
-            ${item.pinned?'<span style="font-size:12px;color:#FF9500">📌</span>':''}
+            <span style="flex:1;font-size:16px;color:${item.checked?'#8E8E93':'#1C1C1E'};text-decoration:${item.checked?'line-through':'none'}">${item.label}</span>
           </div>`).join('')}
         </div>
-        <div style="height:8px"></div>
-        <button class="btn" onclick="nav('addPackingItem',{childId:'${child.id}'})" style="width:calc(100% - 32px);margin:0 16px;padding:13px;border-radius:14px;border:2px dashed #C7C7CC;color:#007AFF;font-size:15px;font-weight:600">+ Add packing item</button>
         <div style="height:24px"></div>
       </div>
     </div>`;
 }
 
-// ── CHILD DETAIL ───────────────────────────────────────────────
-function renderChildDetail(params){
-  const child = state.children.find(c=>c.id===params.childId);
-  if(!child) return '';
-  const color = child.color || '#007AFF';
-  const pk = state.packing[child.id] || [];
-  const packed = pk.filter(p=>p.checked).length;
-  const pct = pk.length ? packed/pk.length : 0;
-  const childEvents = state.events.filter(e=>e.childId===child.id);
-  return `
-    <div style="background:${color}20;padding:12px 16px 14px;border-bottom:2px solid ${color}30;display:flex;align-items:center;gap:12px;flex-shrink:0">
-      <button class="back-btn" onclick="goBack()">${backSVG()} Back</button>
-      <div style="flex:1;text-align:center">
-        <div style="font-size:17px;font-weight:600;color:#1C1C1E">${child.name}</div>
-        <div style="font-size:13px;color:${color};font-weight:600">${child.year||''}</div>
-      </div>
-      <div style="width:50px"></div>
-    </div>
-    <div class="scroll" style="flex:1;overflow-y:auto;padding:16px 0">
-      <div class="sh">Packing List (${packed}/${pk.length})</div>
-      <div class="card" style="margin-bottom:12px">
-        ${pk.length===0?`<div style="padding:20px;text-align:center;color:#8E8E93;font-size:15px">No items yet</div>`:''}
-        ${pk.map((item,i)=>`<div style="display:flex;align-items:center;gap:12px;padding:13px 16px;border-bottom:${i<pk.length-1?'1px solid #F2F2F7':'none'}">
-          <div onclick="togglePackItem('${child.id}','${item.id}',${!item.checked})" style="width:26px;height:26px;border-radius:8px;border:${item.checked?'none':'2px solid #C7C7CC'};background:${item.checked?color:'transparent'};display:flex;align-items:center;justify-content:center;cursor:pointer;flex-shrink:0">
-            ${item.checked?`<svg width="14" height="10" viewBox="0 0 14 10"><polyline points="1,5 5,9 13,1" stroke="white" stroke-width="2.2" fill="none" stroke-linecap="round" stroke-linejoin="round"/></svg>`:''}
-          </div>
-          <span style="font-size:16px;color:${item.checked?'#8E8E93':'#1C1C1E'};text-decoration:${item.checked?'line-through':'none'};flex:1">${item.label}</span>
-          <button onclick="deletePackItem('${child.id}','${item.id}')" style="background:none;border:none;cursor:pointer;color:#FF3B30;font-size:18px;padding:0 4px">×</button>
-        </div>`).join('')}
-        ${pct===1&&pk.length>0?`<div style="padding:11px 16px;background:#EAFAF0;text-align:center;font-size:14px;font-weight:700;color:#34C759;animation:allPacked 0.4s ease">✅ All packed for ${child.name}!</div>`:''}
-      </div>
-      <button class="btn" onclick="nav('addPackingItem',{childId:'${child.id}'})" style="width:calc(100% - 32px);margin:0 16px 16px;padding:13px;border-radius:14px;border:2px dashed #C7C7CC;color:#007AFF;font-size:15px;font-weight:600">+ Add packing item</button>
-      
-      ${childEvents.length>0?`
-        <div class="sh">Events</div>
-        <div class="card" style="margin-bottom:12px;padding:8px 0">
-          ${childEvents.map((ev,i,arr)=>`<div style="padding:10px 16px;border-bottom:${i<arr.length-1?'1px solid #F2F2F7':'none'}">
-            <div style="font-size:15px;font-weight:600;color:#1C1C1E">${ev.title}</div>
-            <div style="font-size:13px;color:#8E8E93">${ev.date||''} ${ev.time?'· '+ev.time:''}</div>
-            ${ev.location?`<div style="font-size:13px;color:#8E8E93">📍 ${ev.location}</div>`:''}
-          </div>`).join('')}
-        </div>`:''}
-    </div>`;
-}
-
-// ── ADD FORMS ──────────────────────────────────────────────────
-function renderAddPackingItem(params){
-  return `
-    <div style="background:#fff;padding:12px 16px 14px;display:flex;align-items:center;gap:12px;border-bottom:1px solid #F2F2F7;flex-shrink:0">
-      <button class="back-btn" onclick="goBack()">${backSVG()} Back</button>
-      <div style="flex:1;text-align:center;font-size:17px;font-weight:600">Add Packing Item</div>
-      <div style="width:60px"></div>
-    </div>
-    <div style="padding:24px 16px;display:flex;flex-direction:column;gap:12px">
-      <input class="input-field" id="pack-label" type="text" placeholder="Item name (e.g. Sports uniform)"/>
-      <div id="pack-error" class="error-msg"></div>
-      <button class="primary-btn" onclick="handleAddPackingItem('${params.childId}')">Add Item</button>
-    </div>`;
-}
-
-function renderAddEvent(){
-  return `
-    <div style="background:#fff;padding:12px 16px 14px;display:flex;align-items:center;gap:12px;border-bottom:1px solid #F2F2F7;flex-shrink:0">
-      <button class="back-btn" onclick="goBack()">${backSVG()} Back</button>
-      <div style="flex:1;text-align:center;font-size:17px;font-weight:600">Add Event</div>
-      <div style="width:60px"></div>
-    </div>
-    <div class="scroll" style="flex:1;overflow-y:auto;padding:24px 16px">
-      <div style="display:flex;flex-direction:column;gap:12px">
-        <input class="input-field" id="ev-title" type="text" placeholder="Event title"/>
-        <input class="input-field" id="ev-date" type="date" value="${today.toISOString().split('T')[0]}"/>
-        <input class="input-field" id="ev-time" type="text" placeholder="Time (e.g. 3:30pm)"/>
-        <input class="input-field" id="ev-location" type="text" placeholder="Location (optional)"/>
-        <select class="input-field" id="ev-child">
-          <option value="">Select child (optional)</option>
-          ${state.children.map(c=>`<option value="${c.id}">${c.name}</option>`).join('')}
-        </select>
-        <input class="input-field" id="ev-notes" type="text" placeholder="Notes (optional)"/>
-        <div id="ev-error" class="error-msg"></div>
-        <button class="primary-btn" onclick="handleAddEvent()">Add Event</button>
-      </div>
-    </div>`;
-}
-
-function renderAddNote(){
-  return `
-    <div style="background:#fff;padding:12px 16px 14px;display:flex;align-items:center;gap:12px;border-bottom:1px solid #F2F2F7;flex-shrink:0">
-      <button class="back-btn" onclick="goBack()">${backSVG()} Back</button>
-      <div style="flex:1;text-align:center;font-size:17px;font-weight:600">Add Note</div>
-      <div style="width:60px"></div>
-    </div>
-    <div style="padding:24px 16px;display:flex;flex-direction:column;gap:12px">
-      <select class="input-field" id="note-child">
-        <option value="">Select child (optional)</option>
-        ${state.children.map(c=>`<option value="${c.id}">${c.name}</option>`).join('')}
-      </select>
-      <textarea class="input-field" id="note-text" placeholder="Note..." rows="4" style="resize:none"></textarea>
-      <div id="note-error" class="error-msg"></div>
-      <button class="primary-btn" onclick="handleAddNote()">Save Note</button>
-    </div>`;
-}
-
-function renderAddAssessment(){
-  return `
-    <div style="background:#fff;padding:12px 16px 14px;display:flex;align-items:center;gap:12px;border-bottom:1px solid #F2F2F7;flex-shrink:0">
-      <button class="back-btn" onclick="goBack()">${backSVG()} Back</button>
-      <div style="flex:1;text-align:center;font-size:17px;font-weight:600">Add Assessment</div>
-      <div style="width:60px"></div>
-    </div>
-    <div class="scroll" style="flex:1;overflow-y:auto;padding:24px 16px">
-      <div style="display:flex;flex-direction:column;gap:12px">
-        <select class="input-field" id="ass-child">
-          <option value="">Select child</option>
-          ${state.children.map(c=>`<option value="${c.id}">${c.name}</option>`).join('')}
-        </select>
-        <input class="input-field" id="ass-subject" type="text" placeholder="Subject (e.g. English)"/>
-        <input class="input-field" id="ass-title" type="text" placeholder="Task title (e.g. Book Report)"/>
-        <input class="input-field" id="ass-due" type="date"/>
-        <div id="ass-error" class="error-msg"></div>
-        <button class="primary-btn" onclick="handleAddAssessment()">Add Assessment</button>
-      </div>
-    </div>`;
-}
-
-// ── CALENDAR SCREEN ────────────────────────────────────────────
+// Calendar
 function renderCalendar(){
-  const selectedDate = state.selectedDate || today.toISOString().split('T')[0];
-  const dayEvents = state.events.filter(e=>e.date===selectedDate);
-  
-  // Build week dates
-  const weekDates = [];
-  const startOfWeek = new Date(today);
-  startOfWeek.setDate(today.getDate() - today.getDay() + 1);
-  for(let i=0;i<7;i++){
-    const d = new Date(startOfWeek);
-    d.setDate(startOfWeek.getDate()+i);
-    weekDates.push(d);
-  }
+  const wStart=new Date(today);
+  wStart.setDate(today.getDate()-today.getDay()+1+S.calWeekOffset*7);
+  const weekDates=Array.from({length:7},(_,i)=>{const d=new Date(wStart);d.setDate(wStart.getDate()+i);return d;});
+  const selDate=S.selectedDate||todayStr;
+  const dayEvs=S.events.filter(e=>e.date===selDate).sort((a,b)=>(a.time||'').localeCompare(b.time||''));
 
-  return `
+  return`
     <div style="background:#fff;padding:12px 16px 0;border-bottom:1px solid #F2F2F7;flex-shrink:0">
-      <div style="font-size:28px;font-weight:700;letter-spacing:-0.5px;color:#1C1C1E;margin-bottom:14px">Calendar</div>
-      <div style="display:flex;margin:0 -16px;overflow-x:auto">
+      <div style="font-size:28px;font-weight:700;letter-spacing:-0.5px;color:#1C1C1E;margin-bottom:12px">Calendar</div>
+      <div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:10px">
+        <button class="btn" onclick="S.calWeekOffset--;render()" style="color:#007AFF;font-size:22px;font-weight:300;padding:0 8px">‹</button>
+        <div style="font-size:14px;font-weight:600;color:#1C1C1E">${MONTH_SHORT[wStart.getMonth()]} ${wStart.getFullYear()}</div>
+        <button class="btn" onclick="S.calWeekOffset++;render()" style="color:#007AFF;font-size:22px;font-weight:300;padding:0 8px">›</button>
+      </div>
+      <div style="display:flex;margin:0 -16px">
         ${weekDates.map(d=>{
-          const ds = d.toISOString().split('T')[0];
-          const isSelected = ds === selectedDate;
-          const isToday = ds === today.toISOString().split('T')[0];
-          const hasEvents = state.events.filter(e=>e.date===ds).length > 0;
-          return `<button class="btn" onclick="state.selectedDate='${ds}';render()" style="flex:1;min-width:44px;display:flex;flex-direction:column;align-items:center;padding:8px 4px 12px;border-bottom:${isSelected?'3px solid #007AFF':'3px solid transparent'}">
-            <div style="font-size:11px;color:${isSelected?'#007AFF':isToday?'#FF3B30':'#8E8E93'};font-weight:500">${['S','M','T','W','T','F','S'][d.getDay()]}</div>
-            <div style="width:32px;height:32px;border-radius:16px;margin-top:4px;background:${isSelected?'#007AFF':'transparent'};display:flex;align-items:center;justify-content:center;font-size:16px;font-weight:600;color:${isSelected?'#fff':isToday?'#FF3B30':'#1C1C1E'}">${d.getDate()}</div>
-            ${hasEvents?`<div style="width:6px;height:6px;border-radius:3px;background:${isSelected?'#fff':'#007AFF'};margin-top:4px"></div>`:'<div style="height:10px"></div>'}
+          const ds=fmtDate(d);
+          const isSel=ds===selDate;
+          const isTod=ds===todayStr;
+          const hasEvs=S.events.filter(e=>e.date===ds).length>0;
+          return`<button class="btn" onclick="S.selectedDate='${ds}';render()" style="flex:1;display:flex;flex-direction:column;align-items:center;padding:6px 2px 12px;border-bottom:${isSel?'3px solid #007AFF':'3px solid transparent'}">
+            <div style="font-size:11px;color:${isSel?'#007AFF':isTod?'#FF3B30':'#8E8E93'};font-weight:500;margin-bottom:4px">${DAY_SHORT[d.getDay()]}</div>
+            <div style="width:32px;height:32px;border-radius:16px;background:${isSel?'#007AFF':'transparent'};display:flex;align-items:center;justify-content:center;font-size:16px;font-weight:600;color:${isSel?'#fff':isTod?'#FF3B30':'#1C1C1E'}">${d.getDate()}</div>
+            <div style="width:6px;height:6px;border-radius:3px;margin-top:4px;background:${hasEvs?(isSel?'#fff':'#007AFF'):'transparent'}"></div>
           </button>`;
         }).join('')}
       </div>
     </div>
     <div class="scroll" style="flex:1;overflow-y:auto;padding:12px 0 80px">
-      ${dayEvents.length===0
-        ?`<div style="text-align:center;padding:60px 20px">
-            <div style="font-size:48px;margin-bottom:12px">🎉</div>
-            <div style="font-size:18px;font-weight:700;color:#1C1C1E;margin-bottom:6px">Nothing on!</div>
-            <div style="font-size:15px;color:#8E8E93">Tap + to add an event</div>
-          </div>`
-        :`<div class="sh">${new Date(selectedDate+'T12:00:00').toLocaleDateString('en-AU',{weekday:'long',day:'numeric',month:'long'})}</div>
-          ${dayEvents.map(ev=>{
-            const child = state.children.find(c=>c.id===ev.childId);
-            const color = child?.color || '#007AFF';
-            return `<div style="width:calc(100% - 32px);margin:0 16px 10px;background:#fff;border-radius:16px;padding:14px 16px;box-shadow:0 1px 4px rgba(0,0,0,0.08);display:flex;align-items:center;gap:12px">
-              <div style="width:4px;height:50px;border-radius:2px;background:${color};flex-shrink:0"></div>
-              ${child?avatar(child.name,color,36):''}
-              <div style="flex:1">
-                <div style="font-size:16px;font-weight:600;color:#1C1C1E">${ev.title}</div>
-                ${ev.time?`<div style="font-size:13px;color:#8E8E93">${ev.time}</div>`:''}
-                ${ev.location?`<div style="font-size:13px;color:#8E8E93">📍 ${ev.location}</div>`:''}
-                ${ev.notes?`<div style="font-size:13px;color:#8E8E93;font-style:italic">${ev.notes}</div>`:''}
-              </div>
-              <button onclick="deleteEvent('${ev.id}')" style="background:none;border:none;cursor:pointer;color:#FF3B30;font-size:20px;padding:0">×</button>
-            </div>`;
-          }).join('')}`
-      }
+      ${dayEvs.length===0?`<div style="text-align:center;padding:60px 20px">
+        <div style="font-size:48px;margin-bottom:12px">🎉</div>
+        <div style="font-size:18px;font-weight:700;color:#1C1C1E;margin-bottom:6px">Nothing on!</div>
+        <div style="font-size:15px;color:#8E8E93">Tap + to add an event</div>
+      </div>`:
+      `<div class="sh">${fmtDisplay(new Date(selDate+'T12:00'))}</div>
+      ${dayEvs.map(ev=>{
+        const ec=S.children.find(c=>c.id===ev.childId);
+        const col=ec?.color||'#007AFF';
+        return`<div style="width:calc(100% - 32px);margin:0 16px 10px;background:#fff;border-radius:16px;padding:14px 16px;box-shadow:0 1px 4px rgba(0,0,0,0.08)">
+          <div style="display:flex;align-items:flex-start;gap:12px">
+            <div style="width:4px;min-height:48px;border-radius:2px;background:${col};flex-shrink:0;margin-top:2px"></div>
+            ${ec?av(ec.name,col,36):''}
+            <div style="flex:1">
+              <div style="font-size:16px;font-weight:600;color:#1C1C1E">${ev.title}</div>
+              ${ev.time?`<div style="font-size:13px;color:#8E8E93;margin-top:2px">⏰ ${ev.time}</div>`:''}
+              ${ev.location?`<div style="font-size:13px;color:#8E8E93">📍 ${ev.location}</div>`:''}
+              ${ev.dropoff?`<div style="font-size:13px;color:#8E8E93">Drop-off: ${ev.dropoff}</div>`:''}
+              ${ev.pickup?`<div style="font-size:13px;color:#007AFF;font-weight:500">🚗 Pickup: ${ev.pickup}</div>`:''}
+              ${ev.notes?`<div style="font-size:13px;color:#8E8E93;font-style:italic;margin-top:4px">${ev.notes}</div>`:''}
+            </div>
+            <button onclick="delEvent('${ev.id}')" style="background:none;border:none;cursor:pointer;color:#FF3B30;font-size:20px;padding:0;opacity:0.7">×</button>
+          </div>
+        </div>`;
+      }).join('')}`}
     </div>
-    <div class="fab">
-      <button class="fab-btn" style="background:#007AFF" onclick="nav('addEvent')">+</button>
-    </div>`;
+    <div class="fab"><button class="fab-btn" style="background:#007AFF" onclick="nav('addEvent')">+</button></div>`;
 }
 
-// ── LISTS SCREEN ───────────────────────────────────────────────
+// Lists
 function renderLists(){
-  if(state.listSection==='assessments'){
-    const filtered = state.listFilter==='all' ? state.assessments : state.assessments.filter(a=>a.childId===state.listFilter);
-    return `
+  if(S.listSection==='assessments'){
+    const f=S.listFilter==='all'?S.assessments:S.assessments.filter(a=>a.childId===S.listFilter);
+    return`<div style="flex:1;display:flex;flex-direction:column">
       <div style="background:#fff;padding:12px 16px 14px;display:flex;align-items:center;gap:12px;border-bottom:1px solid #F2F2F7;flex-shrink:0">
-        <button class="back-btn" onclick="state.listSection=null;render()">${backSVG()} Back</button>
-        <div style="flex:1;text-align:center;font-size:17px;font-weight:600">Assessments</div>
-        <div style="width:60px"></div>
+        <button class="back-btn" onclick="S.listSection=null;render()">${back()}</button>
+        <div style="flex:1;text-align:center;font-size:17px;font-weight:600">Assessment Tasks</div>
+        <div style="width:44px"></div>
       </div>
-      <div style="background:#fff;padding:8px 16px 12px;display:flex;gap:8px;flex-wrap:wrap;flex-shrink:0">
-        ${[{id:'all',label:'All'},...state.children.map(c=>({id:c.id,label:c.name}))].map(f=>`<button class="btn" onclick="state.listFilter='${f.id}';render()" style="padding:6px 14px;border-radius:20px;border:2px solid ${state.listFilter===f.id?'#007AFF':'#E5E5EA'};background:${state.listFilter===f.id?'#EBF3FF':'#fff'};color:${state.listFilter===f.id?'#007AFF':'#8E8E93'};font-size:14px;font-weight:600">${f.label}</button>`).join('')}
+      <div style="background:#fff;padding:8px 16px 12px;display:flex;gap:8px;flex-wrap:wrap;flex-shrink:0;border-bottom:1px solid #F2F2F7">
+        ${[{id:'all',label:'All'},...S.children.map(c=>({id:c.id,label:c.name}))].map(f=>`<button class="btn" onclick="S.listFilter='${f.id}';render()" style="padding:6px 14px;border-radius:20px;border:2px solid ${S.listFilter===f.id?'#007AFF':'#E5E5EA'};background:${S.listFilter===f.id?'#EBF3FF':'#fff'};color:${S.listFilter===f.id?'#007AFF':'#8E8E93'};font-size:14px;font-weight:600">${f.label}</button>`).join('')}
       </div>
       <div class="scroll" style="flex:1;overflow-y:auto;padding:12px 0">
-        ${filtered.length===0?`<div style="text-align:center;padding:40px 20px;color:#8E8E93;font-size:15px">No assessments yet</div>`:''}
-        ${filtered.map(a=>{
-          const child = state.children.find(c=>c.id===a.childId);
-          const urg = a.daysLeft<=7;
-          return `<div style="width:calc(100% - 32px);margin:0 16px 10px;background:#fff;border-radius:16px;padding:14px 16px;box-shadow:0 1px 4px rgba(0,0,0,0.08);display:flex;gap:12px;align-items:center">
-            ${child?avatar(child.name,child.color||'#007AFF',38):''}
+        ${f.length===0?`<div style="text-align:center;padding:40px;color:#8E8E93;font-size:15px">No assessments yet</div>`:''}
+        ${f.map(a=>{
+          const ec=S.children.find(c=>c.id===a.childId);
+          const urg=(a.daysLeft||99)<=7;
+          return`<div style="width:calc(100% - 32px);margin:0 16px 10px;background:#fff;border-radius:16px;padding:14px 16px;box-shadow:0 1px 4px rgba(0,0,0,0.08);display:flex;gap:12px;align-items:center">
+            ${ec?av(ec.name,ec.color||'#007AFF',40):''}
             <div style="flex:1">
               <div style="font-size:16px;font-weight:600;color:#1C1C1E">${a.title}</div>
               <div style="font-size:13px;color:#8E8E93">${a.subject||''} · Due ${a.due||''}</div>
             </div>
-            ${a.daysLeft?`<div style="font-size:12px;font-weight:700;color:${urg?'#FF3B30':'#34C759'};background:${urg?'#FFF0EE':'#EAFAF0'};padding:3px 8px;border-radius:10px">${a.daysLeft}d</div>`:''}
-            <button onclick="deleteAssessment('${a.id}')" style="background:none;border:none;cursor:pointer;color:#FF3B30;font-size:20px;padding:0">×</button>
+            ${a.daysLeft!==undefined?`<div style="font-size:12px;font-weight:700;color:${urg?'#FF3B30':'#34C759'};background:${urg?'#FFF0EE':'#EAFAF0'};padding:4px 10px;border-radius:20px">${a.daysLeft}d left</div>`:''}
+            <button onclick="delAssessment('${a.id}')" style="background:none;border:none;cursor:pointer;color:#FF3B30;font-size:20px;padding:0;opacity:0.6">×</button>
           </div>`;
         }).join('')}
       </div>
-      <div style="padding:16px">
+      <div style="padding:16px;flex-shrink:0">
         <button class="primary-btn" onclick="nav('addAssessment')">+ Add Assessment</button>
-      </div>`;
+      </div>
+    </div>`;
   }
 
-  if(state.listSection==='notes'){
-    const filtered = state.listFilter==='all' ? state.notes : state.notes.filter(n=>n.childId===state.listFilter);
-    return `
+  if(S.listSection==='notes'){
+    const f=S.listFilter==='all'?S.notes:S.notes.filter(n=>n.childId===S.listFilter);
+    return`<div style="flex:1;display:flex;flex-direction:column">
       <div style="background:#fff;padding:12px 16px 14px;display:flex;align-items:center;gap:12px;border-bottom:1px solid #F2F2F7;flex-shrink:0">
-        <button class="back-btn" onclick="state.listSection=null;render()">${backSVG()} Back</button>
+        <button class="back-btn" onclick="S.listSection=null;render()">${back()}</button>
         <div style="flex:1;text-align:center;font-size:17px;font-weight:600">Notes</div>
-        <div style="width:60px"></div>
+        <button class="btn" onclick="nav('addNote')" style="color:#007AFF;font-size:15px;font-weight:600">+ Add</button>
       </div>
-      <div style="background:#fff;padding:8px 16px 12px;display:flex;gap:8px;flex-wrap:wrap;flex-shrink:0">
-        ${[{id:'all',label:'All'},...state.children.map(c=>({id:c.id,label:c.name}))].map(f=>`<button class="btn" onclick="state.listFilter='${f.id}';render()" style="padding:6px 14px;border-radius:20px;border:2px solid ${state.listFilter===f.id?'#007AFF':'#E5E5EA'};background:${state.listFilter===f.id?'#EBF3FF':'#fff'};color:${state.listFilter===f.id?'#007AFF':'#8E8E93'};font-size:14px;font-weight:600">${f.label}</button>`).join('')}
+      <div style="background:#fff;padding:8px 16px 12px;display:flex;gap:8px;flex-wrap:wrap;flex-shrink:0;border-bottom:1px solid #F2F2F7">
+        ${[{id:'all',label:'All'},...S.children.map(c=>({id:c.id,label:c.name}))].map(fi=>`<button class="btn" onclick="S.listFilter='${fi.id}';render()" style="padding:6px 14px;border-radius:20px;border:2px solid ${S.listFilter===fi.id?'#007AFF':'#E5E5EA'};background:${S.listFilter===fi.id?'#EBF3FF':'#fff'};color:${S.listFilter===fi.id?'#007AFF':'#8E8E93'};font-size:14px;font-weight:600">${fi.label}</button>`).join('')}
       </div>
       <div class="scroll" style="flex:1;overflow-y:auto;padding:12px 16px;display:flex;flex-direction:column;gap:10px">
-        ${filtered.length===0?`<div style="text-align:center;padding:40px 0;color:#8E8E93;font-size:15px">No notes yet</div>`:''}
-        ${filtered.map(n=>{
-          const child = state.children.find(c=>c.id===n.childId);
-          return `<div style="background:#fff;border-radius:16px;padding:14px 16px;box-shadow:0 1px 4px rgba(0,0,0,0.08)">
+        ${f.length===0?`<div style="text-align:center;padding:40px 0;color:#8E8E93;font-size:15px">No notes yet</div>`:''}
+        ${f.map(n=>{
+          const ec=S.children.find(c=>c.id===n.childId);
+          return`<div style="background:#fff;border-radius:16px;padding:14px 16px;box-shadow:0 1px 4px rgba(0,0,0,0.08)">
             <div style="display:flex;align-items:center;gap:8px;margin-bottom:8px">
-              ${child?avatar(child.name,child.color||'#007AFF',22):'<span style="font-size:18px">📝</span>'}
-              <span style="font-size:13px;color:#8E8E93">${n.date||''}</span>
-              <button onclick="deleteNote('${n.id}')" style="background:none;border:none;cursor:pointer;color:#FF3B30;font-size:18px;padding:0;margin-left:auto">×</button>
+              ${ec?av(ec.name,ec.color||'#007AFF',22):`<span style="font-size:18px">📝</span>`}
+              <span style="font-size:12px;color:#8E8E93">${n.date||''}</span>
+              <button onclick="delNote('${n.id}')" style="background:none;border:none;cursor:pointer;color:#FF3B30;font-size:18px;padding:0;margin-left:auto;opacity:0.6">×</button>
             </div>
-            <div style="font-size:15px;color:#1C1C1E">${n.text}</div>
+            <div style="font-size:15px;color:#1C1C1E;line-height:1.5">${n.text}</div>
           </div>`;
         }).join('')}
       </div>
-      <div style="padding:16px">
-        <button class="primary-btn" onclick="nav('addNote')">+ Add Note</button>
-      </div>`;
+    </div>`;
   }
 
-  const urgentAssessments = state.assessments.filter(a=>a.daysLeft<=7).length;
-  const cats = [
-    {id:'assessments',icon:'📚',label:'Assessments',sub:`${state.assessments.length} tasks`,badge:urgentAssessments},
-    {id:'notes',icon:'📝',label:'Notes',sub:`${state.notes.length} notes`},
+  const urgCount=S.assessments.filter(a=>(a.daysLeft||99)<=7).length;
+  const cats=[
+    {id:'uniforms',icon:'🧦',label:'Uniforms',sub:'School & sport',badge:0},
+    {id:'kitchen',icon:'🛒',label:'Kitchen',sub:'Shopping list',badge:0},
+    {id:'gifts',icon:'🎁',label:'Gifts',sub:'Birthdays & events',badge:0},
+    {id:'assessments',icon:'📚',label:'Assessment Tasks',sub:`${S.assessments.length} tasks`,badge:urgCount},
+    {id:'notes',icon:'📝',label:'Notes',sub:`${S.notes.length} notes`,badge:0},
   ];
-
-  return `
+  return`
     <div style="background:#fff;padding:12px 16px 14px;border-bottom:1px solid #F2F2F7;flex-shrink:0">
       <div style="font-size:28px;font-weight:700;letter-spacing:-0.5px;color:#1C1C1E">Lists</div>
     </div>
     <div class="scroll" style="flex:1;overflow-y:auto;padding:16px 0">
       <div class="card">
-        ${cats.map((cat,i)=>`<button class="btn" onclick="state.listSection='${cat.id}';state.listFilter='all';render()" style="width:100%;padding:14px 16px;display:flex;align-items:center;gap:14px;border-bottom:${i<cats.length-1?'1px solid #F2F2F7':'none'};text-align:left">
-          <div style="width:44px;height:44px;border-radius:12px;background:#F2F2F7;font-size:24px;display:flex;align-items:center;justify-content:center">${cat.icon}</div>
+        ${cats.map((cat,i)=>`<button class="btn" onclick="S.listSection='${cat.id}';S.listFilter='all';render()" style="width:100%;padding:14px 16px;display:flex;align-items:center;gap:14px;border-bottom:${i<cats.length-1?'1px solid #F2F2F7':'none'};text-align:left">
+          <div style="width:44px;height:44px;border-radius:12px;background:#F2F2F7;font-size:24px;display:flex;align-items:center;justify-content:center;flex-shrink:0">${cat.icon}</div>
           <div style="flex:1"><div style="font-size:16px;font-weight:600;color:#1C1C1E">${cat.label}</div><div style="font-size:13px;color:#8E8E93">${cat.sub}</div></div>
-          ${cat.badge>0?`<div style="background:#FF3B30;border-radius:12px;min-width:24px;height:24px;display:flex;align-items:center;justify-content:center;padding:0 6px"><span style="font-size:13px;font-weight:700;color:#fff">${cat.badge}</span></div>`:''}
-          ${chev()}
+          ${cat.badge>0?`<div style="background:#FF3B30;border-radius:12px;min-width:24px;height:24px;display:flex;align-items:center;justify-content:center;padding:0 7px"><span style="font-size:13px;font-weight:700;color:#fff">${cat.badge}</span></div>`:''}
+          <span class="chev"></span>
         </button>`).join('')}
       </div>
     </div>`;
 }
 
-// ── FAMILY SCREEN ──────────────────────────────────────────────
+// Family
 function renderFamily(){
-  const members = state.family?.members || {};
-  return `
+  const members=S.family?.members||{};
+  const cur=S.stack[S.stack.length-1];
+
+  if(cur?.screen==='childProfile'){
+    const child=S.children.find(c=>c.id===cur.params.childId);
+    if(!child)return'';
+    const color=child.color||'#007AFF';
+    const pk=S.packing[child.id]||[];
+    return`<div style="flex:1;display:flex;flex-direction:column">
+      <div style="background:${color}18;padding:12px 16px 14px;display:flex;align-items:center;gap:12px;border-bottom:2px solid ${color}25;flex-shrink:0">
+        <button class="back-btn" onclick="goBack()">${back()}</button>
+        <div style="flex:1;text-align:center;font-size:17px;font-weight:600">${child.name}</div>
+        <div style="width:44px"></div>
+      </div>
+      <div class="scroll" style="flex:1;overflow-y:auto;padding:20px 16px">
+        <div style="display:flex;flex-direction:column;align-items:center;margin-bottom:24px">
+          ${av(child.name,color,80)}
+          <div style="font-size:22px;font-weight:700;color:#1C1C1E;margin-top:12px">${child.name}</div>
+          <div style="font-size:15px;color:#8E8E93;margin-top:2px">${child.year||''} ${child.school?'· '+child.school:''}</div>
+        </div>
+        <div class="sh">Packing List (${pk.filter(p=>p.checked).length}/${pk.length})</div>
+        <div class="card" style="margin-bottom:12px">
+          ${pk.length===0?`<div style="padding:16px;color:#8E8E93;text-align:center;font-size:14px">No items yet</div>`:''}
+          ${pk.map((item,i)=>`<div style="display:flex;align-items:center;gap:12px;padding:12px 16px;border-bottom:${i<pk.length-1?'1px solid #F2F2F7':'none'}">
+            <div class="cb ${item.checked?'on':''}" style="${item.checked?'background:'+color+';':''}border-color:${item.checked?color:'#C7C7CC'}" onclick="togglePackItem('${child.id}','${item.id}',${!item.checked})">
+              ${item.checked?checkSvg():''}
+            </div>
+            <span style="flex:1;font-size:16px;color:${item.checked?'#8E8E93':'#1C1C1E'};text-decoration:${item.checked?'line-through':'none'}">${item.label}</span>
+            <button onclick="deletePk('${child.id}','${item.id}')" style="background:none;border:none;cursor:pointer;color:#FF3B30;font-size:20px;padding:0;opacity:0.6">×</button>
+          </div>`).join('')}
+        </div>
+        <button class="btn" onclick="nav('addPackItem',{childId:'${child.id}'})" style="width:100%;padding:13px;border-radius:14px;border:2px dashed #C7C7CC;color:#007AFF;font-size:15px;font-weight:600;margin-bottom:16px">+ Add Packing Item</button>
+        <div class="card" style="margin-bottom:12px">
+          ${[['Default uniform','Sports (Tue/Thu), Standard'],['School','${child.school||"Not set"}'],['Year','${child.year||"Not set"}']].map(([l,v],i,arr)=>`<div style="padding:12px 16px;border-bottom:${i<arr.length-1?'1px solid #F2F2F7':'none'}"><div style="font-size:12px;font-weight:600;color:#8E8E93;margin-bottom:2px">${l.toUpperCase()}</div><div style="font-size:15px;color:#1C1C1E">${v}</div></div>`).join('')}
+        </div>
+      </div>
+    </div>`;
+  }
+
+  return`
     <div style="background:#fff;padding:12px 16px 14px;border-bottom:1px solid #F2F2F7;flex-shrink:0">
       <div style="font-size:28px;font-weight:700;letter-spacing:-0.5px;color:#1C1C1E">Family</div>
     </div>
     <div class="scroll" style="flex:1;overflow-y:auto;padding:16px 0">
       <div class="sh">Children</div>
       <div class="card" style="margin-bottom:12px">
-        ${state.children.map((child,i)=>`<button class="btn" onclick="nav('childDetail',{childId:'${child.id}'})" style="width:100%;padding:14px 16px;display:flex;align-items:center;gap:12px;border-bottom:${i<state.children.length-1?'1px solid #F2F2F7':'none'};text-align:left">
-          ${avatar(child.name, child.color||'#007AFF', 46)}
+        ${S.children.map((child,i)=>`<button class="btn" onclick="nav('childProfile',{childId:'${child.id}'})" style="width:100%;padding:14px 16px;display:flex;align-items:center;gap:12px;border-bottom:${i<S.children.length-1?'1px solid #F2F2F7':'none'};text-align:left">
+          ${av(child.name,child.color||'#007AFF',46)}
           <div style="flex:1;text-align:left">
             <div style="font-size:17px;font-weight:600;color:#1C1C1E">${child.name}</div>
             <div style="font-size:14px;color:#8E8E93">${child.year||''} ${child.school?'· '+child.school:''}</div>
           </div>
-          ${chev()}
+          <span class="chev"></span>
         </button>`).join('')}
-        <button class="btn" onclick="nav('addChild')" style="width:100%;padding:14px 16px;display:flex;align-items:center;justify-content:center;gap:8px;border-top:${state.children.length>0?'1px solid #F2F2F7':'none'};color:#007AFF;font-size:15px;font-weight:600">
+        <button class="btn" onclick="nav('addChild')" style="width:100%;padding:13px 16px;display:flex;align-items:center;justify-content:center;gap:8px;border-top:${S.children.length?'1px solid #F2F2F7':'none'};color:#007AFF;font-size:15px;font-weight:600">
           + Add Child
         </button>
       </div>
-      <div class="sh">Members</div>
+
+      <div class="sh">Caregivers</div>
       <div class="card" style="margin-bottom:12px">
-        ${Object.entries(members).map(([uid,member],i,arr)=>`
-          <div style="display:flex;align-items:center;gap:12px;padding:13px 16px;border-bottom:${i<arr.length-1?'1px solid #F2F2F7':'none'}">
-            ${avatar(member.name, member.color||'#007AFF', 46)}
-            <div style="flex:1">
-              <div style="font-size:17px;font-weight:600;color:#1C1C1E">${member.name}${uid===state.user.uid?' (You)':''}</div>
-              <div style="font-size:14px;color:#8E8E93;text-transform:capitalize">${member.role||'member'}</div>
+        ${Object.entries(members).map(([uid,m],i,arr)=>`<div style="display:flex;align-items:center;gap:12px;padding:14px 16px;border-bottom:${i<arr.length-1?'1px solid #F2F2F7':'none'}">
+          ${av(m.name,m.color||'#007AFF',46)}
+          <div style="flex:1">
+            <div style="font-size:17px;font-weight:600;color:#1C1C1E">${m.name}${uid===S.user.uid?' (You)':''}</div>
+            <div style="display:flex;gap:6px;margin-top:3px">
+              <span style="font-size:12px;font-weight:600;padding:2px 10px;border-radius:20px;background:${m.color||'#007AFF'}20;color:${m.color||'#007AFF'}">${m.role||'Member'}</span>
             </div>
-          </div>`).join('')}
-      </div>
-      <div style="padding:0 16px">
-        <button class="btn" onclick="showFamilyCode()" style="width:100%;background:#fff;border-radius:16px;padding:14px;border:2px dashed #C7C7CC;color:#007AFF;font-size:16px;font-weight:600;display:flex;align-items:center;justify-content:center;gap:8px">
-          <span>🔗</span> Share Family Code
+          </div>
+        </div>`).join('')}
+        <button class="btn" onclick="showFamilyCode()" style="width:100%;padding:13px 16px;display:flex;align-items:center;justify-content:center;gap:8px;border-top:1px solid #F2F2F7;color:#007AFF;font-size:15px;font-weight:600">
+          🔗 Share Family Code
         </button>
       </div>
     </div>`;
 }
 
-// ── SETTINGS SCREEN ────────────────────────────────────────────
+// Settings
 function renderSettings(){
-  const member = state.family?.members?.[state.user?.uid] || {};
-  return `
+  const t=S.toggles;
+  return`
     <div style="background:#fff;padding:12px 16px 14px;border-bottom:1px solid #F2F2F7;flex-shrink:0">
       <div style="font-size:28px;font-weight:700;letter-spacing:-0.5px;color:#1C1C1E">Settings</div>
     </div>
     <div class="scroll" style="flex:1;overflow-y:auto;padding:16px 0">
       <div style="margin:0 16px 16px">
-        <div style="background:linear-gradient(135deg,#007AFF,#5856D6);border-radius:16px;padding:20px">
-          <div style="font-size:14px;color:rgba(255,255,255,0.7);margin-bottom:4px">Signed in as</div>
-          <div style="font-size:18px;font-weight:700;color:#fff">${state.user?.displayName||'User'}</div>
-          <div style="font-size:13px;color:rgba(255,255,255,0.7);margin-top:4px">${state.user?.email||''}</div>
+        <div style="background:linear-gradient(135deg,#007AFF,#5856D6);border-radius:20px;padding:22px 20px">
+          <div style="font-size:13px;color:rgba(255,255,255,0.7);margin-bottom:4px;font-weight:500">Signed in as</div>
+          <div style="font-size:20px;font-weight:700;color:#fff">${S.user?.displayName||'User'}</div>
+          <div style="font-size:13px;color:rgba(255,255,255,0.7);margin-top:3px">${S.user?.email||''}</div>
+          <div style="font-size:12px;color:rgba(255,255,255,0.6);margin-top:6px;font-family:monospace">Family: ${S.familyId||''}</div>
         </div>
       </div>
-      <div class="sh">Family</div>
+
+      <div class="sh">Account & Security</div>
       <div class="card" style="margin-bottom:12px">
-        <div style="padding:13px 16px;border-bottom:1px solid #F2F2F7">
-          <div style="font-size:15px;color:#1C1C1E">Family name</div>
-          <div style="font-size:13px;color:#8E8E93;margin-top:2px">${state.family?.name||'My Family'}</div>
-        </div>
-        <div style="padding:13px 16px;border-bottom:1px solid #F2F2F7">
-          <div style="font-size:15px;color:#1C1C1E">Family code</div>
-          <div style="font-size:13px;color:#007AFF;margin-top:2px;font-family:monospace">${state.familyId}</div>
-        </div>
-        <button class="btn" onclick="showFamilyCode()" style="width:100%;padding:13px 16px;color:#007AFF;font-size:15px;font-weight:600;text-align:left">Share Family Code</button>
+        ${[
+          {label:'Face ID / Touch ID',icon:'🔐',tog:'faceID'},
+          {label:'Manage devices',icon:'📱',sub:'2 active sessions',chv:true},
+        ].map((item,i,arr)=>`<div style="display:flex;align-items:center;gap:12px;padding:13px 16px;border-bottom:${i<arr.length-1?'1px solid #F2F2F7':'none'}">
+          <span style="font-size:20px">${item.icon}</span>
+          <div style="flex:1"><div style="font-size:15px;color:#1C1C1E">${item.label}</div>${item.sub?`<div style="font-size:13px;color:#8E8E93">${item.sub}</div>`:''}</div>
+          ${item.tog?tog(t[item.tog],`S.toggles['${item.tog}']=!S.toggles['${item.tog}'];render()`):item.chv?`<span class="chev"></span>`:''}
+        </div>`).join('')}
       </div>
-      <div class="sh">Account</div>
-      <div class="card" style="margin-bottom:24px">
-        <button class="btn" onclick="handleSignOut()" style="width:100%;padding:14px 16px;color:#FF3B30;font-size:15px;font-weight:600;text-align:left">Sign Out</button>
+
+      <div class="sh">Preferences</div>
+      <div class="card" style="margin-bottom:12px">
+        ${[
+          {label:'Notifications',icon:'🔔',tog:'notifs'},
+          {label:'Location Awareness',icon:'📍',tog:'loc',sub:'Auto pick-up prompts'},
+          {label:'Email integrations',icon:'📧',tog:'email',sub:'Scan for school notices'},
+        ].map((item,i,arr)=>`<div style="display:flex;align-items:center;gap:12px;padding:13px 16px;border-bottom:${i<arr.length-1?'1px solid #F2F2F7':'none'}">
+          <span style="font-size:20px">${item.icon}</span>
+          <div style="flex:1"><div style="font-size:15px;color:#1C1C1E">${item.label}</div>${item.sub?`<div style="font-size:13px;color:#8E8E93">${item.sub}</div>`:''}</div>
+          ${tog(t[item.tog],`S.toggles['${item.tog}']=!S.toggles['${item.tog}'];render()`)}
+        </div>`).join('')}
       </div>
-      <div style="text-align:center;padding:0 0 20px;color:#C7C7CC;font-size:13px">HomeBase v2.0 · Powered by Firebase</div>
+
+      <div class="sh">Data & Privacy</div>
+      <div class="card" style="margin-bottom:12px">
+        ${['Family permissions','Download your data'].map((label,i,arr)=>`<button class="btn" style="width:100%;padding:14px 16px;display:flex;align-items:center;justify-content:space-between;border-bottom:${i<arr.length-1?'1px solid #F2F2F7':'none'}">
+          <span style="font-size:15px;color:#1C1C1E">${label}</span><span class="chev"></span>
+        </button>`).join('')}
+      </div>
+
+      <div style="padding:0 16px 16px">
+        <button class="danger-btn" onclick="hSignOut()">Sign Out</button>
+      </div>
+      <div style="text-align:center;padding:0 0 24px;color:#C7C7CC;font-size:12px">HomeBase v2.0 · ourhomebase.com.au</div>
     </div>`;
 }
 
-// ── MAIN RENDER ────────────────────────────────────────────────
+// Add forms
+function renderAddPackItem(params){
+  return`<div style="flex:1;display:flex;flex-direction:column;background:#F2F2F7">
+    <div style="background:#fff;padding:12px 16px 14px;display:flex;align-items:center;gap:12px;border-bottom:1px solid #F2F2F7;flex-shrink:0">
+      <button class="back-btn" onclick="goBack()">${back()}</button>
+      <div style="flex:1;text-align:center;font-size:17px;font-weight:600">Add Packing Item</div>
+      <div style="width:44px"></div>
+    </div>
+    <div style="padding:24px 16px;display:flex;flex-direction:column;gap:12px">
+      <input class="input" id="pil" type="text" placeholder="Item name (e.g. Sports uniform, Recorder, Hat)"/>
+      <select class="input" id="pis">
+        <option value="school">🏫 School item</option>
+        <option value="uniform">🧦 Uniform</option>
+        <option value="afterschool">⚽ After-school item</option>
+      </select>
+      <div id="pierr" class="err"></div>
+      <button class="primary-btn" onclick="hAddPackItem('${params.childId}')">Add Item</button>
+    </div>
+  </div>`;
+}
+
+function renderAddEvent(){
+  return`<div style="flex:1;display:flex;flex-direction:column;background:#F2F2F7">
+    <div style="background:#fff;padding:12px 16px 14px;display:flex;align-items:center;gap:12px;border-bottom:1px solid #F2F2F7;flex-shrink:0">
+      <button class="back-btn" onclick="goBack()">${back()}</button>
+      <div style="flex:1;text-align:center;font-size:17px;font-weight:600">Add Event</div>
+      <div style="width:44px"></div>
+    </div>
+    <div class="scroll" style="flex:1;overflow-y:auto;padding:20px 16px">
+      <div style="display:flex;flex-direction:column;gap:12px">
+        <input class="input" id="et" type="text" placeholder="Event title (e.g. Soccer Training)"/>
+        <input class="input" id="ed" type="date" value="${todayStr}"/>
+        <input class="input" id="etime" type="text" placeholder="Time (e.g. 3:45pm)"/>
+        <input class="input" id="eloc" type="text" placeholder="Location (e.g. North Oval)"/>
+        <input class="input" id="edrop" type="text" placeholder="Drop-off caregiver (optional)"/>
+        <input class="input" id="epick" type="text" placeholder="Pick-up caregiver (optional)"/>
+        <select class="input" id="echild">
+          <option value="">No specific child</option>
+          ${S.children.map(c=>`<option value="${c.id}">${c.name}</option>`).join('')}
+        </select>
+        <input class="input" id="enotes" type="text" placeholder="Notes (e.g. Bring shin pads)"/>
+        <div id="everr" class="err"></div>
+        <button class="primary-btn" onclick="hAddEvent()">Add Event</button>
+      </div>
+    </div>
+  </div>`;
+}
+
+function renderAddNote(){
+  return`<div style="flex:1;display:flex;flex-direction:column;background:#F2F2F7">
+    <div style="background:#fff;padding:12px 16px 14px;display:flex;align-items:center;gap:12px;border-bottom:1px solid #F2F2F7;flex-shrink:0">
+      <button class="back-btn" onclick="goBack()">${back()}</button>
+      <div style="flex:1;text-align:center;font-size:17px;font-weight:600">Add Note</div>
+      <div style="width:44px"></div>
+    </div>
+    <div style="padding:20px 16px;display:flex;flex-direction:column;gap:12px">
+      <select class="input" id="nchild">
+        <option value="">General note</option>
+        ${S.children.map(c=>`<option value="${c.id}">${c.name}</option>`).join('')}
+      </select>
+      <textarea class="input" id="ntext" placeholder="Write your note..." rows="5" style="resize:none;line-height:1.5"></textarea>
+      <div id="nerr" class="err"></div>
+      <button class="primary-btn" onclick="hAddNote()">Save Note</button>
+    </div>
+  </div>`;
+}
+
+function renderAddAssessment(){
+  return`<div style="flex:1;display:flex;flex-direction:column;background:#F2F2F7">
+    <div style="background:#fff;padding:12px 16px 14px;display:flex;align-items:center;gap:12px;border-bottom:1px solid #F2F2F7;flex-shrink:0">
+      <button class="back-btn" onclick="goBack()">${back()}</button>
+      <div style="flex:1;text-align:center;font-size:17px;font-weight:600">Add Assessment</div>
+      <div style="width:44px"></div>
+    </div>
+    <div class="scroll" style="flex:1;overflow-y:auto;padding:20px 16px">
+      <div style="display:flex;flex-direction:column;gap:12px">
+        <select class="input" id="achild">
+          <option value="">Select child</option>
+          ${S.children.map(c=>`<option value="${c.id}">${c.name}</option>`).join('')}
+        </select>
+        <input class="input" id="asubj" type="text" placeholder="Subject (e.g. English)"/>
+        <input class="input" id="atitle" type="text" placeholder="Task title (e.g. Book Report)"/>
+        <input class="input" id="adue" type="date"/>
+        <div id="aerr" class="err"></div>
+        <button class="primary-btn" onclick="hAddAssessment()">Add Assessment</button>
+      </div>
+    </div>
+  </div>`;
+}
+
+// ── MAIN RENDER ─────────────────────────────────────────────
 function render(){
-  const screen = $('screen');
-  const tabbar = $('tabbar');
-  const homebar = $('homebar');
+  const screen=$('screen');
+  const tabbar=$('tabbar');
+  const hb=$('hb');
+  if(!screen)return;
 
-  if(!screen) return;
+  const cur=S.stack[S.stack.length-1];
+  let html='';
+  let showTabs=false;
 
-  let html = '';
-  const cur = state.stack[state.stack.length-1];
-
-  if(!state.user){
-    // Not logged in
-    tabbar.style.display = 'none';
-    homebar.style.display = 'none';
-    if(cur?.screen==='signup') html = renderSignup();
-    else html = renderLogin();
-  } else if(!state.familyId){
-    // No family yet
-    tabbar.style.display = 'none';
-    homebar.style.display = 'none';
-    html = renderFamilySetup();
+  if(!S.user){
+    // Auth screens
+    tabbar.style.display='none';hb.style.display='none';
+    if(cur?.screen==='signup')html=renderSignup();
+    else html=renderLogin();
+  } else if(!S.familyId){
+    tabbar.style.display='none';hb.style.display='none';
+    html=renderFamilySetup();
+  } else if(S.morningMode){
+    tabbar.style.display='none';hb.style.display='flex';
+    html=renderMorning();
+  } else if(cur){
+    tabbar.style.display='none';hb.style.display='flex';
+    if(cur.screen==='addPackItem')html=renderAddPackItem(cur.params);
+    else if(cur.screen==='addEvent')html=renderAddEvent();
+    else if(cur.screen==='addNote')html=renderAddNote();
+    else if(cur.screen==='addAssessment')html=renderAddAssessment();
+    else if(cur.screen==='addChild')html=renderAddChild();
+    else if(cur.screen==='signup')html=renderSignup();
+    else if(cur.screen==='childProfile')html=renderFamily();
   } else {
-    // Main app
-    if(state.morningMode){
-      tabbar.style.display = 'none';
-      homebar.style.display = 'flex';
-      html = renderMorning();
-    } else if(cur){
-      tabbar.style.display = 'none';
-      homebar.style.display = 'flex';
-      if(cur.screen==='childDetail') html = renderChildDetail(cur.params);
-      else if(cur.screen==='addPackingItem') html = renderAddPackingItem(cur.params);
-      else if(cur.screen==='addEvent') html = renderAddEvent();
-      else if(cur.screen==='addNote') html = renderAddNote();
-      else if(cur.screen==='addAssessment') html = renderAddAssessment();
-      else if(cur.screen==='addChild') html = renderAddChild();
-      else if(cur.screen==='signup') html = renderSignup();
-    } else {
-      tabbar.style.display = 'flex';
-      homebar.style.display = 'flex';
-      if(state.tab==='today') html = renderToday();
-      else if(state.tab==='calendar') html = renderCalendar();
-      else if(state.tab==='lists') html = renderLists();
-      else if(state.tab==='family') html = renderFamily();
-      else if(state.tab==='settings') html = renderSettings();
-    }
+    showTabs=true;
+    tabbar.style.display='flex';hb.style.display='flex';
+    if(S.tab==='today')html=renderToday();
+    else if(S.tab==='calendar')html=renderCalendar();
+    else if(S.tab==='lists')html=renderLists();
+    else if(S.tab==='family')html=renderFamily();
+    else if(S.tab==='settings')html=renderSettings();
+  }
 
-    // Tabbar
-    const tabs = [
-      {id:'today',label:'Today',icon:'🏠'},
-      {id:'calendar',label:'Calendar',icon:'📅'},
-      {id:'lists',label:'Lists',icon:'📋'},
-      {id:'family',label:'Family',icon:'👨‍👩‍👧'},
-      {id:'settings',label:'Settings',icon:'⚙️'},
+  screen.innerHTML=html;
+  _notif();
+
+  if(showTabs){
+    const tabs=[
+      {id:'today',icon:'🏠',label:'Today'},
+      {id:'calendar',icon:'📅',label:'Calendar'},
+      {id:'lists',icon:'📋',label:'Lists'},
+      {id:'family',icon:'👨‍👩‍👧',label:'Family'},
+      {id:'settings',icon:'⚙️',label:'Settings'},
     ];
-    tabbar.innerHTML = tabs.map(t=>`<button class="tab ${state.tab===t.id&&!cur&&!state.morningMode?'active':''}" onclick="setTab('${t.id}')">
+    tabbar.innerHTML=tabs.map(t=>`<button class="tab ${S.tab===t.id?'active':''}" onclick="setTab('${t.id}')">
       <span style="font-size:22px">${t.icon}</span>${t.label}
     </button>`).join('');
   }
-
-  screen.innerHTML = html;
-  renderNotif();
 }
 
-// ── EVENT HANDLERS ─────────────────────────────────────────────
-window.handleLogin = async()=>{
-  const email = document.getElementById('login-email')?.value?.trim();
-  const password = document.getElementById('login-password')?.value;
-  const errEl = document.getElementById('login-error');
-  if(!email||!password){if(errEl)errEl.textContent='Please fill in all fields';return;}
-  const btn = document.getElementById('login-btn');
-  if(btn){btn.disabled=true;btn.textContent='Signing in...';}
-  try{
-    await signInWithEmailAndPassword(auth,email,password);
-  }catch(e){
-    if(errEl)errEl.textContent=e.message.replace('Firebase:','').replace(/\(.*\)/,'').trim();
-    if(btn){btn.disabled=false;btn.textContent='Sign In';}
-  }
+// ── HANDLERS ────────────────────────────────────────────────
+window.hLogin=async()=>{
+  const e=$('le')?.value?.trim(),p=$('lp')?.value;
+  const err=$('lerr');
+  if(!e||!p){if(err)err.textContent='Please fill in all fields';return;}
+  try{await signInWithEmailAndPassword(auth,e,p);}
+  catch(ex){if(err)err.textContent=ex.code==='auth/invalid-credential'?'Incorrect email or password':ex.message.replace('Firebase:','').replace(/\(.*\)/,'').trim();}
 };
-
-window.handleSignup = async()=>{
-  const name = document.getElementById('signup-name')?.value?.trim();
-  const email = document.getElementById('signup-email')?.value?.trim();
-  const password = document.getElementById('signup-password')?.value;
-  const errEl = document.getElementById('signup-error');
-  if(!name||!email||!password){if(errEl)errEl.textContent='Please fill in all fields';return;}
+window.hSignup=async()=>{
+  const n=$('sn')?.value?.trim(),e=$('se')?.value?.trim(),p=$('sp')?.value;
+  const err=$('serr');
+  if(!n||!e||!p){if(err)err.textContent='Please fill in all fields';return;}
   try{
-    const cred = await createUserWithEmailAndPassword(auth,email,password);
-    await updateProfile(cred.user,{displayName:name});
-    state.user = {...cred.user, displayName:name};
-  }catch(e){
-    if(errEl)errEl.textContent=e.message.replace('Firebase:','').replace(/\(.*\)/,'').trim();
-  }
-};
-
-window.handleCreateFamily = async()=>{
-  const name = document.getElementById('family-name')?.value?.trim();
-  const errEl = document.getElementById('create-error');
-  if(!name){if(errEl)errEl.textContent='Please enter a family name';return;}
-  try{
-    const fid = await createFamily(name);
-    state.familyId = fid;
-    subscribeToFamily();
-    render();
-  }catch(e){
-    if(errEl)errEl.textContent=e.message;
-  }
-};
-
-window.handleJoinFamily = async()=>{
-  const code = document.getElementById('family-code')?.value?.trim();
-  const errEl = document.getElementById('join-error');
-  if(!code){if(errEl)errEl.textContent='Please enter a family code';return;}
-  try{
-    const fid = await joinFamily(code);
-    state.familyId = fid;
-    subscribeToFamily();
-    render();
-  }catch(e){
-    if(errEl)errEl.textContent='Family not found. Check the code and try again.';
-  }
-};
-
-window.handleAddChild = async()=>{
-  const name = document.getElementById('child-name')?.value?.trim();
-  const year = document.getElementById('child-year')?.value?.trim();
-  const school = document.getElementById('child-school')?.value?.trim();
-  const color = document.getElementById('child-color')?.value||'#007AFF';
-  const errEl = document.getElementById('child-error');
-  if(!name){if(errEl)errEl.textContent='Please enter a name';return;}
-  try{
-    await addChild(name,year,school,color);
+    const c=await createUserWithEmailAndPassword(auth,e,p);
+    await updateProfile(c.user,{displayName:n});
+    S.user={...c.user,displayName:n};
     goBack();
-    showNotif(`${name} added! 🎉`);
-  }catch(e){
-    if(errEl)errEl.textContent=e.message;
-  }
+  }catch(ex){if(err)err.textContent=ex.message.replace('Firebase:','').replace(/\(.*\)/,'').trim();}
 };
-
-window.selectColor = (color)=>{
-  document.getElementById('child-color').value = color;
-  document.querySelectorAll('[id^="color-"]').forEach(el=>el.style.border='3px solid transparent');
-  const el = document.getElementById('color-'+color.replace('#',''));
-  if(el) el.style.border='3px solid #000';
+window.hCreateFamily=async()=>{
+  const n=$('fn')?.value?.trim(),err=$('ferr');
+  if(!n){if(err)err.textContent='Please enter a family name';return;}
+  try{const fid=await createFamily(n);S.familyId=fid;subscribe();render();}
+  catch(ex){if(err)err.textContent=ex.message;}
 };
-
-window.handleAddPackingItem = async(childId)=>{
-  const label = document.getElementById('pack-label')?.value?.trim();
-  const errEl = document.getElementById('pack-error');
-  if(!label){if(errEl)errEl.textContent='Please enter an item name';return;}
+window.hJoinFamily=async()=>{
+  const c=$('fc')?.value?.trim(),err=$('jerr');
+  if(!c){if(err)err.textContent='Please enter the family code';return;}
+  try{const fid=await joinFamily(c);S.familyId=fid;subscribe();render();}
+  catch(ex){if(err)err.textContent='Family not found. Check the code and try again.';}
+};
+window.hAddChild=async()=>{
+  const name=$('cname')?.value?.trim(),year=$('cyear')?.value?.trim(),school=$('cschool')?.value?.trim(),color=$('ccolor')?.value||'#007AFF';
+  const err=$('cerr');
+  if(!name){if(err)err.textContent='Please enter a name';return;}
+  try{await addChild({name,year,school,color,initials:name[0].toUpperCase()});S.activeChild=null;goBack();showNotif(`${name} added! 🎉`);}
+  catch(ex){if(err)err.textContent=ex.message;}
+};
+window.selColor=c=>{
+  $('ccolor').value=c;
+  document.querySelectorAll('[id^="cp"]').forEach(el=>el.style.border='4px solid transparent');
+  CHILD_COLORS.forEach((col,i)=>{if(col===c)document.getElementById('cp'+i).style.border='4px solid #1C1C1E';});
+};
+window.switchChild=id=>{S.activeChild=id;render();};
+window.state_morningMode=()=>{S.morningMode=true;render();};
+window.hAddPackItem=async childId=>{
+  const label=$('pil')?.value?.trim(),section=$('pis')?.value||'school',err=$('pierr');
+  if(!label){if(err)err.textContent='Please enter an item name';return;}
+  try{await addPackItem(childId,label);goBack();showNotif('Item added ✅');}
+  catch(ex){if(err)err.textContent=ex.message;}
+};
+window.togglePackItem=async(childId,itemId,val)=>{try{await togglePack(childId,itemId,val);}catch(ex){showNotif('Error updating');}};
+window.deletePk=async(childId,itemId)=>{try{await deletePack(childId,itemId);}catch(ex){}};
+window.hAddEvent=async()=>{
+  const t=$('et')?.value?.trim(),d=$('ed')?.value,err=$('everr');
+  if(!t||!d){if(err)err.textContent='Please enter a title and date';return;}
+  const icon=$('et')?.value?.toLowerCase().includes('soccer')||$('et')?.value?.toLowerCase().includes('sport')?'⚽':$('et')?.value?.toLowerCase().includes('swim')?'🏊':$('et')?.value?.toLowerCase().includes('piano')||$('et')?.value?.toLowerCase().includes('music')?'🎹':'📅';
   try{
-    await addPackingItem(childId,label);
-    goBack();
-    showNotif('Item added! ✅');
-  }catch(e){
-    if(errEl)errEl.textContent=e.message;
-  }
+    await addEvent({title:t,date:d,time:$('etime')?.value?.trim()||'',location:$('eloc')?.value?.trim()||'',dropoff:$('edrop')?.value?.trim()||'',pickup:$('epick')?.value?.trim()||'',childId:$('echild')?.value||'',notes:$('enotes')?.value?.trim()||'',icon});
+    goBack();showNotif('Event added 📅');
+  }catch(ex){if(err)err.textContent=ex.message;}
 };
-
-window.togglePackItem = async(childId,itemId,checked)=>{
-  try{await togglePackingItem(childId,itemId,checked);}catch(e){showNotif('Error updating item');}
+window.delEvent=async id=>{try{await deleteEvent(id);showNotif('Event deleted');}catch(ex){}};
+window.hAddNote=async()=>{
+  const text=$('ntext')?.value?.trim(),childId=$('nchild')?.value,err=$('nerr');
+  if(!text){if(err)err.textContent='Please write a note';return;}
+  try{await addNote({text,childId});goBack();showNotif('Note saved 📝');}
+  catch(ex){if(err)err.textContent=ex.message;}
 };
-
-window.deletePackItem = async(childId,itemId)=>{
-  try{await deleteDoc(doc(db,'families',state.familyId,'children',childId,'packing',itemId));}catch(e){}
+window.delNote=async id=>{try{await deleteNote(id);showNotif('Note deleted');}catch(ex){}};
+window.hAddAssessment=async()=>{
+  const childId=$('achild')?.value,subj=$('asubj')?.value?.trim(),title=$('atitle')?.value?.trim(),due=$('adue')?.value,err=$('aerr');
+  if(!title||!due){if(err)err.textContent='Please fill in title and due date';return;}
+  const daysLeft=Math.ceil((new Date(due+' 12:00')-today)/(86400000));
+  const dueDisplay=new Date(due+' 12:00').toLocaleDateString('en-AU',{day:'numeric',month:'short'});
+  try{await addAssessment({childId,subject:subj,title,due:dueDisplay,daysLeft});goBack();showNotif('Assessment added 📚');}
+  catch(ex){if(err)err.textContent=ex.message;}
 };
-
-window.handleAddEvent = async()=>{
-  const title = document.getElementById('ev-title')?.value?.trim();
-  const date = document.getElementById('ev-date')?.value;
-  const time = document.getElementById('ev-time')?.value?.trim();
-  const location = document.getElementById('ev-location')?.value?.trim();
-  const childId = document.getElementById('ev-child')?.value;
-  const notes = document.getElementById('ev-notes')?.value?.trim();
-  const errEl = document.getElementById('ev-error');
-  if(!title||!date){if(errEl)errEl.textContent='Please enter a title and date';return;}
-  try{
-    await addEvent({title,date,time,location,childId,notes});
-    goBack();
-    showNotif('Event added! 📅');
-  }catch(e){if(errEl)errEl.textContent=e.message;}
-};
-
-window.deleteEvent = async(id)=>{
-  try{await deleteDoc(doc(db,'families',state.familyId,'events',id));showNotif('Event deleted');}catch(e){}
-};
-
-window.handleAddNote = async()=>{
-  const text = document.getElementById('note-text')?.value?.trim();
-  const childId = document.getElementById('note-child')?.value;
-  const errEl = document.getElementById('note-error');
-  if(!text){if(errEl)errEl.textContent='Please enter a note';return;}
-  try{
-    await addNote(childId,text);
-    goBack();
-    showNotif('Note saved! 📝');
-  }catch(e){if(errEl)errEl.textContent=e.message;}
-};
-
-window.deleteNote = async(id)=>{
-  try{await deleteDoc(doc(db,'families',state.familyId,'notes',id));showNotif('Note deleted');}catch(e){}
-};
-
-window.handleAddAssessment = async()=>{
-  const childId = document.getElementById('ass-child')?.value;
-  const subject = document.getElementById('ass-subject')?.value?.trim();
-  const title = document.getElementById('ass-title')?.value?.trim();
-  const due = document.getElementById('ass-due')?.value;
-  const errEl = document.getElementById('ass-error');
-  if(!title||!due){if(errEl)errEl.textContent='Please fill in title and due date';return;}
-  const daysLeft = Math.ceil((new Date(due)-today)/(1000*60*60*24));
-  try{
-    await addAssessment(childId,subject,title,new Date(due).toLocaleDateString('en-AU',{day:'numeric',month:'short'}),daysLeft);
-    goBack();
-    showNotif('Assessment added! 📚');
-  }catch(e){if(errEl)errEl.textContent=e.message;}
-};
-
-window.deleteAssessment = async(id)=>{
-  try{await deleteDoc(doc(db,'families',state.familyId,'assessments',id));showNotif('Assessment deleted');}catch(e){}
-};
-
-window.handleSignOut = async()=>{
-  state.unsubscribers.forEach(u=>u());
-  state.unsubscribers=[];
-  state.family=null;
-  state.familyId=null;
-  state.children=[];
-  state.packing={};
-  state.events=[];
-  state.notes=[];
-  state.assessments=[];
-  state.stack=[];
-  state.tab='today';
+window.delAssessment=async id=>{try{await deleteAssessment(id);showNotif('Assessment deleted');}catch(ex){}};
+window.hSignOut=async()=>{
+  S.unsubs.forEach(u=>u());S.unsubs=[];
+  Object.assign(S,{family:null,familyId:null,children:[],packing:{},events:[],notes:[],assessments:[],stack:[],tab:'today',morningMode:false,activeChild:null,fabOpen:false,notif:null});
   await signOut(auth);
 };
-
-window.showFamilyCode = ()=>{
-  const msg = `Share this code with family members to join:\n\n${state.familyId}`;
-  if(navigator.clipboard){
-    navigator.clipboard.writeText(state.familyId).then(()=>showNotif('Family code copied! 🔗'));
-  } else {
-    alert(msg);
-  }
+window.showFamilyCode=()=>{
+  if(navigator.clipboard)navigator.clipboard.writeText(S.familyId).then(()=>showNotif('Family code copied! Share it with family members 🔗'));
+  else alert('Your family code:\n\n'+S.familyId);
 };
+window.nav=nav;window.goBack=goBack;window.setTab=setTab;
 
-window.nav = nav;
-window.goBack = goBack;
-window.setTab = setTab;
-
-// ── AUTH STATE ─────────────────────────────────────────────────
-onAuthStateChanged(auth, async(user)=>{
-  state.user = user;
+// ── Auth listener ────────────────────────────────────────────
+onAuthStateChanged(auth,async user=>{
+  S.user=user;
   if(user){
-    // Check if user has a family
     try{
-      const userDoc = await getDoc(doc(db,'users',user.uid));
-      if(userDoc.exists() && userDoc.data().familyId){
-        state.familyId = userDoc.data().familyId;
-        subscribeToFamily();
-      }
-    }catch(e){}
+      const ud=await getDoc(doc(db,'users',user.uid));
+      if(ud.exists()&&ud.data().familyId){S.familyId=ud.data().familyId;subscribe();}
+    }catch(ex){}
   }
   render();
 });
