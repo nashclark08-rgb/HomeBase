@@ -583,12 +583,17 @@ function sToday(){
     </div>`;
   }
 
-  // Family-wide today's events
+  // Day-aware view date (responds to day arrows)
+  const viewDateStr=getViewDateStr();
+  const viewDateObj=new Date(viewDateStr+'T12:00');
+  const isViewToday=viewDateStr===todayStr;
+
+  // Family-wide events for selected day
   const todayFamilyEvs=S.events.filter(ev=>{
-    if(!ev.freq||ev.freq==='once')return ev.date===todayStr;
-    const start=new Date((ev.startDate||ev.date||todayStr)+'T12:00');
+    if(!ev.freq||ev.freq==='once')return ev.date===viewDateStr;
+    const start=new Date((ev.startDate||ev.date||viewDateStr)+'T12:00');
     const end=ev.endDate?new Date(ev.endDate+'T12:00'):null;
-    const now=new Date(todayStr+'T12:00');
+    const now=viewDateObj;
     if(now<start||(end&&now>end))return false;
     const dn=DAYSH[now.getDay()];
     if(!ev.days||!ev.days[dn])return false;
@@ -608,20 +613,22 @@ function sToday(){
 
   return `
     <div style="background:#fff;padding:14px 16px;border-bottom:1px solid #F0F0F0;position:sticky;top:0;z-index:10">
-      <div style="display:flex;justify-content:space-between;align-items:flex-start;margin-bottom:4px">
-        <div>
-          <div style="font-size:13px;font-weight:600;color:${NAVY};margin-bottom:2px">${greetIcon()} ${greeting()}, ${S.user?.displayName?.split(' ')[0]||''}!</div>
-          <div style="font-size:26px;font-weight:800;color:#1C1C1E;letter-spacing:-0.4px">${S.family?.name||'Family'}</div>
-          <div style="font-size:13px;color:#8E8E93;margin-top:1px">${DAYNAMES[today.getDay()]} · ${today.getDate()} ${MONTHS[today.getMonth()]} ${today.getFullYear()}</div>
-        </div>
-        <button class="btn" onclick="S.morningMode=true;render()" style="background:#1C3A6B;border-radius:12px;padding:8px 14px;font-size:12px;font-weight:700;color:#fff">${greetIcon()} Daily View</button>
+      <div style="margin-bottom:4px">
+        <div style="font-size:13px;font-weight:600;color:${NAVY};margin-bottom:2px">${greetIcon()} ${greeting()}, ${S.user?.displayName?.split(' ')[0]||''}!</div>
+        <div style="font-size:26px;font-weight:800;color:#1C1C1E;letter-spacing:-0.4px">${S.family?.name||'Family'}</div>
+      </div>
+      <!-- Day arrows navigation -->
+      <div style="display:flex;align-items:center;gap:8px;margin-top:10px">
+        <button onclick="changeDayOffset(-1)" style="width:34px;height:34px;border-radius:17px;background:#F2F2F7;border:none;color:#1C3A6B;font-size:20px;font-weight:300;cursor:pointer;font-family:inherit;display:flex;align-items:center;justify-content:center;flex-shrink:0">‹</button>
+        <button onclick="S.dayOffset=0;render()" style="flex:1;padding:8px 12px;border-radius:12px;border:none;background:${(S.dayOffset||0)===0?'#1C3A6B':'#F2F2F7'};color:${(S.dayOffset||0)===0?'#fff':'#1C1C1E'};font-size:13px;font-weight:700;cursor:pointer;font-family:inherit">${(()=>{const d=getViewDate();const off=S.dayOffset||0;return off===0?'Today · '+DAYNAMES[d.getDay()]+' '+d.getDate()+' '+MONTHS[d.getMonth()]:off===1?'Tomorrow · '+DAYNAMES[d.getDay()]+' '+d.getDate()+' '+MONTHS[d.getMonth()]:off===-1?'Yesterday · '+DAYNAMES[d.getDay()]+' '+d.getDate()+' '+MONTHS[d.getMonth()]:DAYNAMES[d.getDay()]+' · '+d.getDate()+' '+MONTHS[d.getMonth()];})()}</button>
+        <button onclick="changeDayOffset(1)" style="width:34px;height:34px;border-radius:17px;background:#F2F2F7;border:none;color:#1C3A6B;font-size:20px;font-weight:300;cursor:pointer;font-family:inherit;display:flex;align-items:center;justify-content:center;flex-shrink:0">›</button>
       </div>
       <div style="display:flex;gap:10px;overflow-x:auto;padding:14px 0 4px;-ms-overflow-style:none;scrollbar-width:none">
         ${S.children.map(c=>{
           const cpk=S.packing[c.id]||[];
           const cpacked=cpk.filter(p=>p.checked).length;
           const cpct=cpk.length?cpacked/cpk.length:0;
-          const cEvs=todayEventsForChild(c);
+          const cEvs=eventsForChildOnDate(c, getViewDateStr());
           return `<div onclick="S.activeChild='${c.id}';setTab('today');S.viewChildDetail=true;render()" style="min-width:130px;flex-shrink:0;background:#fff;border-radius:14px;padding:12px;box-shadow:0 1px 3px rgba(0,0,0,0.06),0 4px 10px rgba(0,0,0,0.04);border-top:3px solid ${c.color||NAVY};cursor:pointer">
             <div style="display:flex;align-items:center;gap:8px;margin-bottom:8px">
               ${av(c.name,c.color||NAVY,32,c.photoURL)}
@@ -645,13 +652,13 @@ function sToday(){
     </div>
 
     <div style="padding:16px 0 100px">
-      ${S.weather?`<div style="background:linear-gradient(135deg,#1C3A6B,#2E5FBF);border-radius:14px;margin:0 16px 14px;padding:14px 18px;display:flex;align-items:center;justify-content:space-between;color:#fff"><div><div style="font-size:13px;opacity:0.8;margin-bottom:2px">${S.weather.city||"Weather"}</div><div style="font-size:22px;font-weight:700">${S.weather.temp}°C · ${S.weather.desc}</div></div><div style="font-size:44px">${S.weather.icon}</div></div>`:
-      `<div style="margin:0 16px 14px;background:#fff;border-radius:14px;padding:12px 16px;display:flex;align-items:center;gap:10px;box-shadow:0 1px 4px rgba(0,0,0,0.06)"><div style="font-size:22px">🌤</div><div style="flex:1"><div style="font-size:14px;font-weight:600">No weather yet</div><div style="font-size:12px;color:#8E8E93">Set location in Settings</div></div><button onclick="setTab('settings')" style="padding:6px 12px;border-radius:10px;background:#1C3A6B;border:none;color:#fff;font-size:12px;font-weight:600;cursor:pointer;font-family:inherit">Set up →</button></div>`}
+      ${S.weather?`<div style="background:#fff;border-radius:12px;margin:0 16px 14px;padding:10px 14px;display:flex;align-items:center;gap:10px;box-shadow:0 1px 3px rgba(0,0,0,0.05);border:1px solid #F2F2F7"><span style="font-size:22px">${S.weather.icon}</span><div style="flex:1"><span style="font-size:14px;font-weight:700;color:#1C1C1E">${S.weather.temp}°C</span><span style="font-size:13px;color:#8E8E93;margin-left:6px">${S.weather.desc}${S.weather.city?' · '+S.weather.city:''}</span></div></div>`:
+      `<div style="margin:0 16px 14px;background:#fff;border-radius:12px;padding:10px 14px;display:flex;align-items:center;gap:8px;box-shadow:0 1px 3px rgba(0,0,0,0.05);border:1px solid #F2F2F7"><span style="font-size:18px">🌤</span><span style="flex:1;font-size:13px;color:#8E8E93">No weather — set location</span><button onclick="setTab('settings')" style="padding:5px 10px;border-radius:8px;background:#1C3A6B;border:none;color:#fff;font-size:12px;font-weight:600;cursor:pointer;font-family:inherit">Set up →</button></div>`}
 
       <!-- FAMILY ACTIVITIES TODAY -->
-      <div class="sh" style="margin-bottom:6px">📅 Today's Activities</div>
+      <div class="sh" style="margin-bottom:6px">📅 ${(()=>{const o=S.dayOffset||0;return o===0?"Today's Activities":o===1?"Tomorrow's Activities":o===-1?"Yesterday's Activities":DAYNAMES[viewDateObj.getDay()]+"'s Activities";})()}</div>
       <div class="card" style="margin-bottom:14px">
-        ${todayFamilyEvs.length===0?'<div class="row" style="color:#8E8E93;font-size:14px;justify-content:center">Nothing scheduled today 🎉</div>':
+        ${todayFamilyEvs.length===0?'<div class="row" style="color:#8E8E93;font-size:14px;justify-content:center">Nothing scheduled '+(S.dayOffset===0||!S.dayOffset?'today':S.dayOffset===1?'tomorrow':'this day')+' 🎉</div>':
           todayFamilyEvs.map((ev,i)=>{
             const ec=S.children.find(c=>c.id===ev.childId);
             const col=ec?.color||NAVY;
