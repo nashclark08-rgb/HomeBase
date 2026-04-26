@@ -95,6 +95,8 @@ const MONTHS=['Jan','Feb','Mar','Apr','May','Jun','Jul','Aug','Sep','Oct','Nov',
 const EMOJIS=['📅','⚽','🏊','🎹','🎸','🎭','📚','🏃','🎨','🏋️','🚴','🎯','🏀','🎾','⚾','🧘','🎪','🏈','🎬','🎓','🏫','🎡'];
 const today=new Date();
 const todayStr=fd(today);
+const tomorrow=new Date(today);tomorrow.setDate(today.getDate()+1);
+const tomorrowStr=fd(tomorrow);
 function fd(d){return d.getFullYear()+'-'+String(d.getMonth()+1).padStart(2,'0')+'-'+String(d.getDate()).padStart(2,'0');}
 
 // ── STATE ────────────────────────────────────────
@@ -103,7 +105,7 @@ const S={
   children:[],packing:{},events:[],assessments:[],groceries:[],gifts:[],
   tab:'today',screen:null,screenParams:{},
   activeChild:null,morningMode:false,
-  calWeekOffset:0,calDate:null,
+  calWeekOffset:0,calDate:null,showTomorrow:false,
   listTab:'menu',listFilter:'all',
   evTab:'events',
   fabOpen:false,notif:null,nTimer:null,weather:null,
@@ -329,6 +331,25 @@ function sAddChild(){
 }
 
 // ── TODAY ─────────────────────────────────────────
+function eventsForChildOnDate(child, dateStr){
+  const dateObj = new Date(dateStr+'T12:00');
+  return S.events.filter(ev=>{
+    if(!ev.childId||ev.childId===child.id){
+      if(!ev.freq||ev.freq==='once')return ev.date===dateStr;
+      const start=new Date((ev.startDate||ev.date||dateStr)+'T12:00');
+      const end=ev.endDate?new Date(ev.endDate+'T12:00'):null;
+      if(dateObj<start||(end&&dateObj>end))return false;
+      const dn=DAYSH[dateObj.getDay()];
+      if(!ev.days||!ev.days[dn])return false;
+      if(ev.freq==='fortnightly'){
+        const wks=Math.floor((dateObj-start)/(7*86400000));
+        return wks%2===0;
+      }
+      return true;
+    }
+    return false;
+  }).sort((a,b)=>(a.time||'').localeCompare(b.time||''));
+}
 function todayEventsForChild(child){
   return S.events.filter(ev=>{
     if(!ev.childId||ev.childId===child.id){
@@ -362,14 +383,17 @@ function sToday(){
   const pk=S.packing[child.id]||[];
   const packed=pk.filter(p=>p.checked).length;
   const pct=pk.length?packed/pk.length:0;
-  const todayEvs=todayEventsForChild(child);
+  const viewDate=S.showTomorrow?tomorrowStr:todayStr;
+  const viewDateObj=new Date(viewDate+'T12:00');
+  const todayEvs=eventsForChildOnDate(child, viewDate);
   const allEvs=S.events.filter(ev=>{
-    if(!ev.freq||ev.freq==='once')return ev.date===todayStr;
-    const start=new Date((ev.startDate||ev.date||todayStr)+'T12:00');
+    if(!ev.freq||ev.freq==='once')return ev.date===viewDate;
+    const start=new Date((ev.startDate||ev.date||viewDate)+'T12:00');
     const end=ev.endDate?new Date(ev.endDate+'T12:00'):null;
-    const now=new Date(todayStr+'T12:00');
+    const now=viewDateObj;
     if(now<start||(end&&now>end))return false;
     const dn=DAYSH[now.getDay()];
+    if(ev.freq==='fortnightly'){const wks=Math.floor((now-start)/(7*86400000));return wks%2===0;}
     return ev.days&&ev.days[dn];
   }).sort((a,b)=>(a.time||'').localeCompare(b.time||''));
 
@@ -378,8 +402,8 @@ function sToday(){
       <div style="display:flex;justify-content:space-between;align-items:flex-start;margin-bottom:4px">
         <div>
           <div style="font-size:13px;font-weight:600;color:${NAVY};margin-bottom:2px">${greetIcon()} ${greeting()}, ${S.user?.displayName?.split(' ')[0]||''}!</div>
-          <div style="font-size:28px;font-weight:800;color:#1C1C1E;letter-spacing:-0.3px">${DAYNAMES[today.getDay()]}</div>
-          <div style="font-size:13px;color:#8E8E93;margin-top:1px">${today.getDate()} ${MONTHS[today.getMonth()]} ${today.getFullYear()}${allEvs.length?' · <span style="color:#FF9500;font-weight:600">'+allEvs.length+' events</span>':''}</div>
+          <div style="font-size:28px;font-weight:800;color:#1C1C1E;letter-spacing:-0.3px">${S.showTomorrow?DAYNAMES[tomorrow.getDay()]:DAYNAMES[today.getDay()]}</div>
+          <div style="font-size:13px;color:#8E8E93;margin-top:1px">${S.showTomorrow?tomorrow.getDate()+' '+MONTHS[tomorrow.getMonth()]+' '+tomorrow.getFullYear():today.getDate()+' '+MONTHS[today.getMonth()]+' '+today.getFullYear()}${allEvs.length?' · <span style="color:#FF9500;font-weight:600">'+allEvs.length+' event'+(allEvs.length>1?'s':'')+'</span>':''}</div>
         </div>
         <button class="btn" onclick="S.morningMode=true;render()" style="background:#1C3A6B;border-radius:12px;padding:8px 14px;font-size:12px;font-weight:700;color:#fff">${greetIcon()} Daily View</button>
       </div>
@@ -389,7 +413,8 @@ function sToday(){
           const cpk=S.packing[c.id]||[];
           const cpacked=cpk.filter(p=>p.checked).length;
           const cpct=cpk.length?cpacked/cpk.length:0;
-          const cEvs=todayEventsForChild(c);
+          const viewDateTile=S.showTomorrow?tomorrowStr:todayStr;
+          const cEvs=eventsForChildOnDate(c, viewDateTile);
           const isActive=S.activeChild===c.id;
           return `<div onclick="S.activeChild='${c.id}';render()" style="min-width:140px;flex-shrink:0;background:#fff;border-radius:16px;padding:12px;box-shadow:0 2px 8px rgba(0,0,0,0.08);border-top:4px solid ${c.color||NAVY};cursor:pointer;opacity:${isActive?1:0.7};transform:${isActive?'scale(1)':'scale(0.97)'};transition:all 0.15s">
             <div style="display:flex;align-items:center;gap:8px;margin-bottom:8px">
@@ -413,14 +438,20 @@ function sToday(){
       </div>
     </div>
     <div class="scroll-view" style="padding:14px 0 90px">
-      ${S.weather?`<div style="background:linear-gradient(135deg,#1C3A6B,#2E5FBF);border-radius:16px;margin:0 16px 14px;padding:14px 18px;display:flex;align-items:center;justify-content:space-between;color:#fff"><div><div style="font-size:13px;opacity:0.8;margin-bottom:2px">Today's Weather</div><div style="font-size:22px;font-weight:700">${S.weather.temp}°C · ${S.weather.desc}</div></div><div style="font-size:44px">${S.weather.icon}</div></div>`:''}
-      <div class="sh" style="margin-bottom:6px">Today's Overview</div>
+      ${S.weather?`<div style="background:linear-gradient(135deg,#1C3A6B,#2E5FBF);border-radius:16px;margin:0 16px 14px;padding:14px 18px;display:flex;align-items:center;justify-content:space-between;color:#fff"><div><div style="font-size:13px;opacity:0.8;margin-bottom:2px">${S.weather.city||'Today\'s Weather'}</div><div style="font-size:22px;font-weight:700">${S.weather.temp}°C · ${S.weather.desc}</div></div><div style="font-size:44px">${S.weather.icon}</div></div>`:
+      `<div style="margin:0 16px 10px;background:#fff;border-radius:14px;padding:12px 16px;display:flex;align-items:center;gap:10px;box-shadow:0 1px 4px rgba(0,0,0,0.06)"><div style="font-size:22px">🌤</div><div style="flex:1"><div style="font-size:14px;font-weight:600;color:#1C1C1E">No weather yet</div><div style="font-size:12px;color:#8E8E93">Set your location in Settings</div></div><button onclick="setTab('settings')" style="padding:6px 12px;border-radius:10px;background:#1C3A6B;border:none;color:#fff;font-size:12px;font-weight:600;cursor:pointer;font-family:inherit">Set up →</button></div>`}
+      <!-- Today / Tomorrow toggle -->
+      <div style="display:flex;gap:8px;padding:0 16px;margin-bottom:12px">
+        <button onclick="S.showTomorrow=false;render()" style="flex:1;padding:10px;border-radius:12px;border:2px solid ${S.showTomorrow?'#E5E5EA':'#1C3A6B'};background:${S.showTomorrow?'#fff':'#1C3A6B'};color:${S.showTomorrow?'#8E8E93':'#fff'};font-size:14px;font-weight:700;cursor:pointer;font-family:inherit;transition:all 0.15s">📅 Today</button>
+        <button onclick="S.showTomorrow=true;render()" style="flex:1;padding:10px;border-radius:12px;border:2px solid ${S.showTomorrow?'#1C3A6B':'#E5E5EA'};background:${S.showTomorrow?'#1C3A6B':'#fff'};color:${S.showTomorrow?'#fff':'#8E8E93'};font-size:14px;font-weight:700;cursor:pointer;font-family:inherit;transition:all 0.15s">🌅 Tomorrow</button>
+      </div>
+      <div class="sh" style="margin-bottom:6px">${S.showTomorrow?'Tomorrow · '+DAYNAMES[tomorrow.getDay()]:"Today"}'s Overview</div>
       <div class="card" style="margin-bottom:14px">
         <div class="row"><div><div style="font-size:12px;font-weight:700;color:#8E8E93;margin-bottom:4px">SCHOOL</div><div style="font-size:16px;font-weight:600">${child.year||'School'} · ${child.school||''}</div></div></div>
         ${todayEvs.length?`<div style="padding:12px 16px"><div style="font-size:12px;font-weight:700;color:#8E8E93;margin-bottom:8px">AFTER SCHOOL</div>${todayEvs.slice(0,3).map(e=>`<div style="display:flex;align-items:center;gap:8px;margin-bottom:5px"><span style="font-size:13px;color:#8E8E93;min-width:50px">${e.time||''}</span><span style="font-size:15px">${e.emoji||'📅'}</span><span style="font-size:14px;color:#1C1C1E;font-weight:500">${e.title}</span></div>`).join('')}${todayEvs.length>3?`<div style="font-size:13px;color:#1C3A6B;font-weight:600;margin-top:4px">+${todayEvs.length-3} more</div>`:''}</div>`:'<div style="padding:12px 16px;color:#8E8E93;font-size:14px">No events today 🎉</div>'}
       </div>
       <div style="display:flex;align-items:center;justify-content:space-between;padding:4px 16px 6px">
-        <div class="sh" style="padding:0">Packing List${todayEvs.length?` · <span style="font-weight:400;text-transform:none;font-size:12px;color:#8E8E93">for today's activities</span>`:''}</div>
+        <div class="sh" style="padding:0">Packing List${todayEvs.length?' · <span style="font-weight:400;text-transform:none;font-size:12px;color:#8E8E93">for '+(S.showTomorrow?'tomorrow':'today')+'&#39;s activities</span>':''}</div>
         <div style="font-size:12px;font-weight:700;color:${pct===1?'#34C759':color}">${packed}/${pk.length}</div>
       </div>
       <div style="margin:0 16px 8px;height:5px;background:#E5E5EA;border-radius:3px;overflow:hidden"><div style="height:100%;width:${pct*100}%;background:${pct===1?'#34C759':color};border-radius:3px;transition:width 0.4s"></div></div>
@@ -612,11 +643,11 @@ function sCalendar(){
         ${wDates.map(d=>{
           const ds=fd(d),isSel=ds===sel,isTod=ds===todayStr;
           const evs=S.events.filter(e=>e.date===ds||(e.freq&&e.freq!=='once'&&(e.startDate||'')<=ds));
-          return `<button class="btn" onclick="S.calDate='${ds}';render()" style="flex:1;display:flex;flex-direction:column;align-items:center;padding:6px 2px 12px;border-bottom:${isSel?'3px solid #1C3A6B':'3px solid transparent'}">
-            <div style="font-size:10px;color:${isSel?'#1C3A6B':isTod?'#FF3B30':'#8E8E93'};font-weight:500;margin-bottom:4px">${DAYSH[d.getDay()]}</div>
-            <div style="width:32px;height:32px;border-radius:16px;background:${isSel?'#1C3A6B':'transparent'};display:flex;align-items:center;justify-content:center;font-size:15px;font-weight:600;color:${isSel?'#fff':isTod?'#FF3B30':'#1C1C1E'}">${d.getDate()}</div>
-            <div style="display:flex;gap:2px;margin-top:4px">${evs.slice(0,3).map(e=>{const ec=S.children.find(c=>c.id===e.childId);return `<div style="width:5px;height:5px;border-radius:3px;background:${ec?.color||NAVY}"></div>`;}).join('')}</div>
-          </button>`;
+          return '<button class="btn" onclick="selCalDate(\''+ds+'\');" style="flex:1;display:flex;flex-direction:column;align-items:center;padding:6px 2px 12px;border-bottom:'+(isSel?'3px solid #1C3A6B':'3px solid transparent')+'">'
+            +'<div style="font-size:10px;color:'+(isSel?'#1C3A6B':isTod?'#FF3B30':'#8E8E93')+';font-weight:500;margin-bottom:4px">'+DAYSH[d.getDay()]+'</div>'
+            +'<div style="width:34px;height:34px;border-radius:17px;background:'+(isSel?'#1C3A6B':'transparent')+';display:flex;align-items:center;justify-content:center;font-size:16px;font-weight:700;color:'+(isSel?'#fff':isTod?'#FF3B30':'#1C1C1E')+'">'+d.getDate()+'</div>'
+            +'<div style="display:flex;gap:2px;margin-top:4px">'+evs.slice(0,3).map(e=>{const ec=S.children.find(c=>c.id===e.childId);return '<div style="width:6px;height:6px;border-radius:3px;background:'+(ec?.color||NAVY)+'"></div>';}).join('')+'</div>'
+            +'</button>';
         }).join('')}
       </div>
     </div>
@@ -1232,6 +1263,10 @@ window.hAddGift=async()=>{
   catch(ex){if(err)err.textContent=ex.message;}
 };
 window.dGift=async id=>{try{await fdel(['gifts',id]);}catch(ex){}};
+window.selCalDate=function(ds){
+  S.calDate=ds;
+  render();
+};
 window.saveLocationSettings=()=>{
   const city=document.getElementById('set-city')?.value?.trim();
   const lat=document.getElementById('set-lat')?.value?.trim();
