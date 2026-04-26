@@ -13,11 +13,11 @@
 <style>
 *{box-sizing:border-box;margin:0;padding:0;-webkit-tap-highlight-color:transparent}
 html,body{width:100%;min-height:100%;}
-body{font-family:-apple-system,BlinkMacSystemFont,system-ui,sans-serif;background:#F2F2F7;}
+body{font-family:-apple-system,BlinkMacSystemFont,system-ui,sans-serif;background:#F2F2F7;padding-top:60px;padding-top:max(60px,calc(env(safe-area-inset-top) + 50px));}
 #app{display:flex;flex-direction:column;width:100%;min-height:100%;}
-.topbar{background:#1C3A6B;padding:10px 16px;display:flex;align-items:center;justify-content:space-between;padding-top:max(10px,env(safe-area-inset-top));position:sticky;top:0;z-index:100}
+.topbar{background:#1C3A6B;padding:10px 16px;display:flex;align-items:center;justify-content:space-between;padding-top:max(10px,env(safe-area-inset-top));position:fixed;top:0;left:0;right:0;z-index:100}
 .screen{background:#F2F2F7;}
-.tabbar{background:rgba(249,249,249,0.97);backdrop-filter:blur(20px);border-top:0.5px solid rgba(0,0,0,0.15);display:flex;padding-bottom:env(safe-area-inset-bottom);position:sticky;bottom:0;z-index:100}
+.tabbar{background:rgba(249,249,249,0.97);backdrop-filter:blur(20px);border-top:0.5px solid rgba(0,0,0,0.15);display:flex;padding-bottom:env(safe-area-inset-bottom);position:fixed;bottom:0;left:0;right:0;z-index:100}
 .tab{flex:1;display:flex;flex-direction:column;align-items:center;padding:8px 0 6px;border:none;background:transparent;cursor:pointer;gap:2px;font-family:inherit;font-size:9px;font-weight:600;color:#8E8E93;min-width:0}
 .tab.active{color:#1C3A6B}
 .scroll-view{display:block;}
@@ -380,7 +380,21 @@ function sToday(){
     <button class="primary-btn" style="max-width:280px" onclick="go('addChild')">Add Your First Child</button></div>`;
 
   const color=child.color||NAVY;
-  const pk=S.packing[child.id]||[];
+  // Get all packing items
+  const allPk=S.packing[child.id]||[];
+  // Get today's event pack items
+  const todayEventItems=[];
+  todayEventsForChild(child).forEach(ev=>{
+    if(ev.packItems&&ev.packItems.length)todayEventItems.push(...ev.packItems);
+  });
+  // Filter packing list: show items that match today's event items, plus any pinned/uniform items
+  const pk=allPk.filter(item=>{
+    if(item.pinned)return true; // always show pinned
+    if(item.section==='uniform')return true; // always show uniform
+    if(item.section==='school')return true; // always show school items
+    // afterschool items only show if linked to today's events
+    return todayEventItems.some(ti=>ti.toLowerCase()===item.label.toLowerCase());
+  });
   const packed=pk.filter(p=>p.checked).length;
   const pct=pk.length?packed/pk.length:0;
   const viewDate=S.showTomorrow?tomorrowStr:todayStr;
@@ -897,30 +911,62 @@ function sFamily(){
 // ── SETTINGS ──────────────────────────────────────
 function sSettings(){
   const t=S.toggles;
-  return `
-    <div style="background:#fff;padding:14px 16px;border-bottom:1px solid #F2F2F7;position:sticky;top:0;z-index:10">
-      <div style="font-size:26px;font-weight:800;color:#1C1C1E">Settings</div>
-    </div>
-    <div class="scroll-view" style="padding:16px 0">
-      <div style="margin:0 16px 16px;background:linear-gradient(135deg,#1C3A6B,#2E5FBF);border-radius:20px;padding:22px 20px">
-        <div style="font-size:13px;color:rgba(255,255,255,0.7);margin-bottom:4px">Signed in as</div>
-        <div style="font-size:20px;font-weight:800;color:#fff">${S.user?.displayName||'User'}</div>
-        <div style="font-size:13px;color:rgba(255,255,255,0.7);margin-top:2px">${S.user?.email||''}</div>
-        <div style="font-size:11px;color:rgba(255,255,255,0.5);margin-top:6px;font-family:monospace">Code: ${S.family?.inviteCode||''}</div>
-      </div>
-      <div class="sh" style="margin-bottom:6px">Preferences</div>
-      <div class="card" style="margin-bottom:12px">
-        ${[{l:'Notifications',i:'🔔',k:'notifs'},{l:'Location (weather)',i:'📍',k:'loc',s:'For weather on Today'}].map((item,idx,arr)=>`<div class="row" style="border-bottom:${idx<arr.length-1?'1px solid #F2F2F7':'none'}">
-          <span style="font-size:20px">${item.i}</span>
-          <div style="flex:1"><div style="font-size:15px">${item.l}</div>${item.s?`<div style="font-size:13px;color:#8E8E93">${item.s}</div>`:''}</div>
-          ${tog(t[item.k],"S.toggles['"+item.k+"']=!S.toggles['"+item.k+"'];render()")}
-        </div>`).join('')}
-      </div>
-      <div class="card" style="margin-bottom:24px">
-        <button class="btn" onclick="hSignOut()" style="width:100%;padding:14px 16px;color:#FF3B30;font-size:15px;font-weight:600;text-align:left">Sign Out</button>
-      </div>
-      <div style="text-align:center;padding:0 0 24px;color:#C7C7CC;font-size:12px">HomeBase v2.0 · ourhomebase.com.au</div>
-    </div>`;
+  return '<div style="background:#fff;padding:14px 16px;border-bottom:1px solid #F2F2F7;position:sticky;top:0;z-index:10">'
+  +'<div style="font-size:26px;font-weight:800;color:#1C1C1E">Settings</div>'
+  +'</div>'
+  +'<div style="padding:16px 0 100px">'
+  +'<div style="margin:0 16px 16px;background:linear-gradient(135deg,#1C3A6B,#2E5FBF);border-radius:20px;padding:22px 20px">'
+  +'<div style="font-size:13px;color:rgba(255,255,255,0.7);margin-bottom:4px">Signed in as</div>'
+  +'<div style="font-size:20px;font-weight:800;color:#fff">'+(S.user&&S.user.displayName||'User')+'</div>'
+  +'<div style="font-size:13px;color:rgba(255,255,255,0.7);margin-top:2px">'+(S.user&&S.user.email||'')+'</div>'
+  +'<div style="font-size:11px;color:rgba(255,255,255,0.5);margin-top:6px;font-family:monospace">Family: '+(S.family&&S.family.inviteCode||'')+'</div>'
+  +'</div>'
+  // Weather location
+  +'<div class="sh" style="margin-bottom:6px">🌤 Weather Location</div>'
+  +'<div class="card" style="margin-bottom:12px">'
+  +'<div style="padding:14px 16px;border-bottom:1px solid #F2F2F7">'
+  +'<div style="font-size:14px;font-weight:600;margin-bottom:8px">City / Suburb</div>'
+  +'<input class="input" id="set-city" type="text" placeholder="e.g. Gold Coast, QLD" value="'+(S.manualCity||'')+'" style="margin-bottom:10px"/>'
+  +'<div style="font-size:14px;font-weight:600;margin-bottom:8px">Coordinates</div>'
+  +'<div style="display:flex;gap:8px">'
+  +'<input class="input" id="set-lat" type="number" placeholder="Latitude" value="'+(S.manualLat||'')+'" step="0.0001" style="flex:1"/>'
+  +'<input class="input" id="set-lon" type="number" placeholder="Longitude" value="'+(S.manualLon||'')+'" step="0.0001" style="flex:1"/>'
+  +'</div>'
+  +'<div style="font-size:12px;color:#8E8E93;margin-top:8px">e.g. Gold Coast: -28.0167, 153.4000</div>'
+  +'</div>'
+  +'<div style="padding:14px 16px;display:flex;gap:8px">'
+  +'<button onclick="saveLocationSettings()" style="flex:1;padding:12px;border-radius:12px;background:#1C3A6B;border:none;color:#fff;font-size:14px;font-weight:600;cursor:pointer;font-family:inherit">Save Location</button>'
+  +'<button onclick="useDeviceLocation()" style="flex:1;padding:12px;border-radius:12px;background:#F2F2F7;border:none;color:#1C3A6B;font-size:14px;font-weight:600;cursor:pointer;font-family:inherit">📍 Use GPS</button>'
+  +'</div>'
+  +(S.weather?'<div style="padding:0 16px 14px;font-size:13px;color:#34C759;font-weight:600">✅ '+S.weather.temp+'°C '+S.weather.icon+' '+S.weather.desc+(S.weather.city?' · '+S.weather.city:'')+'</div>':'<div style="padding:0 16px 14px;font-size:13px;color:#8E8E93">No weather yet — save location above</div>')
+  +'</div>'
+  // Notification time
+  +'<div class="sh" style="margin-bottom:6px">⏰ Daily Reminder</div>'
+  +'<div class="card" style="margin-bottom:12px">'
+  +'<div style="padding:14px 16px;border-bottom:1px solid #F2F2F7">'
+  +'<div style="font-size:15px;margin-bottom:6px">Morning notification time</div>'
+  +'<div style="font-size:13px;color:#8E8E93;margin-bottom:10px">When to send your daily summary</div>'
+  +'<div style="display:flex;gap:10px;align-items:center">'
+  +'<input class="input" id="set-notif-time" type="time" value="'+(S.notifTime||'07:00')+'" style="max-width:140px"/>'
+  +'<button onclick="saveNotifTime()" style="padding:12px 16px;border-radius:12px;background:#1C3A6B;border:none;color:#fff;font-size:14px;font-weight:600;cursor:pointer;font-family:inherit">Save</button>'
+  +'</div>'
+  +'</div>'
+  +'</div>'
+  // Preferences
+  +'<div class="sh" style="margin-bottom:6px">Preferences</div>'
+  +'<div class="card" style="margin-bottom:12px">'
+  +'<div class="row">'
+  +'<span style="font-size:20px">🔔</span>'
+  +'<div style="flex:1"><div style="font-size:15px">Push Notifications</div></div>'
+  +tog(t.notifs,"S.toggles.notifs=!S.toggles.notifs;render()")
+  +'</div>'
+  +'</div>'
+  // Sign out
+  +'<div class="card" style="margin-bottom:16px">'
+  +'<button class="btn" onclick="hSignOut()" style="width:100%;padding:14px 16px;color:#FF3B30;font-size:15px;font-weight:600;text-align:left">Sign Out</button>'
+  +'</div>'
+  +'<div style="text-align:center;padding:0 0 24px;color:#C7C7CC;font-size:12px">HomeBase v2.0 · ourhomebase.com.au</div>'
+  +'</div>';
 }
 
 // ── MINI FORMS ────────────────────────────────────
@@ -1314,7 +1360,7 @@ window.shareCode=()=>{
   if(navigator.share)navigator.share({title:'HomeBase Invite',text}).catch(()=>{});
   else if(navigator.clipboard)navigator.clipboard.writeText(text).then(()=>notify('Invite copied! 📤'));
 };
-window.go=go;window.back=back;window.setTab=setTab;
+window.go=go;window.back=back;window.setTab=setTab;window.render=render;window.S=S;
 
 // Load persisted settings
 try{
