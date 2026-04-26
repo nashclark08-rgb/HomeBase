@@ -11,20 +11,32 @@
 <link rel="icon" type="image/png" href="data:image/png;base64,iVBORw0KGgoAAAANSUhEUgAAAEAAAABACAIAAAAlC+aJAAABUUlEQVR4nO2a0Q2DIBCGz6Zj1EXKSGUcVnISF+kDCSEHnq2of/7kvieKYO/joCLp9Hp/hJkHOoBRXACNC6BxATQugIZYYF2SiEykW4kcvZBmoEQvjAJ19EInoKIXLoE2eiES6EYvLAJb0QuFgBG9UAjYuAAaeoEnOoD/mEMs5by46TPgAmhcAA29ANkrpdoXzSEyZaC7q6PJAPf7gAGHgPFKQDOFtuDIgIELoHEBNC6AxgXQuACa4wLdDda6JPss9nQOCtwcpQH9FLrjaLFOV302mC+VmtxMfWy7qEuXZ0BNtnaR5JpSmQt1G1WuPdclDWVgdyWoQTW6lICkl5Zu4znEdUmYNdCejqjCL70yo2ugndO77cd/weo7DAnYA3Yd9ffePYVOf4Bg1sCx1HV7XfscyDP+9FE/4d8qW0PY1quaOcS6pnsfo0Hb3Q+20LgAmi8ae5BFPLs7fQAAAABJRU5ErkJggg=="/>
 <link rel="apple-touch-icon" href="data:image/png;base64,iVBORw0KGgoAAAANSUhEUgAAAWgAAAC0CAIAAAA2DCFiAAArFklEQVR4nO2dd3gU1frH31Nmd9NIQkKEhA6hhBppARSQIlhQwYLAFQsXRBELioj9XgF7RUUFFcXeQAVB9IfIxYLoBUFBBKRDhBACabszp/z+OJtlySabrMqNbN7Psw9PmD07c+bMnO+c877veYc07DUREARBIoHWdAUQBDn5QOFAECRiUDgQBIkYFA4EQSIGhQNBkIhB4UAQJGJQOBAEiRgUDgRBIgaFA0GQiEHhQBAkYlA4EASJGBQOBEEiBoUDQZCIQeFAECRiUDgQBIkYFA4EQSIGhQNBkIhB4UAQJGJQOBAEiRgUDgRBIgaFA0GQiEHhQBAkYlA4EASJGBQOBEEiBoUDQZCIQeFAECRiUDgQBIkYFA4EQSIGhQNBkIhB4UAQJGJQOBAEiRgUDgRBIobXdAWQvxGEEEIAAJTSNV0X5G8NjjgQP4QQrbVS2qgGZ3hvIJWCNwcCEDTWaNMivXXzdAAQUnHOarhayN8VnKogYFmMEuqzndsmnDfxsjMB4Kl5S9dt2vnZqg2cMyFkTVcQ+dtBGvaaWNN1QGoSRqlUCgDuuf7Cf444w3YEpdTMU25/+K35C1ehdiCh4IijVmNEYcKogVmZGcPO7CaEdFkcAISQUqmZUy71uF1z3l6O2oGUA4Wj9mJZzHHkNaMH3n7tBQDgONKy/EYNzhnT1HbE3dcP16Dnvv2FKVyT1UX+TqBxtJZihGDsJf2mXXO+40ghjqmGgRBiceY48q7rho8Z3sdx/IMRBAEUjtqJy+KOIy8bdvq9N1wkpeKcVuhAIYRwTpXWM26+ZOTQXrYjUDsQAwpHrcNlcdsRl1/YZ+YtI6RSnDO/J7YiCCGcUanUQ7eN+scFp9mOKDcwQWon+ACpXXBGbUdceVHff990sVSK0Wo9OYzn5f4plxKA+QtXuSwupMTo0toMjjhqEZwzIdX4kQP+fdPFtiOqqRoGRqnPdmZOuXTciP62I5TSYcYpSNSDcRy1AmOtCPhQfLbjsnikPV9rrbTWGr5fv+3l9778ZMU6dNPWWnCqEv1QSpTSjiP/OeIM40P5A6oBAIQQCgAEcrIzO2c19fqc5d/8jG7a2glOVaIczqhSuklG6mXDTr/n+guND+UPzzIIIYQQqZTHbb3yyDV9urcNjv5Aag84VYlmzFRiQK/28x6ecIIOMfqmZ1Z+twnnLLUNHHFELZbFhJBD+naa9/AEIZVZkPIXorUWUr3++MQzT+8YGj+GRDcoHNGJMT2cP6jrnJnjHEcySiLyoVQHQgijxHHknJnjzu2fjXOWWgUKRxTCOXMcObT/qY/ePtpxJGN/3KgRHkIIY1Qp9dgdl53Vt7PjyPDhZEjUgMIRbRhzw6DTOjx252WMMcYopSewJ1NKKKUuF3/y7jFn5GQJIbXGwLDoB4UjqjB2jf492734wHi3i1NCTqhqGCglBEjAz9IgLQnnLFEPelWiB5M09IT6UKqDz3ZannGTqUwNVgM5oeCII0qglGitzzkje97DE/5yB0o10VpLpRwhz+7X+URPkZCaBYUjSqCEAMD0my8RUhGomR5LCCFA4mM9d0y8QAjJME969IKXNqrYf6CgZl9rQAhIpeLjPBMvO1MIzJMetaBwRBWumrZKEkK0hrqJ8d07tdBaU3TNRikoHMhfj9a6qNhb07VATiC4OhapGiGVLkvbY1ytUikl/VsIgXJTEkIIQctoVIPCgVSBVIozCmXKIITknDFK0fRZm0HhQMIhpOKMfv3fX79cvYkQkpgQe83ogQDwxbcbV6/byhiVUqWnJY0Z3qf6iQiRKACFA6kUqRQh8OXqTTf8+5VDBUVmY35B0R0TL1iyYt2bH39ttjRtWG/M8D5aabSY1R7wUtc6zPvoK/yUK6mVZpRu3fn7oYKi+FiPx21xRj//+icAiI/zWBYz/9arW6cmzgOpSXDEUbsIP6Go8FvGCABorbUGrcEydlANWmn/B0PLax8oHLUIrTWjdPvug0eLSkIXv8d4XJlN62sdlL6cEKV0WkpirMdVXOoz29pnNgSA4lKfkEqU+gDg8JHi/905IH8PUDhqC0pppfWPm3ZceetzFXZ1y2LzH53YrWNzzphZZsIZFUKe3a+zz3aWrPgRAFKS4++fcikAdO/UouBosVnC36xRGgCg/7VWgcJRW3CEcLusWa98evhIcazHZR+fIpQz6vU5j724+P1nb7Id4aL+G8MEaAw7s9uwM7uZLT7bcbusC4d0v3BI9+A9oEulVoHCUVswE5C6SfGEEFvIcrmFpVScsz37899dsvrCwd1NsIYxefxnzS+vLVxFKbEdmZIU/9BtowDgvSWrl6780eLMEbJZw7Q7Jl6A7thaBQpH7ULKijN0aa0JgX0HDq/5cdvFZ/VwhOLAjIf11+25n6xYFyhpO+KJu8asWf/bpyvXmy0tGp9yx8QL0B1bq0DhQI5BCImP9UDZ8MTAGSWExMd5pJCOlJu27gWA+DiP22W5Xdxni5Tk+BqrMVJDoHAgx9BaKx2UBIgQpXRKcoLbxQuLSs022xEAUFhU6rMdn+0AQH5ZbBhSe0DhQCrFeFXO7Z+tlFr8xVrL4o4jjA+la4fmRwpLgregV6VWgcKBhINzppQ+b2CX8wZ2Cd5+yTk5l5yTE7wFLaO1ChQOpAooJUIqVZbHlBLCOQvdUnMVRGoAFA6kajijcPwq+tAtSK0Crz2CIBGDwoEgSMSgcCAIEjEoHAiCRAwKB3JiwBwdUQ16VaIKRqk/4U5Iv9Xan3GHmBeuheTjIOZNbGUl/3B6Hq00MPC4rT/2c+SkAIUjqij12YQQVtFrkNwuCwCU1lprx5GhBUwsudZACDGF/xiWxXbsOTh5xnzOmSMqOBASBaBwRAlCKgA4Z+zDn7w0NS7GHVpAaaWUtjhv1qgeozT0xdSMMSml28V37s2zHcHZH4npUlpRQjf/tq/gaAlnFLMKRiukYa+JNV0H5H+Ey+JvPjmpe6cWYco8+9pn98/+8M8fixCCqhHF4Igj2mA05IWthHBGG6enPnDryG4dm/tsh3MW2qlNCPmp7Zo2apCyJzefc6qk/mPvftUaQkc0SDSBXpVoQyol5HEfAPD6nMbpKd06Ni/x2m6XxSjlrPzHZXFKaU525vMzxrZonKak1qDL7aqaH1SNqAeFI8qhlAgh66XUmTJ+qO0IT1irJ2e01Gt3aN04JTlBKkUAV8ojFYPCEeUQIEl1YpfNm5bVMsPi/vTlYfC4LceRz/77yoYNUgAq8NoiCKBwRDecUanUF6/flVo3QSpVHRUghFgWS0tJXPHGnVIphul5kIpA4YhaTB6N9q0axsa6ldIhJtNwaK1dFu/WsbmQCnNtIKGgcEQnjFLOWN8ebd+fPTnW46owVLRKPpg9uW+PtkJIzO6FlANviOjE5eK2Iy6/sE+sxyWEjFQ1CCFagxBy7v3jhw44lVDCMW0PEgTeDVEI56zUa59zRnb7zEa2IxijAP7lK7p6AAClRGntcVv9emQJIdkfCiRFohUUjmiDMyqlGnRah9n3XdUgLcllcRPrZQYdpHqYXZkX0w8dcOql5/a0HYHGDiQARo5GIca0mZdfWDc5vqjYm5gQCwBFJd74WE/uwYLwweDm2/r1ko4UliQmxO7alxfrcVucmVe9IYgB16pEJ6b/33398NcWrLpr0vAdew5+smJdt47Nn33ts+r8fMbNl7z07pdXjxpw6wNvnOiqIicjKBxRC6VEqfIjiyoDwAyBH5ryFWf4QGoxOFWJWpTSnFGpNGMUtFZaU0LM0pUq4ZxJqRijAhNqIBWBwhHNGJkIdH5V7Xx+5ieoGkhloFcFQZCIQeFAECRiUDgQBIkYFA4EQSIGhQNBkIhB4UAQJGJQOBAEiRgUDgRBIgaFA0GQiEHhQBAkYlA4EASJGBQOBEEiBoUDQZCIQeFAECRiUDgQBIkYFA4EQSIGhQNBkIhB4UAQJGJQOBAEiRgUDgRBIgaFA0GQiEHhQBAkYlA4EASJGBQOBEEiJhpeyERC3oZc/fcV/pnf1mZC2y082KpRRjQIR+hNWeFrU6v52/Avc0fgDzURo/6xrdIamzcKOLmFw9zB8XGeuonxWmtCCCFQXOrLyy+s8uY2BVKTE2Jj3ACgtaaUHDx0tMRro3aEwTROrMdVL6WOUro6Qw+l1J7c/MB/OWf4csmTnZNbOMxbkS8c0n365EsCG/fk5l9+y+zfdh9QSoUZd1ic2Y6YOWXEWX07BzZ+9tWGaQ+9lX+kSAiF2hEKIYRzWjcx/v5bLx3Uu0P1fzjqxqeVUpTSHzb8VuK1LYsBgOOgfJysnNzCYbBtIZWybeFycceRDevXvXX80H9Oe8Htsny2E/63xSU+qZQQknPms8Wg3h2+7LvplfdX4lOxQhijjiOH9O00qHeHEq/tdlXr/iFA3njiOvP3ouVrV6/bOu/9LwGHHicz0SAchBBGKWOUUaqZ1lofPloM1TPIUUoZpZpqRilnVCpVUmqf+Cqf3JSU2lIpzmjAclEljiMJAa3h3P7Z5/bP7ti28W87f396/jJGqVTqhNYWORFEg3CUgxDC2B90MzNKKY3MX1ALoZQwSqWMoMNbFjNGKCGVUuris3oAQIzH9fCcRTjuOBmJQuH4X3LinAWUEgJEg67SPUQIoYT8mQpU/1iVobVWYY9OCSGEKKU5o8Co1+e4LN6jc0tT+Yjqaf7+kw0euHB/5qzL7a1WOYxQOCKGUkLLbrvgRyXnLHRjZQQKh/6EUUooEUIC6EBJKSsw1nJGgRAplRntm5LVfHr7x2VaAyl/rMoOVyHGPPThZz/cPPM1l8VtR4QeSGvdrFHagtk3JcTHmHGHx205juzSofm0a86f+ezCCn8YINDggXr6Tz+S84XwF05rIAS0FtUeRpnLBADBv4roHjipQeGIDHOLK+W/Lbp3akEIIYRs2rr3SGFJoIxSKvwtWOGNRQgxvh5Q0KltkxiPKy//6Nadvwe+DXRmY9MJdLac7MyNW/YcLSoFAM5olXe/ZTEpVaAOmU3rpyQnFJd4N2zeHVym+l4PqZTtiDBnvfm3fSOun/X8jLH1U5M4p8aJyxm1jhfQUIIbvEPrRnGxHuOd+WXb3oKjJVBt+TDjncCF65zVxON2AcD23Qd+zzsSKFadeVPwZTLkZGcCwJbt+w8VFFV/Pyc1KBwRwDmzHXFKauKAXu2NdfCBW0ear1Z8u3HJlz9yzgqLShcsWwMALos7Qlb43LYsdvFZOcFbFixbU+q1tda2IzpnNclq2fD+KZdSSg4cOvLQC4vcLuudxd/YjjB3vzEoSqXO7Z9dJz62SUbqtf8Y9H9f//TZqg2MsVc/qMIlFFCE0ef3poRIpadOGFo3MV5Idccjb5sy7y1ZbTsi/EAgGCMElFKoRDhcFt+wedcLby6/b/LFZs9me5hxjWUxrcF2RFpK4uDTO9hCPnDrSF5mvVr53abFX6zjnL36wUqoSi7dLst2RHys5/xBXaRUlNIHp/ov3LqNO9/8+GvOmZTySGHJouVr3S7LEaKy+YuZW9mOaNm0fo9OLYRUdeJj7p40HAC+Wbtl4bLvOWclpb73lqx2WTwwGIw+UDiqhbldhJB3TxreOatpt47NzXYhpLnz++Vk9cvJMhs7tG70/YbfPlmxDioJsvS4XYEb17Di241en9MuM2P44O5D+nZq1CBFCCklpKUkPjJtNACckZN15a3PEUKMKJzerc0ZPbPGjehvfu44ckCv9gN6tQeA9LSkB577qDJvBaPUceSNV57VovEpF5zZNbDdcSTnx7rTwNPab9v5+4xnFv5VXg8NmlKSEO8BgICdIgyEEKNud08a3jmrSbeOLQBAax3wzvTp3rZP97YA0LpZ/V935IbxoHNGfbZDKXlu+ti+PdqajVIpJTUAdM5q0jmrSaBwfOzrby36JkytACAmxjX5qrNP79amTYt0s91UtWd2Zs/sTLMluU7cnLeXV6NhTlaiVjhIGRV+a2ba1d+b1lpq/eaTk07r2hoAzHOYADGBTAAglTJeBgJk3KX9LzknZ8S5PR+Zs2jD5t2hfc+MLMzfSmnjx9FaJyfGj7u0v1LadGMzvpBSKa0G9m7/ztM3XDb5WSllv5ysJ+4ak5IUL6TSSgOAZTHjrdBaT7zsTIuz+55eEPoQNjW5Y+IFE0YNNGdh+jDnNDgiS4Me1LvDoN4dkuvE3XL/63+Zdmio4DFe0UUwR3x42ugmGammK9qOoIRwzgINbs4XAMYM7wMAFmdz3/4idHpl/DhP3DWmSUZq1w7NvT7HGDIty+95My2sQWutOWczbhkxpG+nNz/++tOV68s1oHkGUErefGKS0RpTK7O3wK6UVozSu68f3rtrq09WrHtn8bfVmTyedESncCiptNbho7/M06k6XcJc+LdnXd/r1Fa2IxijnLFyXltGjwU1OI5MTIjt37Ndp7ZNzhv3yN7c/NC1M4GxuhGOw0eLT0lNfOT20ebWpJQFvqKUATAhVc/sTEaJz1ZNM+qlJMU7jrQsBsy/E+OtAADbEeNHDiCETH9mQXBHcllcSGlUw2c7jPrtC8ECeqxbCimVGnFuT0LIzTNfq3LGTojfkx0a2aFBEyAEiNZayON2opSGiiYE5qIM6dMpqU6safBQU0jgfM0J3nXd8FKv/fqHXwVX1Vy4Z/515XkDuwCAkMrjtsrtJ9DaZmAoAQb0av/t2q0AQCiBoPqaAstemda6ebrjSMZo4CIevysGAD7bGdCr/Y49ef7WiTqiUzhiY91pKYkui9kVmfeEkPlHihLiPQVHS+Ji3OHdB6bvvfTQ1b1ObeU40mVxM1opKvaeN/6Rvbn5AMA5c4R84NaRp3VtVSc+1uO2zJgiJSm+SUbqrn15VcaGtG7e4I3Hr0uIj/k978hjL36yYNmaj164pU2L9MDIiFEilfrgucnTn17wrxsvOlJY4vU5IyY9daSw5Mu37q4THyOVMp3WPAPr10tSSlucAkhzFrYjrrq434RRA42JQQhFCJm/cNV9sz4wtgzOmRTyorNzpl1znsvinDOldJsW6YkJsV6fI0k4P4vjSKmU9FWmwloqlZaSmJgQCwCEgJCKMbpm/baZsz8MtqQYX4/b4s/ed5XbxUu9tmVxr8+Ji3Ffe/dLn3/1E2OUECKFvHrUwImXDWKUmgtEKcls2sDtspRWgV0BIXXiY7JaZkiltNJaQ7Htu+vRdxZ/sZaV6Ys56yfuHnNW385mCFZU7L392vM3/7bvi283mrGPmajGx3neffqG1s3ThZCmPUuK7FE3Pr1tZy4hRGltNGvu/eNO69rG4rzUa1827LTtew688dFX0TfoiDbhMDb2of1PHdr/1MrKHCksefLlpYP7dPxu/baz+3U2DsUKSxJCKKHNGtVNT0tWSlNGjCLkHjxy9R1zt+zIDS58w79fAYDdXz1tfuh2WVrrN564buQNs1Z9v7myylBKtNYfz5kCAM/MX/bAcx+Z7YPGzFw0d0q7zIamqxBCGCHtMhu++eSkg4eO3vnYO5+sWGcGMueMfeidWTc0SEsyIxRCiVI6MSEmPS35QP5RoztaQ3JinFGiQNxE3uHCTVv3lnptn+2YARFn9NUPVnZu2/jis3OEkErrjm0aTxl37p2PvVNp/D4hAHBKamLXDs0rHJgYk0STjNQn7hoT2CiE9LittRt3mE4Y2O6yuM92Hr/jsv492wU28hh33uHCPfvzS73+oF5G6eMvfdKmRfrZ/ToLqSyL+Wxn7CX91m3asXDZ96aXGsfHg1NHtWxa35iiLIvNeXv5u0tWM0ql97j44PG3z31h5j/NqiXLYocKio4WlVJKzIjI4kxKNfu+q9q2zChbneC4Xdake+dt2LyrnBlr9E3PrFk4vX69JI/bkkpPn3zJlu2536zdEmUxstEmHIbwkTiJCbF3Xz8cAHp0bmlmtpWVNPfxhFED22U2NFMDc8e89O6Kn7fsKdeXzLDivSWrLzqrR2CjUvrNJyc16n1d+BW3QsjZr3/+0Asfm75nevs/Jj+zYclDQirO/F3d1GHFd5s+WbEuxuMq9dqc0R17Dl4+Zfasey5v0fgUAMootR3Rp3vbKy7qa0IklFJSqoG92o8c2svU33TXX7btm7/gPx635fWVnQUhjNJv/rulb4+2KckJoEEq1bJp/cym9bfvPlDhuMm4Ofr2aBuwO1ZGwJrDOeOcPTVv6cNzFhljbaCMlBIAln/zsyOEVNosYuScvfnRV2s37ggIE2PURFsFmtQ0b6hsBS6QkQBzppbFyg2OCCHjb5/78LTRBIAy+vrCVT/8tD0wTCCESKWM9xeMY4uxn37ds/f3w2aUJ4OqQQjUr5dUdspKU5J7sECbOJEoIjqFo3KrKICxdCptoi155cHpjFIhZLeOzdu3aiSEZIxKpThnazfuWPvzjtCnq9agtb5p+vxhg7vRshpQSvLyCzmjsvLwREKILeRDL3zMGTX7NJYORulbi74ZcU6OmYYopRmju/blLV6+1rKYbQsAEFK5XdamrXs//PyHW8cPtR3hopwAUUoXFpdCWYfRWu/JzTfDCq01pTTvcOFbi76J8biU0v4IKADQ2u3i7y5Zfd7ALv1ysszyv95dWg3p02nWq5+6LF5ZeKixC5rBRSXnCJwzIRVn9Kl5S7fszF247PtQd6/pqAuWrTEu7WCoPyjO32Ja67SUOoSQQEgYISTUXxO4DxijQqr+PdstWLZm5948t8uSUmrtt6dorTmjU+5//bjDSQXGUCLkGTlZ7Vs1kkpRQoSULou/v3T1j5t2xnhcjiMIIcyoKiFSqgef+2jqhPMCSx+uv2LInY++U1zqi6Z0DbUxdSAhhDNKKQmjGgBglCKnc2bHNo2lUpQSrTSj9Pv1v63duKOykWfD+nXLGQhZNea3pMwzErSFHCooevWD/xBCjL/GeDR37s37v69/IkACRzdm/DrxMRDk6QzYKQkQqXTDBim3X3uBBm1xrjVQSnIPHvnws+/NPEUIKaQynxKvbeocaCupVGGxF8o0qEIoJZxTxijnFX8Yo1pr04tbNWvQuW1TKHNOhcIZdVk8+GN0M1DAEYJROvXBN3fvP8Sql7SJUUoIdM5q8vJDE9JS6vhsRxwfZCGVrvBwjDGp1KDTOzZrVE9KFQh754wBQKnXFlJprf0NKKTW+un5ywIH1RouHNI9Ps4TNZJhiM4Rx1+C6SeFxd5y6WpiY9yM0tD7wAwTcg8WTPrXvFn3XGGerkrpOgkxz9531bV3vRTeQhYapkkISU2Oh+MDH1wW54yW68MBZ3Ao5imXXCeuc1YTISTjfkVo3azBF2/cJWUFB9VaN0pPBQBKiCzrclVSHfc2I0RrPaRvJwDo3aXV6nVb73zsnVAJFlKBVJQSM4ircFdSqfMHdklJTlBaM0qhEp8PLTPxgBlCStWyySkfzbml4GgJo+S7H7fd/sjbxlQU8JGXGxeYv48WliilA95rx5FXjxyw6vtfxl06oElG6nX3vDzv4Qlen+NxW1dNfeHhaaMgyOVvXFRVt+BJRbQJh5kSL1z2/bRH3nJb3Fd54KP59qGpo4YOODWMfZQxQo93yymtpVKVLcAVUm3+bT8ABEbtjNK2LTIAInbL6YqWTpiNFq0iUjukVuXvXctiLZucUuWhKSGlXnvqhPO27Mhd9f1mt8sSFfVR2xGFxd7wUxWtITEh1oz8CSVtWqS3aZFuC/HonMWOkOVGHwE1qV8vybbFdZefOfLcXo6Qfr8sAa10QnxMmFO2HcEZnfLA6ynJCad3a+04kjJiMiekpyWnpyUDQOvm6cPO7Ka0poRcNPGJ3IMFPlsUlXg5Z+VW6zBGKSVGZk02o9S6Ce89e1NcjBsAPnv19vg4jyn56bzb4uM8ZRdOa6UJrWAOdbITbcJhsB1RVOwtCTuINd9WmennDxDjdpXbUur1/eVHiQhinrfqWJ8PHwJHCAlYZI2kmgSLofgXuX3+w+Tp86usxrAzuz1y+2jj0jZP+HEj+v+0efcHn64JDjkxQ7PMpvWbZtR76aGrg+scvLeAtbUyzPRh1I2z3nhi0undWsOxYZ0yPZlSEujwS+fdBgAbt+4dfdPTefmF4U/ENF1cWZsEdhL4+9gsmAGUGc6jiegUDrNskTNmq0pHHOZbWu1UNNWnotH13+u+MV2u1Gt/unI941SFX48nFaN0z/5DUPnSEkYpIST82hbO6YJlazhnd153QZ34WGaSeiiVk5258rtfDh8pNnMEoyBdOzR/79kbja3B2Ck5o+WUjpBqRQATQkbdOOvpe69oklEvEF1uQjaUAs79iUK01lKqrJYZc+8f//J7X67buGPXvkNhWm/T1r2bf9vPGFVKBftMyvlPzHCmpLSGnxx/OdEpHEgYTOc/VFA09cE3Pl25PqLfhkm6UeYeDRck5nFb737y7cVn9+iZnWlcVLYjRg7t9fH//fc/a34xC9UdR+ZkZ7784NVa+93P5t9PVqzbuHWvMYVyRh2pxl7cLzkxLhD5FqZilsWuu3deSlL8lRf19dniussHx3r8o0IhJBDCqJmAMK11l/bNurRvNvyax3fuzavQfC6kdFH+1qJvXnp3RXUbrqwmEZX/O4PC8ddT0TPwb3THGK/Kgbwjn65cH+txOVJWZwYupPzzCW/MkuLgTKUEiJDKTBgpI0rqvj3aPnHXmJgYFwBwi5mQk8VfrL3+X6+UG858/PkPrz0+sWH9ulV2SBPye6ig6JG5iwHg23Vb009JllJmZzUdP3KAKVOWJZ8YH9OU8edOvOflvPxCxkJcvEAAIDEh1rhgqrOAuLJ10icvKBxVEGrYJ1V5EBxR/k6yeA23c2iFjeXCdkSFjp7qv5gmUqQqn3GLM0r9wfLUUU7bFhmpyQnGQyGkopQu/fLHydPnK6UCEeUWY1Lp4YO71U2KV0GxsGGwHUGpP7BizfptZuOi5WsXLV9rO+LRO/7RLrOhmYNwzoCQntmZifExBw8dNSVDbwOplCOkBl07c7XXxjiOiLAsVq7XmadHaFc0i1nTUhLfmXWDCUg1Dtr8I0XDr32cEBIa1/g/QGnFGf1l277J0+dz7l/WIaRq3jht1j1XKK2DI76P/UppE+1iPlXa9gip2v5HCOGMaV1Fqr4Sr33M6qm1SUpS4rVNoLfjSMeRUmmf7XRq2yQuxq11OB03OajNhwAxPw9sBIC1G3f8vGXPsAmPZQ+dpo4L6zguKZHbxcsdxbZFZYOIwBH9x42umFEDjjgqxdyRB/KO5uUX1kmIMVHDSum0lDplD8Pyj2XOWcHR4nLRPkkJcYVFpTV795iIaRm0HJVRasJG3a7jlqKbIMimDett3fm7kNUddPhsoZR2xXBVFuUViuPIUq+dWjfBtE9gfiSOd3xSUt7/7XZZJiLGX4ASzmjdtKQyu+axkowf10tDI0QCOZACJ2uKl3ptJ8QfTPzapQkhe/bnHz5SHB/rMUfUWmfUT05OjCsq8ZaL+4j63F8GFI5KEUK6XdaCZWtO69r6knNyyhaVynPOyJZS3XDfq5wxYP7wR0apeSQGL1QBAMeRi774bw2dwXEkxHsYpbYtwAJCQCrVIC2pcXrqrn15ZtkLABBC4mLdRcXeZ/591Uef//DbrgMAoEH//Oue3fsPVTimIJRIpZo1rFe/XlLuwYKwFYg5vWvrCaMHZrXMMF4SABBSxliucuvTy1FU4hNSJcS4bUdYFiNAikt9110++LSurc2MBsrsjvkFxVpr48MyGpHZtH6rZg2ElJyxXfvyNmzeHeNxCSnNC7eMMZczyi1WPvi9LEWT7Qi3y5rz9vL+vdqd1rV1YJHbFRf2Xf71zytWb4pxW/5w27J8jgN6tTcrpE1I++p1W48UlkRTvDmgcITHWOaWrVp/9hmd42M9ZlmH48jzBnYhhFx790tQluFOCCltdem5PR+eNjowkZFKWxa7/l+vQI1a1M2SnA2bd2/YvKtD68am0wqpOrZpPOf+cWOnPr8nNz+QErmo2JuTnel28dsmnBfYw9Pzlz343EecsVCvignH7NG55fMzxn6+6ifOmQiJRqWUKqXat2p0dr/OULYwBAAcR8Z4XN+s3bJ9z0FGqbFfqKC5DKFESNWtY/OWTetv3ZFrGj/W45owekinNk0AIGBnZYwppUeck7Nlx/78gmJTsl9O1qO3j05LSTRl8vILr5r6/NqNO8CE5DN2LFezVJdf2IdQErh2ZiUemFRAQnJG31uyulWz+qnJdXTZCvphg7t9+d2mEq9tVvGYCNELh3QPXgcMAKNvembld5sYJdUfwf39QeEIh1QKgH66cv0VU557fsY/k+rEmtXZjiOHDjg1Nsa1fffBfz31PgAM7tPx7H7Zwwd3M8vhoCwy6tG5i2M9rlKfU5PCoTShZMuO3PG3z33qniuy2zX1a4eQWS0z5j4w/pdt+26e8ZpUqnF66uSxZ/fu0qp+vSSz1t7ibO3GHe8s/sYoQoVhL2YecWq7Zqe2axa+JrYjAjmQjJN1zfpt19z54qGCIkqJ1gQAYj0uSokWGspGDR3bNH5++tgNm3dPe/ite64fntm0Qe8urQDgyZeXjD7/tNS6CUaJjKA/Onexzy4wtTpaWHq0yJtcJ15ISQhJrZvw3IyxX/3wq4uz6+6dF0hcfP6grv17ths+uBuUhcxSQp574/PcAwVmNiq15py9v/S7qVefRynxrzkEPezMbnUT43fuPXjHo+8AQL+crGFndjt/UBchlZRSKk0A3lr0zU/+LHDRoxoQHcJh7G3+j3leVbuX+n8btIdQ47nL4qvXbXUc4X99htKcUyGkyfHZpUMzAMhsUj8+ziOEpJSaQSnn7KEXPp71yqcVjvDLGUfCxEcopZVWSlGttKr8xHRQSX/5488ixuPak5u/c+/Bbh2bm7M2q+/aZTZsl9kwq2WG13ZSkuIbp6ea8m6XBQC/bNt39Z0vHjx01HQhoxvBDR44RJUrMig5LnOaZbH1v+waN21O/pFiMwLSWlkWe2/p6q4dmg/u09E0ptGOVs0atGrWoH2rhq2bpwNAUbE3Ps6z6odf31v63Rdv3EUJAdCcUyHV7OljvT57++6Dk2fM/+/P20dMeuqD2Tc1yUg1xs70tGTzLqjMZg18tmNWSLdpnh7jcZmkXuadB5SSZf/ZUFTiZZQaV7qUijN6xZTZS+fd5l89SEAI2bdHW4C2Hdo0BoBmDdOS6sQa3eEuy6jzdz9uzT9SZFlMOlG1XCUahMOyOKXEzHVdlAOAuemrg9tlUUrMr8weQrPUmVUPQ654IP2U5A+fv8W4IcxElxKandXUFDOpLszfxaW+F9/+YtYrn1oWC31/NTH2vyDiKgnoNrey2a3JcBcaz+4/EYsHSvr/Pd5wUOq1KSX3Pvn+jGcXfjxnSsP6dQGAM+I4UmnVtmVG8FkwSku99t7fDw+b8JjpP8GiYHEWaPAAlDIOVa+gkUp5fY7X5wy8bEZpqV1c6jOTHTBPe6Hy8guvvfullx682iT4MF+ZShrVAID4OM+jcxdv+GVXcanvcEFRvZQ6Zs+EQFbLDADIOKWuUtrtsg4cOnLWVQ8ue2WaOV8oy9CRVXa+wWdt6lDi9c165dOfft0dHAWvtZYKNm7d2/8fMxbNneK2uJnLGMtIhfeA12e/vvCr5V//HNGLJk4WTnLhMEGQhwu37MgNGC85Z7tMfHTYsCvz7a59eVt25JpfmT3kFxQH9hxASHWooOhQQdHwax97/M4xtiOyWmaUkye3y9q1L89ni01b906852X/Dyt6672Sqlz2sGOpdI6nqNi7ZUeuWdxl3ieydWduudqZv/cfKAiUNP/uP1hQrqRS2rz8pd/I+5bOu01r3aBeUnycB4I6vNtl5R8pOnS4aOQNs8wLR8zK+uCD5RcUBxq80vYNwZS/f/aHn63aEHBIHbfzMheG7Yh/TH7m9ccnNsmo1yQjFcBUkAHA5t/2UUqXrvzxiZeXGD/xGaOnL3hucnJiXGpygtnJ1p2//7p9PwBIKSklhUWlIedbHrfL2r77oJBy7c87bp75WoX1N871rTty2wy8eVDvDtOuPb9JRmq5FnC7rD25+aVee/vuA2Nve6H6jXPSQRr2mljTdThpCDaMTxozOLtd00DEgZSKMXrDfa8WFpXWaB2rJvgs+uVkjRl2emDVqfnj+Tf/b/W6rSfaC1CW07DS15eY6d4LM/+p5LHFbFdNfb7Ckh1aN7rpqrNtR7hc/Kpbn4eg0wxzvgZzESfc+WI1XyITYNyl/XtmZ5pLD2X3wK0PvJF3uIo1clFANAgHpeXfPxrI7FQlockmVNgIJZO31qTbrbAAZ7Q6Rw9dBFHhDo+lliqjsp2HNkL4EzEnHuYswqQOCT1W9Qlfq3J1kCEmJ1Ptco1QrrYm105oBEeY8w3sp5p3jrkuf/IeOKk5yacqAGCMgn90MUikV1drbfz7nLPQzuMIWc1k1tUsprWupg8v0kYwJ25CD8wbDKDsVQZSVvH+yj/T4NVHSGVW3AZvrHBQYILxOGOm/rYjQhcHVXi+wVT/2kHZdQkEy/s3giZAItrPyUs0CEeNEB3RgcFhlH9DdNCbq8KjlA6TQiHAX3u+JlPZX7W3kwtcq4IgSMSgcCAIEjEoHAiCRAwKB4IgEYPCgSBIxKBwIAgSMSgcCIJEDAoHgiARg8KBIEjEoHAgCBIxKBwIgkQMCgeCIBGDwoEgSMSgcCAIEjEoHAiCRAwKB4IgEYPCgSBIxPw/7RoDvvMJpK8AAAAASUVORK5CYII="/>
 <style>
+:root{
+  --bg:#F2F2F7; --card:#fff; --text:#1C1C1E; --text-secondary:#8E8E93;
+  --border:#E5E5EA; --row-border:#F2F2F7; --navy:#1C3A6B; --navy-soft:#1C3A6B18;
+  --topbar:#1C3A6B; --shadow-sm:0 1px 3px rgba(0,0,0,0.05); --shadow-md:0 1px 6px rgba(0,0,0,0.08);
+  --input-bg:#fff;
+}
+[data-theme="dark"]{
+  --bg:#000; --card:#1C1C1E; --text:#fff; --text-secondary:#8E8E93;
+  --border:#38383A; --row-border:#2C2C2E; --navy:#5B8FE8; --navy-soft:rgba(91,143,232,0.15);
+  --topbar:#1C1C1E; --shadow-sm:0 1px 3px rgba(0,0,0,0.4); --shadow-md:0 1px 6px rgba(0,0,0,0.5);
+  --input-bg:#2C2C2E;
+}
 *{box-sizing:border-box;margin:0;padding:0;-webkit-tap-highlight-color:transparent;-webkit-font-smoothing:antialiased}
 html,body{width:100%;min-height:100%;}
-body{font-family:-apple-system,BlinkMacSystemFont,system-ui,sans-serif;background:#F2F2F7;padding-top:60px;padding-top:max(60px,calc(env(safe-area-inset-top) + 50px));}
+body{font-family:-apple-system,BlinkMacSystemFont,system-ui,sans-serif;background:var(--bg);color:var(--text);padding-top:60px;padding-top:max(60px,calc(env(safe-area-inset-top) + 50px));transition:background 0.2s,color 0.2s;}
 #app{display:flex;flex-direction:column;width:100%;min-height:100%;}
 .topbar{background:#1C3A6B;padding:10px 16px;display:flex;align-items:center;justify-content:space-between;padding-top:max(10px,env(safe-area-inset-top));position:fixed;top:0;left:0;right:0;z-index:100}
-.screen{background:#F2F2F7;}
+.screen{background:var(--bg);}
 .tabbar{background:rgba(249,249,249,0.97);backdrop-filter:blur(20px);border-top:0.5px solid rgba(0,0,0,0.15);display:flex;padding-bottom:env(safe-area-inset-bottom);position:fixed;bottom:0;left:0;right:0;z-index:100}
 .tab{flex:1;display:flex;flex-direction:column;align-items:center;padding:8px 0 6px;border:none;background:transparent;cursor:pointer;gap:2px;font-family:inherit;font-size:9px;font-weight:600;color:#8E8E93;min-width:0}
 .tab.active{color:#1C3A6B}
 .scroll-view{display:block;}
 
-.card{background:#fff;border-radius:14px;margin:0 16px;box-shadow:0 1px 3px rgba(0,0,0,0.04),0 4px 12px rgba(0,0,0,0.04);overflow:hidden}
+.card{background:var(--card);border-radius:14px;margin:0 16px;box-shadow:var(--shadow-md);overflow:hidden}
 .sh{padding:8px 16px 4px;font-size:12px;font-weight:700;color:#8E8E93;text-transform:uppercase;letter-spacing:0.6px}
-.row{display:flex;align-items:center;gap:12px;padding:13px 16px;border-bottom:1px solid #F2F2F7}
+.row{display:flex;align-items:center;gap:12px;padding:13px 16px;border-bottom:1px solid var(--row-border)}
 .row:last-child{border-bottom:none}
 .btn{border:none;cursor:pointer;font-family:inherit;background:none;padding:0}
 .back-btn{display:flex;align-items:center;gap:4px;color:#1C3A6B;font-size:15px;font-weight:500;border:none;background:none;cursor:pointer;font-family:inherit}
@@ -32,7 +44,7 @@ body{font-family:-apple-system,BlinkMacSystemFont,system-ui,sans-serif;backgroun
 .primary-btn:active{opacity:0.8}
 .secondary-btn{width:100%;padding:15px;border:none;border-radius:12px;background:rgba(28,58,107,0.08);color:#1C3A6B;font-size:17px;font-weight:600;cursor:pointer;font-family:inherit;letter-spacing:-0.2px}
 .green-btn{width:100%;padding:16px;border:none;border-radius:14px;background:#34C759;color:#fff;font-size:17px;font-weight:600;cursor:pointer;font-family:inherit}
-.input{width:100%;padding:13px 16px;border:1px solid #E5E5EA;border-radius:11px;font-size:16px;font-family:inherit;outline:none;background:#fff;color:#1C1C1E;-webkit-appearance:none;transition:border-color 0.15s,box-shadow 0.15s}
+.input{width:100%;padding:13px 16px;border:1px solid var(--border);border-radius:11px;font-size:16px;font-family:inherit;outline:none;background:var(--input-bg);color:var(--text);-webkit-appearance:none;transition:border-color 0.15s,box-shadow 0.15s}
 .input:focus{border-color:#1C3A6B;box-shadow:0 0 0 3px rgba(28,58,107,0.1)}
 .err{color:#FF3B30;font-size:13px;text-align:center;min-height:16px;margin-top:4px}
 .toggle{width:51px;height:31px;border-radius:16px;position:relative;cursor:pointer;transition:background 0.2s;border:none;padding:0}
@@ -115,14 +127,14 @@ function fd(d){return d.getFullYear()+'-'+String(d.getMonth()+1).padStart(2,'0')
 // ── STATE ────────────────────────────────────────
 const S={
   user:null,familyId:null,family:null,
-  children:[],packing:{},events:[],assessments:[],groceries:[],gifts:[],dinners:[],
+  children:[],packing:{},events:[],assessments:[],groceries:[],gifts:[],dinners:[],playdates:[],contacts:[],mealIdeas:[],
   tab:'today',screen:null,screenParams:{},
   activeChild:null,morningMode:false,
   calWeekOffset:0,calDate:null,showTomorrow:false,
   listTab:'menu',listFilter:'all',
   evTab:'events',
   fabOpen:false,notif:null,nTimer:null,weather:null,
-  notifTime:'07:00',manualLat:'',manualLon:'',manualCity:'',
+  notifTime:'07:00',manualLat:'',manualLon:'',manualCity:'',nightMode:false,
   termDates:{t1s:'',t1e:'',t2s:'',t2e:'',t3s:'',t3e:'',t4s:'',t4e:''},
   dayOffset:0,
   toggles:{notifs:true,loc:false},unsubs:[],
@@ -195,7 +207,65 @@ function getViewDate(){
   return d;
 }
 function getViewDateStr(){return fd(getViewDate());}
-function members(){return Object.entries(S.family&&S.family.members||{}).map(([uid,m])=>({uid,name:m.name,role:m.role,color:m.color||NAVY}));}
+function genICS(events){
+  // Generate iCalendar file content
+  const fmt=d=>{
+    const pad=n=>String(n).padStart(2,'0');
+    return d.getFullYear()+pad(d.getMonth()+1)+pad(d.getDate())+'T'+pad(d.getHours())+pad(d.getMinutes())+'00';
+  };
+  let ics='BEGIN:VCALENDAR\r\nVERSION:2.0\r\nPRODID:-//HomeBase//EN\r\nCALSCALE:GREGORIAN\r\n';
+  events.forEach(ev=>{
+    if(!ev.date&&!ev.startDate)return;
+    const d=ev.date||ev.startDate;
+    const start=new Date(d+'T09:00');
+    const end=new Date(d+'T10:00');
+    // Try to parse time
+    if(ev.time){
+      const tm=ev.time.match(/(\d{1,2})[:\.]?(\d{0,2})\s*(am|pm)?/i);
+      if(tm){
+        let h=parseInt(tm[1]);
+        if(tm[3]&&tm[3].toLowerCase()==='pm'&&h<12)h+=12;
+        start.setHours(h,parseInt(tm[2]||'0'));
+        end.setHours(h+1,parseInt(tm[2]||'0'));
+      }
+    }
+    ics+='BEGIN:VEVENT\r\n';
+    ics+='UID:hb-'+(ev.id||Date.now())+'@homebase\r\n';
+    ics+='DTSTAMP:'+fmt(new Date())+'\r\n';
+    ics+='DTSTART:'+fmt(start)+'\r\n';
+    ics+='DTEND:'+fmt(end)+'\r\n';
+    ics+='SUMMARY:'+(ev.emoji||'')+(ev.emoji?' ':'')+(ev.title||'Event').replace(/[\n\r]/g,' ')+'\r\n';
+    if(ev.location)ics+='LOCATION:'+ev.location.replace(/[\n\r]/g,' ')+'\r\n';
+    let desc=[];
+    if(ev.dropoff)desc.push('Drop-off: '+ev.dropoff);
+    if(ev.pickup)desc.push('Pick-up: '+ev.pickup);
+    if(ev.notes)desc.push(ev.notes);
+    if(desc.length)ics+='DESCRIPTION:'+desc.join(' \\n ').replace(/[\n\r]/g,' ')+'\r\n';
+    if(ev.freq==='weekly'){
+      const days=Object.keys(ev.days||{}).filter(k=>ev.days[k]).map(d=>d.toUpperCase().slice(0,2)).join(',');
+      if(days)ics+='RRULE:FREQ=WEEKLY;BYDAY='+days+(ev.endDate?';UNTIL='+fmt(new Date(ev.endDate+'T23:59')):'')+'\r\n';
+    }else if(ev.freq==='fortnightly'){
+      const days=Object.keys(ev.days||{}).filter(k=>ev.days[k]).map(d=>d.toUpperCase().slice(0,2)).join(',');
+      if(days)ics+='RRULE:FREQ=WEEKLY;INTERVAL=2;BYDAY='+days+(ev.endDate?';UNTIL='+fmt(new Date(ev.endDate+'T23:59')):'')+'\r\n';
+    }
+    ics+='END:VEVENT\r\n';
+  });
+  ics+='END:VCALENDAR\r\n';
+  return ics;
+}
+function downloadICS(events,filename){
+  const ics=genICS(events);
+  const blob=new Blob([ics],{type:'text/calendar;charset=utf-8'});
+  const url=URL.createObjectURL(blob);
+  const a=document.createElement('a');
+  a.href=url;
+  a.download=(filename||'homebase-events')+'.ics';
+  document.body.appendChild(a);
+  a.click();
+  setTimeout(()=>{document.body.removeChild(a);URL.revokeObjectURL(url);},100);
+}
+
+function members(){return Object.entries(S.family&&S.family.members||{}).map(([uid,m])=>({uid,name:m.name,role:m.role,color:m.color||NAVY,relationship:m.relationship||'',photoURL:m.photoURL||'',phone:m.phone||'',email:m.email||''}));}
 
 async function fw(){
   if(S.weather)return;
@@ -281,6 +351,9 @@ function subscribe(){
   S.unsubs.push(onSnapshot(fcol(['groceries']),s=>{S.groceries=s.docs.map(d=>({id:d.id,...d.data()}));render();}));
   S.unsubs.push(onSnapshot(fcol(['gifts']),s=>{S.gifts=s.docs.map(d=>({id:d.id,...d.data()}));render();}));
   S.unsubs.push(onSnapshot(fcol(['dinners']),s=>{S.dinners=s.docs.map(d=>({id:d.id,...d.data()}));render();}));
+  S.unsubs.push(onSnapshot(fcol(['playdates']),s=>{S.playdates=s.docs.map(d=>({id:d.id,...d.data()}));render();}));
+  S.unsubs.push(onSnapshot(fcol(['contacts']),s=>{S.contacts=s.docs.map(d=>({id:d.id,...d.data()}));render();}));
+  S.unsubs.push(onSnapshot(fcol(['mealIdeas']),s=>{S.mealIdeas=s.docs.map(d=>({id:d.id,...d.data()}));render();}));
 }
 
 // ── AUTH SCREENS ──────────────────────────────────
@@ -550,6 +623,13 @@ function sEditCaregiver(){
     </div>
     <div style="padding:20px;max-width:560px;margin:auto;width:100%">
       <div style="display:flex;flex-direction:column;gap:12px">
+        <div style="text-align:center;margin-bottom:4px">
+          <div class="photo-wrap" id="photo-preview" onclick="document.getElementById('photo-input').click()" style="${m.photoURL?'background-image:url(\''+m.photoURL+'\');background-size:cover;background-position:center;border:none':''}">
+            ${!m.photoURL?'<span style="font-size:28px">📷</span><span style="font-size:11px;color:var(--text-secondary);margin-top:4px">Add Photo</span>':''}
+          </div>
+          <input type="file" id="photo-input" accept="image/*" style="display:none" onchange="onPhoto(this)"/>
+          <input type="hidden" id="photo-data" value="${m.photoURL||''}"/>
+        </div>
         <input class="input" id="ec-name" type="text" placeholder="Full name" value="${m.name||''}"/>
         <select class="input" id="ec-rel">
           <option value="">Relationship to children...</option>
@@ -644,9 +724,32 @@ function sToday(){
             ${cEvs.length?`<div style="font-size:11px;color:#8E8E93;margin-top:3px">📅 ${cEvs.length} event${cEvs.length>1?'s':''}</div>`:''}
           </div>`;
         }).join('')}
-        <div onclick="go('addChild')" style="min-width:96px;flex-shrink:0;background:#fff;border-radius:14px;padding:12px;box-shadow:0 1px 3px rgba(0,0,0,0.06);border:2px dashed #C7C7CC;cursor:pointer;display:flex;flex-direction:column;align-items:center;justify-content:center;gap:6px">
-          <div style="font-size:24px;color:#1C3A6B">＋</div>
-          <div style="font-size:12px;font-weight:600;color:#1C3A6B">Add Child</div>
+        ${members().filter(m=>['Mum','Dad','Stepmum','Stepdad'].includes(m.relationship||'')).map(m=>{
+          const photoURL=m.photoURL||'';
+          const ev=S.events.filter(e=>e.dropoff===m.name||e.pickup===m.name).filter(ev=>{
+            if(!ev.freq||ev.freq==='once')return ev.date===getViewDateStr();
+            const start=new Date((ev.startDate||ev.date||getViewDateStr())+'T12:00');
+            const end=ev.endDate?new Date(ev.endDate+'T12:00'):null;
+            const now=new Date(getViewDateStr()+'T12:00');
+            if(now<start||(end&&now>end))return false;
+            return ev.days&&ev.days[DAYSH[now.getDay()]];
+          }).length;
+          const relIcon={Mum:'👩',Dad:'👨',Stepmum:'👩',Stepdad:'👨'}[m.relationship]||'';
+          return `<div onclick="go('editCaregiver',{uid:'${m.uid}'})" style="min-width:130px;flex-shrink:0;background:var(--card);border-radius:14px;padding:12px;box-shadow:var(--shadow-md);border-top:3px solid ${m.color};cursor:pointer;position:relative">
+            <div style="position:absolute;top:6px;right:8px;font-size:14px">${relIcon}</div>
+            <div style="display:flex;align-items:center;gap:8px;margin-bottom:8px">
+              ${av(m.name,m.color,32,photoURL)}
+              <div>
+                <div style="font-size:14px;font-weight:700;color:var(--text)">${m.name.split(' ')[0]}</div>
+                <div style="font-size:11px;color:var(--text-secondary)">${m.relationship||m.role}</div>
+              </div>
+            </div>
+            ${ev>0?`<div style="font-size:11px;color:${m.color};font-weight:600">🚗 ${ev} run${ev>1?'s':''}</div>`:`<div style="font-size:11px;color:var(--text-secondary)">No runs today</div>`}
+          </div>`;
+        }).join('')}
+        <div onclick="go('addChild')" style="min-width:96px;flex-shrink:0;background:var(--card);border-radius:14px;padding:12px;box-shadow:var(--shadow-sm);border:2px dashed var(--border);cursor:pointer;display:flex;flex-direction:column;align-items:center;justify-content:center;gap:6px">
+          <div style="font-size:24px;color:var(--navy)">＋</div>
+          <div style="font-size:12px;font-weight:600;color:var(--navy)">Add Child</div>
         </div>
       </div>
     </div>
@@ -928,11 +1031,15 @@ function sCalendar(){
 // ── EVENTS TAB ────────────────────────────────────
 function sEvents(){
   const sub=S.evTab;
-  const tabBar=`<div style="background:#fff;padding:0 16px;border-bottom:1px solid #F2F2F7;display:flex;position:sticky;top:57px;z-index:9">
+  const tabBar=`<div style="background:var(--card);padding:0 16px;border-bottom:1px solid var(--row-border);display:flex;position:sticky;top:57px;z-index:9;overflow-x:auto">
     <button class="sub-tab ${sub==='events'?'on':'off'}" onclick="S.evTab='events';render()">Events</button>
     <button class="sub-tab ${sub==='gifts'?'on':'off'}" onclick="S.evTab='gifts';render()">🎁 Gifts</button>
+    <button class="sub-tab ${sub==='assessments'?'on':'off'}" onclick="S.evTab='assessments';render()">📚 Assessments</button>
+    <button class="sub-tab ${sub==='playdates'?'on':'off'}" onclick="S.evTab='playdates';render()">🎉 Play Dates</button>
   </div>`;
   if(sub==='gifts')return sGifts(tabBar);
+  if(sub==='assessments')return sAssessmentsInEvents(tabBar);
+  if(sub==='playdates')return sPlayDates(tabBar);
   const allEvs=[...S.events].sort((a,b)=>a.title.localeCompare(b.title));
   return `
     <div style="background:#fff;padding:14px 16px 0;border-bottom:1px solid #F2F2F7;position:sticky;top:0;z-index:10">
@@ -953,6 +1060,67 @@ function sEvents(){
       </div>`;}).join('')}</div>`}
     </div>
     <div class="fab"><button class="fab-btn" style="background:#1C3A6B" onclick="go('addEvent')">+</button></div>`;
+}
+
+function sAssessmentsInEvents(tabBar){
+  const f=S.listFilter==='all'?S.assessments:S.assessments.filter(a=>a.childId===S.listFilter);
+  const sorted=[...f].sort((a,b)=>(a.daysLeft||999)-(b.daysLeft||999));
+  return `
+    <div style="background:var(--card);padding:14px 16px 0;border-bottom:1px solid var(--row-border);position:sticky;top:0;z-index:10">
+      <div style="font-size:26px;font-weight:800;color:var(--text)">Events</div>
+    </div>
+    ${tabBar}
+    <div style="background:var(--card);padding:8px 16px 12px;display:flex;gap:8px;flex-wrap:wrap;border-bottom:1px solid var(--row-border)">
+      ${[{id:'all',label:'All'},...S.children.map(c=>({id:c.id,label:c.name}))].map(fi=>`<button class="btn" onclick="S.listFilter='${fi.id}';render()" style="padding:6px 14px;border-radius:20px;border:2px solid ${S.listFilter===fi.id?'var(--navy)':'var(--border)'};background:${S.listFilter===fi.id?'var(--navy-soft)':'transparent'};color:${S.listFilter===fi.id?'var(--navy)':'var(--text-secondary)'};font-size:14px;font-weight:600;font-family:inherit">${fi.label}</button>`).join('')}
+    </div>
+    <div style="padding:14px 0 100px">
+      ${sorted.length===0?'<div style="text-align:center;padding:40px;color:var(--text-secondary);font-size:15px">No assessments yet 🎉</div>':''}
+      ${sorted.map(a=>{const ec=S.children.find(c=>c.id===a.childId);const urg=(a.daysLeft||99)<=7;return `<div style="width:calc(100% - 32px);margin:0 16px 10px;background:var(--card);border-radius:14px;padding:14px 16px;box-shadow:var(--shadow-md);border-left:4px solid ${urg?'#FF3B30':'#34C759'}">
+        <div style="display:flex;align-items:flex-start;gap:10px">
+          ${ec?av(ec.name,ec.color||NAVY,36,ec.photoURL):''}
+          <div style="flex:1"><div style="font-size:16px;font-weight:700">${a.title}</div><div style="font-size:13px;color:var(--text-secondary)">${a.subject||''} · Due ${a.due||''}</div>${a.notes?`<div style="font-size:12px;color:var(--text-secondary);margin-top:4px;font-style:italic">${a.notes.substring(0,140)}${a.notes.length>140?'...':''}</div>`:''}</div>
+          ${a.daysLeft!==undefined?`<div style="font-size:12px;font-weight:700;color:${urg?'#FF3B30':'#34C759'};background:${urg?'#FFF0EE':'#EAFAF0'};padding:4px 10px;border-radius:20px;white-space:nowrap">${a.daysLeft}d</div>`:''}
+          <button onclick="dAssessment('${a.id}')" style="color:#FF3B30;font-size:20px;opacity:0.5;border:none;background:none;cursor:pointer">×</button>
+        </div>
+      </div>`;}).join('')}
+    </div>
+    <div class="fab"><button class="fab-btn" style="background:var(--navy)" onclick="go('addAssessment')">+</button></div>`;
+}
+
+function sPlayDates(tabBar){
+  const playdates=(S.playdates||[]).sort((a,b)=>(a.date||'').localeCompare(b.date||''));
+  return `
+    <div style="background:var(--card);padding:14px 16px 0;border-bottom:1px solid var(--row-border);position:sticky;top:0;z-index:10">
+      <div style="font-size:26px;font-weight:800;color:var(--text)">Events</div>
+    </div>
+    ${tabBar}
+    <div style="padding:14px 0 100px">
+      ${playdates.length===0?`<div style="text-align:center;padding:60px 20px"><div style="font-size:56px;margin-bottom:14px">🎉</div><div style="font-size:17px;font-weight:700;margin-bottom:6px">No play dates yet</div><div style="font-size:14px;color:var(--text-secondary)">Tap + to add a play date, sleepover or birthday party</div></div>`:''}
+      ${playdates.map(pd=>{
+        const ec=S.children.find(c=>c.id===pd.childId);
+        const col=ec?.color||NAVY;
+        const typeIcon={playdate:'🎈',sleepover:'🛏',birthday:'🎂'}[pd.type]||'🎉';
+        const typeLabel={playdate:'Play Date',sleepover:'Sleep Over',birthday:'Birthday Party'}[pd.type]||'Event';
+        const dt=pd.date?new Date(pd.date+'T12:00'):null;
+        return `<div onclick="go('viewPlayDate',{id:'${pd.id}'})" style="width:calc(100% - 32px);margin:0 16px 10px;background:var(--card);border-radius:14px;padding:14px 16px;box-shadow:var(--shadow-md);border-left:4px solid ${col};cursor:pointer">
+          <div style="display:flex;align-items:flex-start;gap:10px">
+            <div style="font-size:30px">${typeIcon}</div>
+            <div style="flex:1">
+              <div style="display:flex;gap:6px;align-items:center;flex-wrap:wrap">
+                <span style="font-size:11px;font-weight:700;padding:2px 8px;border-radius:12px;background:${col}18;color:${col}">${typeLabel}</span>
+                ${pd.rsvpStatus?`<span style="font-size:11px;font-weight:700;padding:2px 8px;border-radius:12px;background:${pd.rsvpStatus==='yes'?'#EAFAF0':pd.rsvpStatus==='no'?'#FFF0EE':'#FFF8E5'};color:${pd.rsvpStatus==='yes'?'#34C759':pd.rsvpStatus==='no'?'#FF3B30':'#806000'}">RSVP: ${pd.rsvpStatus.toUpperCase()}</span>`:''}
+              </div>
+              <div style="font-size:16px;font-weight:700;margin-top:4px">${pd.title||(typeLabel+(pd.host?' at '+pd.host:''))}</div>
+              ${dt?`<div style="font-size:13px;color:var(--text-secondary)">📅 ${DAYNAMES[dt.getDay()]} ${dt.getDate()} ${MONTHS[dt.getMonth()]}${pd.time?' · '+pd.time:''}</div>`:''}
+              ${ec?`<div style="display:flex;align-items:center;gap:5px;margin-top:4px">${av(ec.name,col,18,ec.photoURL)}<span style="font-size:12px;color:${col};font-weight:600">${ec.name}</span></div>`:''}
+              ${pd.location?`<div style="font-size:12px;color:var(--text-secondary);margin-top:2px">📍 ${pd.location}</div>`:''}
+            </div>
+            <span class="chev"></span>
+          </div>
+        </div>`;
+      }).join('')}
+    </div>
+    <div class="fab"><button class="fab-btn" style="background:var(--navy)" onclick="go('addPlayDate')">+</button></div>`;
 }
 
 function sGifts(tabBar){
@@ -990,41 +1158,257 @@ function sGifts(tabBar){
 
 // ── LISTS ─────────────────────────────────────────
 function sDinners(){
-  // Get next 14 days
+  // Get this week (today + 6 forward)
   const days=[];
-  for(let i=0;i<14;i++){
+  for(let i=0;i<7;i++){
     const d=new Date(today);d.setDate(today.getDate()+i);
     const ds=fd(d);
     const meal=S.dinners?.find(dn=>dn.date===ds);
     days.push({date:ds,dateObj:d,meal:meal});
   }
+  // Past dinners (history) - automatically saved
+  const pastDinners=(S.dinners||[]).filter(d=>d.date<todayStr).sort((a,b)=>(b.date||'').localeCompare(a.date||''));
+  // Build meal history with frequency for suggestions
+  const mealCounts={};
+  pastDinners.forEach(d=>{
+    const k=(d.meal||'').toLowerCase().trim();
+    if(k)mealCounts[k]=(mealCounts[k]||0)+1;
+  });
+  const totalUnique=Object.keys(mealCounts).length;
   return `<div style="min-height:100%;display:flex;flex-direction:column">
-    <div style="background:#fff;padding:14px 16px;display:flex;align-items:center;border-bottom:1px solid #F2F2F7;position:sticky;top:0;z-index:10">
+    <div style="background:var(--card);padding:14px 16px;display:flex;align-items:center;border-bottom:1px solid var(--row-border);position:sticky;top:0;z-index:10">
       <button class="back-btn" onclick="S.listTab='menu';render()">${bk()} Back</button>
       <div style="flex:1;text-align:center;font-size:17px;font-weight:600">🍽 Dinners</div>
-      <button class="btn" onclick="go('addDinner')" style="color:#1C3A6B;font-size:15px;font-weight:600">+ Add</button>
+      <button class="btn" onclick="go('addDinner')" style="color:var(--navy);font-size:15px;font-weight:600">+ Add</button>
     </div>
     <div style="padding:14px 0 100px">
-      <div class="sh" style="margin-bottom:6px">Next 14 Days</div>
+      <div class="sh" style="margin-bottom:6px">This Week</div>
       <div class="card" style="margin-bottom:14px">
         ${days.map((d,i,arr)=>{
           const isToday=d.date===todayStr;
           const dayLabel=isToday?'TODAY':DAYSH[d.dateObj.getDay()].toUpperCase();
           const dateLabel=d.dateObj.getDate()+' '+MONTHS[d.dateObj.getMonth()];
-          return `<div class="row" style="border-bottom:${i<arr.length-1?'1px solid #F2F2F7':'none'}">
+          return `<div class="row" style="border-bottom:${i<arr.length-1?'1px solid var(--row-border)':'none'}">
             <div style="width:60px;flex-shrink:0">
-              <div style="font-size:11px;font-weight:700;color:${isToday?'#FF3B30':'#8E8E93'}">${dayLabel}</div>
-              <div style="font-size:12px;color:#8E8E93;margin-top:1px">${dateLabel}</div>
+              <div style="font-size:11px;font-weight:700;color:${isToday?'#FF3B30':'var(--text-secondary)'}">${dayLabel}</div>
+              <div style="font-size:12px;color:var(--text-secondary);margin-top:1px">${dateLabel}</div>
             </div>
             ${d.meal?`<div style="flex:1">
               <div style="font-size:15px;font-weight:600">${d.meal.meal}</div>
-              ${d.meal.cook?`<div style="font-size:12px;color:#8E8E93">👨‍🍳 ${d.meal.cook}</div>`:''}
-              ${d.meal.notes?`<div style="font-size:12px;color:#8E8E93;font-style:italic">${d.meal.notes}</div>`:''}
+              ${d.meal.cook?`<div style="font-size:12px;color:var(--text-secondary)">👨‍🍳 ${d.meal.cook}</div>`:''}
+              ${d.meal.notes?`<div style="font-size:12px;color:var(--text-secondary);font-style:italic">${d.meal.notes}</div>`:''}
             </div>
             <button onclick="dDinner('${d.meal.id}')" style="color:#FF3B30;font-size:20px;opacity:0.5;border:none;background:none;cursor:pointer">×</button>`:
-            `<button onclick="go('addDinner',{date:'${d.date}'})" style="flex:1;text-align:left;color:#1C3A6B;font-size:14px;font-weight:600;background:none;border:none;cursor:pointer;padding:0;font-family:inherit">+ Plan a meal</button>`}
+            `<button onclick="go('addDinner',{date:'${d.date}'})" style="flex:1;text-align:left;color:var(--navy);font-size:14px;font-weight:600;background:none;border:none;cursor:pointer;padding:0;font-family:inherit">+ Plan a meal</button>`}
           </div>`;
         }).join('')}
+      </div>
+
+      <!-- MEAL IDEAS LIBRARY -->
+      <div class="sh" style="margin-bottom:6px;display:flex;justify-content:space-between;align-items:center;padding-right:16px">
+        <span>💡 Meal Ideas (${(S.mealIdeas||[]).length})</span>
+        <button onclick="addMealIdea()" style="background:none;border:none;color:var(--navy);font-size:13px;font-weight:600;cursor:pointer;font-family:inherit">+ Add idea</button>
+      </div>
+      <div class="card" style="margin-bottom:14px">
+        ${(S.mealIdeas||[]).length===0?'<div class="row" style="color:var(--text-secondary);font-size:13px;justify-content:center;padding:14px">No ideas yet — tap "Add idea" to start your bank</div>':
+          (S.mealIdeas||[]).sort((a,b)=>(a.label||'').localeCompare(b.label||'')).map((m,i,arr)=>`<div class="row" style="border-bottom:${i<arr.length-1?'1px solid var(--row-border)':'none'}">
+            <div style="flex:1;font-size:14px">${m.label}</div>
+            <button onclick="useMealIdea('${m.id}')" style="padding:5px 10px;border-radius:8px;background:var(--navy-soft);border:none;cursor:pointer;color:var(--navy);font-size:12px;font-weight:600;font-family:inherit;margin-right:6px">Use →</button>
+            <button onclick="dMealIdea('${m.id}')" style="color:#FF3B30;font-size:18px;opacity:0.5;border:none;background:none;cursor:pointer">×</button>
+          </div>`).join('')}
+      </div>
+
+      ${pastDinners.length>0?`
+      <div class="sh" style="margin-bottom:6px;display:flex;justify-content:space-between;align-items:center;padding-right:16px">
+        <span>📖 Meal History (${pastDinners.length})</span>
+        ${totalUnique>=10?`<span style="font-size:11px;color:var(--text-secondary);font-weight:500;text-transform:none;letter-spacing:0">Auto-suggesting ✨</span>`:`<span style="font-size:11px;color:var(--text-secondary);font-weight:500;text-transform:none;letter-spacing:0">${10-totalUnique} more for suggestions</span>`}
+      </div>
+      <div class="card" style="margin-bottom:14px">
+        ${pastDinners.slice(0,30).map((d,i,arr)=>{
+          const dt=new Date(d.date+'T12:00');
+          return `<div class="row" style="border-bottom:${i<Math.min(arr.length,30)-1?'1px solid var(--row-border)':'none'}">
+            <div style="width:70px;flex-shrink:0;font-size:11px;color:var(--text-secondary)">${DAYSH[dt.getDay()]} ${dt.getDate()}/${dt.getMonth()+1}</div>
+            <div style="flex:1">
+              <div style="font-size:14px;font-weight:600">${d.meal}</div>
+              ${d.cook?`<div style="font-size:11px;color:var(--text-secondary)">👨‍🍳 ${d.cook}</div>`:''}
+            </div>
+            <button onclick="reuseDinner('${d.id}')" style="padding:5px 10px;border-radius:8px;background:var(--navy-soft);border:none;cursor:pointer;color:var(--navy);font-size:12px;font-weight:600;font-family:inherit;margin-right:6px">↻ Reuse</button>
+            <button onclick="saveAsMealIdea('${d.id}')" style="padding:5px 10px;border-radius:8px;background:#34C75920;border:none;cursor:pointer;color:#34C759;font-size:12px;font-weight:600;font-family:inherit" title="Save to ideas bank">💡</button>
+          </div>`;
+        }).join('')}
+        ${pastDinners.length>30?`<div class="row" style="justify-content:center;color:var(--text-secondary);font-size:12px">+${pastDinners.length-30} older meals</div>`:''}
+      </div>
+      `:''}
+    </div>
+  </div>`;
+}
+
+function sAddPlayDate(){
+  const presetType=S.screenParams?.type||'playdate';
+  const presetId=S.screenParams?.editId;
+  const existing=presetId?S.playdates.find(p=>p.id===presetId):null;
+  const data=existing||{};
+  const mems=members();
+  return `<div style="min-height:100%;display:flex;flex-direction:column;background:var(--bg)">
+    <div style="background:var(--card);padding:14px 16px;display:flex;align-items:center;border-bottom:1px solid var(--row-border);position:sticky;top:0;z-index:10">
+      <button class="back-btn" onclick="back()">${bk()} Back</button>
+      <div style="flex:1;text-align:center;font-size:17px;font-weight:600">${existing?'Edit':'New'} Play Date</div>
+      <div style="width:60px"></div>
+    </div>
+    <div style="padding:20px;max-width:560px;margin:auto;width:100%">
+      <div style="display:flex;flex-direction:column;gap:14px">
+
+        <div>
+          <div style="font-size:14px;font-weight:600;margin-bottom:8px">Type</div>
+          <div style="display:flex;gap:8px">
+            ${[{id:'playdate',label:'🎈 Play Date'},{id:'sleepover',label:'🛏 Sleep Over'},{id:'birthday',label:'🎂 Birthday Party'}].map(t=>`<button onclick="setPlayDateType('${t.id}')" id="ptype-${t.id}" class="freq-btn ${(data.type||presetType)===t.id?'on':''}" style="padding:10px 8px;font-size:12px">${t.label}</button>`).join('')}
+          </div>
+          <input type="hidden" id="pd-type" value="${data.type||presetType}"/>
+        </div>
+
+        <!-- OCR scan card (birthday only) -->
+        <div id="pd-ocr-card" style="display:${(data.type||presetType)==='birthday'?'block':'none'};background:linear-gradient(135deg,var(--navy),#2E5FBF);border-radius:14px;padding:16px;color:#fff">
+          <div style="font-size:14px;font-weight:700;margin-bottom:4px">📸 Scan Invite</div>
+          <div style="font-size:12px;opacity:0.85;margin-bottom:10px">Take a photo or upload — we'll auto-fill what we can</div>
+          <input type="file" id="pd-ocr-input" accept="image/*" capture="environment" style="display:none" onchange="runPlayDateOCR(this)"/>
+          <button onclick="document.getElementById('pd-ocr-input').click()" style="width:100%;padding:11px;border-radius:10px;background:rgba(255,255,255,0.22);border:none;color:#fff;font-size:14px;font-weight:600;cursor:pointer;font-family:inherit">📷 Take Photo or Upload</button>
+          <div id="pd-ocr-status" style="font-size:12px;margin-top:8px;opacity:0.9;min-height:16px"></div>
+        </div>
+
+        <input class="input" id="pd-title" type="text" placeholder="Title (e.g. Sam's 8th Birthday)" value="${data.title||''}"/>
+
+        <select class="input" id="pd-child">
+          <option value="">Which child is going?</option>
+          ${S.children.map(c=>`<option value="${c.id}" ${data.childId===c.id?'selected':''}>${c.name}</option>`).join('')}
+        </select>
+
+        <input class="input" id="pd-date" type="date" value="${data.date||''}"/>
+        <div style="font-size:12px;color:var(--text-secondary);margin-top:-8px;padding-left:4px">Date</div>
+
+        <input class="input" id="pd-time" type="text" placeholder="Time (e.g. 3:00pm – 5:30pm)" value="${data.time||''}"/>
+
+        <input class="input" id="pd-host" type="text" placeholder="Host child's name" value="${data.host||''}"/>
+
+        <input class="input" id="pd-host-parent" type="text" placeholder="Host parent name" value="${data.hostParent||''}"/>
+
+        <input class="input" id="pd-host-phone" type="tel" placeholder="Host parent phone" value="${data.hostPhone||''}"/>
+
+        <input class="input" id="pd-host-email" type="email" placeholder="Host parent email (optional)" value="${data.hostEmail||''}"/>
+
+        <input class="input" id="pd-location" type="text" placeholder="Address / Location" value="${data.location||''}"/>
+        <button onclick="openMapsForLocation()" type="button" style="margin-top:-8px;padding:8px;border-radius:10px;background:var(--navy-soft);border:none;color:var(--navy);font-size:13px;font-weight:600;cursor:pointer;font-family:inherit">📍 Open in Maps to drop pin</button>
+
+        <div>
+          <div style="font-size:14px;font-weight:600;margin-bottom:8px">🚗 Drop-off / Pick-up</div>
+          <select class="input" id="pd-dropoff">
+            <option value="">Drop-off: not set</option>
+            ${mems.map(m=>`<option value="${m.name}" ${data.dropoff===m.name?'selected':''}>Drop-off: ${m.name}</option>`).join('')}
+          </select>
+        </div>
+        <select class="input" id="pd-pickup">
+          <option value="">Pick-up: not set</option>
+          ${mems.map(m=>`<option value="${m.name}" ${data.pickup===m.name?'selected':''}>Pick-up: ${m.name}</option>`).join('')}
+        </select>
+
+        <!-- RSVP -->
+        <div>
+          <div style="font-size:14px;font-weight:600;margin-bottom:8px">RSVP Status</div>
+          <div style="display:flex;gap:8px">
+            ${[{id:'yes',label:'✅ Yes'},{id:'no',label:'❌ No'},{id:'maybe',label:'🤔 Maybe'}].map(r=>`<button onclick="setPlayDateRsvp('${r.id}')" id="prsvp-${r.id}" class="freq-btn ${data.rsvpStatus===r.id?'on':''}" style="padding:10px 8px">${r.label}</button>`).join('')}
+          </div>
+          <input type="hidden" id="pd-rsvp" value="${data.rsvpStatus||''}"/>
+        </div>
+
+        ${(data.type||presetType)==='birthday'?`
+        <div>
+          <div style="font-size:14px;font-weight:600;margin-bottom:8px">🎁 Present Ideas</div>
+          <textarea class="input" id="pd-presents" placeholder="e.g. LEGO Friends set, art supplies, $30 voucher" rows="3" style="resize:none;line-height:1.4">${data.presents||''}</textarea>
+        </div>
+        `:''}
+
+        <textarea class="input" id="pd-notes" placeholder="Notes (e.g. dietary requirements, what to bring)" rows="2" style="resize:none;line-height:1.4">${data.notes||''}</textarea>
+
+        <!-- Notification reminder -->
+        <div style="background:var(--navy-soft);border-radius:12px;padding:12px;display:flex;align-items:center;gap:10px">
+          <span style="font-size:18px">🔔</span>
+          <div style="flex:1">
+            <div style="font-size:13px;font-weight:600;color:var(--navy)">Remind me</div>
+            <div style="font-size:12px;color:var(--text-secondary)">A push notification 1 day before</div>
+          </div>
+          <div class="cb ${data.remind!==false?'on':''}" id="pd-remind-cb" onclick="togglePlayDateRemind()" style="${data.remind!==false?'background:var(--navy);border:none':'border-color:#C7C7CC'}">${data.remind!==false?ck():''}</div>
+          <input type="hidden" id="pd-remind" value="${data.remind===false?'0':'1'}"/>
+        </div>
+
+        <div id="pderr" class="err"></div>
+        <button class="primary-btn" onclick="hSavePlayDate('${presetId||''}')">${existing?'Save Changes':'Save Play Date'}</button>
+      </div>
+    </div>
+  </div>`;
+}
+
+function sViewPlayDate(){
+  const pd=S.playdates.find(p=>p.id===S.screenParams?.id);
+  if(!pd)return back(),'';
+  const ec=S.children.find(c=>c.id===pd.childId);
+  const col=ec?.color||NAVY;
+  const typeIcon={playdate:'🎈',sleepover:'🛏',birthday:'🎂'}[pd.type]||'🎉';
+  const typeLabel={playdate:'Play Date',sleepover:'Sleep Over',birthday:'Birthday Party'}[pd.type]||'Event';
+  const dt=pd.date?new Date(pd.date+'T12:00'):null;
+  const mapUrl=pd.location?`https://maps.apple.com/?q=${encodeURIComponent(pd.location)}`:'';
+  const callUrl=pd.hostPhone?`tel:${pd.hostPhone.replace(/\\s/g,'')}`:'';
+  const smsUrl=pd.hostPhone?`sms:${pd.hostPhone.replace(/\\s/g,'')}`:'';
+  return `<div style="min-height:100%;display:flex;flex-direction:column">
+    <div style="background:var(--card);padding:14px 16px;display:flex;align-items:center;border-bottom:1px solid var(--row-border);position:sticky;top:0;z-index:10">
+      <button class="back-btn" onclick="back()">${bk()} Back</button>
+      <div style="flex:1;text-align:center;font-size:17px;font-weight:600">${typeLabel}</div>
+      <button onclick="go('addPlayDate',{editId:'${pd.id}'})" style="border:none;background:none;cursor:pointer;color:var(--navy);font-size:15px;font-weight:600;font-family:inherit">Edit</button>
+    </div>
+    <div style="padding:20px 0 100px">
+      <div style="text-align:center;margin-bottom:20px">
+        <div style="font-size:64px;margin-bottom:8px">${typeIcon}</div>
+        <div style="font-size:22px;font-weight:800">${pd.title||typeLabel}</div>
+        ${dt?`<div style="font-size:14px;color:var(--text-secondary);margin-top:4px">${DAYNAMES[dt.getDay()]} ${dt.getDate()} ${MONTHS[dt.getMonth()]} ${dt.getFullYear()}${pd.time?' · '+pd.time:''}</div>`:''}
+        ${ec?`<div style="display:inline-flex;align-items:center;gap:6px;margin-top:8px;padding:4px 12px;background:${col}18;border-radius:14px">${av(ec.name,col,20,ec.photoURL)}<span style="font-size:13px;color:${col};font-weight:600">${ec.name} attending</span></div>`:''}
+      </div>
+
+      ${pd.rsvpStatus?`<div style="margin:0 16px 14px;padding:14px;border-radius:14px;background:${pd.rsvpStatus==='yes'?'#EAFAF0':pd.rsvpStatus==='no'?'#FFF0EE':'#FFF8E5'};text-align:center">
+        <div style="font-size:13px;font-weight:700;color:${pd.rsvpStatus==='yes'?'#34C759':pd.rsvpStatus==='no'?'#FF3B30':'#806000'}">RSVP: ${pd.rsvpStatus==='yes'?'✅ ATTENDING':pd.rsvpStatus==='no'?'❌ NOT ATTENDING':'🤔 MAYBE'}</div>
+      </div>`:''}
+
+      ${pd.location?`<div class="sh" style="margin-bottom:6px">📍 Location</div>
+      <div class="card" style="margin-bottom:14px">
+        <div class="row">
+          <div style="flex:1"><div style="font-size:15px">${pd.location}</div></div>
+          <a href="${mapUrl}" target="_blank" style="padding:8px 14px;border-radius:10px;background:var(--navy);color:#fff;font-size:13px;font-weight:600;text-decoration:none">Open Maps</a>
+        </div>
+      </div>`:''}
+
+      ${pd.hostParent||pd.host?`<div class="sh" style="margin-bottom:6px">👋 Host</div>
+      <div class="card" style="margin-bottom:14px">
+        ${pd.host?`<div class="row"><span style="font-size:18px">🎈</span><div style="flex:1"><div style="font-size:13px;color:var(--text-secondary)">Child</div><div style="font-size:15px;font-weight:600">${pd.host}</div></div></div>`:''}
+        ${pd.hostParent?`<div class="row"><span style="font-size:18px">👤</span><div style="flex:1"><div style="font-size:13px;color:var(--text-secondary)">Parent</div><div style="font-size:15px;font-weight:600">${pd.hostParent}</div></div>${!S.contacts.find(c=>c.name===pd.hostParent)?`<button onclick="saveHostAsContact('${pd.id}')" style="padding:6px 12px;border-radius:8px;background:var(--navy-soft);color:var(--navy);border:none;font-size:12px;font-weight:600;cursor:pointer;font-family:inherit">+ Save</button>`:'<span style="font-size:11px;color:#34C759;font-weight:600">✓ Saved</span>'}</div>`:''}
+        ${pd.hostPhone?`<div class="row"><span style="font-size:18px">📞</span><div style="flex:1"><div style="font-size:13px;color:var(--text-secondary)">Phone</div><div style="font-size:15px;font-weight:600">${pd.hostPhone}</div></div><a href="${callUrl}" style="padding:7px 12px;border-radius:8px;background:#34C759;color:#fff;font-size:12px;font-weight:600;text-decoration:none;margin-right:6px">Call</a><a href="${smsUrl}" style="padding:7px 12px;border-radius:8px;background:var(--navy);color:#fff;font-size:12px;font-weight:600;text-decoration:none">SMS</a></div>`:''}
+        ${pd.hostEmail?`<div class="row"><span style="font-size:18px">✉️</span><div style="flex:1"><div style="font-size:13px;color:var(--text-secondary)">Email</div><div style="font-size:15px;font-weight:600">${pd.hostEmail}</div></div></div>`:''}
+      </div>`:''}
+
+      ${pd.dropoff||pd.pickup?`<div class="sh" style="margin-bottom:6px">🚗 Logistics</div>
+      <div class="card" style="margin-bottom:14px">
+        ${pd.dropoff?`<div class="row"><span style="font-size:18px">🚗</span><div style="flex:1"><div style="font-size:13px;color:var(--text-secondary)">Drop-off</div><div style="font-size:15px;font-weight:600">${pd.dropoff}</div></div></div>`:''}
+        ${pd.pickup?`<div class="row"><span style="font-size:18px">🏠</span><div style="flex:1"><div style="font-size:13px;color:var(--text-secondary)">Pick-up</div><div style="font-size:15px;font-weight:600">${pd.pickup}</div></div></div>`:''}
+      </div>`:''}
+
+      ${pd.presents?`<div class="sh" style="margin-bottom:6px">🎁 Present Ideas</div>
+      <div class="card" style="margin-bottom:14px">
+        <div style="padding:14px 16px;font-size:14px;line-height:1.5;white-space:pre-wrap">${pd.presents}</div>
+      </div>`:''}
+
+      ${pd.notes?`<div class="sh" style="margin-bottom:6px">📝 Notes</div>
+      <div class="card" style="margin-bottom:14px">
+        <div style="padding:14px 16px;font-size:14px;line-height:1.5;white-space:pre-wrap">${pd.notes}</div>
+      </div>`:''}
+
+      <div style="padding:0 16px;margin-top:20px">
+        <button onclick="dPlayDate('${pd.id}','${(pd.title||typeLabel).replace(/'/g,'&#39;')}')" style="width:100%;padding:14px;border-radius:12px;background:#FFF0EE;color:#FF3B30;border:none;font-size:15px;font-weight:600;cursor:pointer;font-family:inherit">Delete this ${typeLabel.toLowerCase()}</button>
       </div>
     </div>
   </div>`;
@@ -1032,9 +1416,26 @@ function sDinners(){
 
 function sAddDinner(){
   const presetDate=S.screenParams?.date||todayStr;
+  const prefillMeal=S.screenParams?.prefillMeal||'';
+  const prefillCook=S.screenParams?.prefillCook||'';
+  const prefillNotes=S.screenParams?.prefillNotes||'';
   const mems=members();
-  return `<div style="min-height:100%;display:flex;flex-direction:column;background:#F2F2F7">
-    <div style="background:#fff;padding:14px 16px;display:flex;align-items:center;border-bottom:1px solid #F2F2F7;position:sticky;top:0;z-index:10">
+  // Combine meal ideas + history for suggestions
+  const mealCounts={};
+  (S.dinners||[]).forEach(d=>{
+    const k=(d.meal||'').trim();
+    if(k)mealCounts[k]=(mealCounts[k]||0)+1;
+  });
+  const ideaLabels=(S.mealIdeas||[]).map(m=>m.label).filter(Boolean);
+  // Merge: meal ideas + past meals (deduped, ideas first)
+  const allMeals=[...new Set([...ideaLabels,...Object.keys(mealCounts).sort((a,b)=>mealCounts[b]-mealCounts[a])])];
+  const uniqueMeals=allMeals;
+  // Show suggestions if either: 10+ history OR any meal ideas saved
+  const showSuggestions=ideaLabels.length>0||Object.keys(mealCounts).length>=10;
+  // Pick a random suggestion as placeholder
+  const placeholderMeal=showSuggestions?uniqueMeals[Math.floor(Math.random()*Math.min(uniqueMeals.length,8))]:'';
+  return `<div style="min-height:100%;display:flex;flex-direction:column;background:var(--bg)">
+    <div style="background:var(--card);padding:14px 16px;display:flex;align-items:center;border-bottom:1px solid var(--row-border);position:sticky;top:0;z-index:10">
       <button class="back-btn" onclick="back()">${bk()} Back</button>
       <div style="flex:1;text-align:center;font-size:17px;font-weight:600">Plan Dinner</div>
       <div style="width:60px"></div>
@@ -1042,15 +1443,22 @@ function sAddDinner(){
     <div style="padding:20px;max-width:560px;margin:auto;width:100%">
       <div style="display:flex;flex-direction:column;gap:12px">
         <input class="input" id="dn-date" type="date" value="${presetDate}"/>
-        <div style="font-size:12px;color:#8E8E93;margin-top:-6px;padding-left:4px">Date</div>
-        <input class="input" id="dn-meal" type="text" placeholder="Meal (e.g. Spaghetti bolognese)"/>
+        <div style="font-size:12px;color:var(--text-secondary);margin-top:-6px;padding-left:4px">Date</div>
+        <div style="position:relative">
+          <input class="input" id="dn-meal" type="text" placeholder="${placeholderMeal||'Meal (e.g. Spaghetti bolognese)'}" value="${prefillMeal}" style="${showSuggestions?'color:var(--text)':''}" oninput="filterMealSuggestions(this.value)"/>
+          ${showSuggestions?`<div id="meal-suggestions" style="display:none;position:absolute;top:100%;left:0;right:0;background:var(--card);border:1px solid var(--border);border-radius:10px;margin-top:4px;max-height:200px;overflow-y:auto;z-index:5;box-shadow:var(--shadow-md)"></div>`:''}
+        </div>
+        ${showSuggestions?`<div style="display:flex;gap:6px;flex-wrap:wrap;margin-top:-4px">
+          ${uniqueMeals.slice(0,6).map(m=>`<button onclick="document.getElementById('dn-meal').value='${m.replace(/'/g,'&#39;')}'" style="padding:6px 12px;border-radius:14px;background:var(--navy-soft);color:var(--navy);border:none;font-size:12px;font-weight:600;cursor:pointer;font-family:inherit">${m}</button>`).join('')}
+        </div>
+        <div style="font-size:11px;color:var(--text-secondary);margin-top:-2px">💡 ${ideaLabels.length>0?'From your ideas + history':'Auto-suggested from history'} · Tap a suggestion or type your own</div>`:''}
         <select class="input" id="dn-cook">
           <option value="">Who's cooking?</option>
-          ${mems.map(m=>`<option value="${m.name}">${m.name}</option>`).join('')}
-          <option value="Takeaway">🥡 Takeaway</option>
-          <option value="Out">🍽 Eating out</option>
+          ${mems.map(m=>`<option value="${m.name}" ${prefillCook===m.name?'selected':''}>${m.name}</option>`).join('')}
+          <option value="Takeaway" ${prefillCook==='Takeaway'?'selected':''}>🥡 Takeaway</option>
+          <option value="Out" ${prefillCook==='Out'?'selected':''}>🍽 Eating out</option>
         </select>
-        <textarea class="input" id="dn-notes" placeholder="Notes (e.g. need to defrost mince)" rows="2" style="resize:none;line-height:1.4"></textarea>
+        <textarea class="input" id="dn-notes" placeholder="Notes (e.g. need to defrost mince)" rows="2" style="resize:none;line-height:1.4">${prefillNotes}</textarea>
         <div id="dnerr" class="err"></div>
         <button class="primary-btn" onclick="hAddDinner()">Save Dinner</button>
       </div>
@@ -1065,13 +1473,12 @@ function sLists(){
   const urg=S.assessments.filter(a=>(a.daysLeft||99)<=7).length;
   return `
     <div style="background:#fff;padding:14px 16px;border-bottom:1px solid #F2F2F7;position:sticky;top:0;z-index:10">
-      <div style="font-size:26px;font-weight:800;color:#1C1C1E">Lists</div>
+      <div style="font-size:26px;font-weight:800;color:#1C1C1E">Kitchen</div>
     </div>
     <div class="scroll-view" style="padding:16px 0">
       <div class="card">
         ${[{id:'groceries',icon:'🛒',label:'Groceries',sub:'Family shopping list',badge:0},
-           {id:'dinners',icon:'🍽',label:'Dinners',sub:'Weekly meal plan'+(S.dinners?.length?' · '+S.dinners.length+' meals':''),badge:0},
-           {id:'assessments',icon:'📚',label:'Assessment Tasks',sub:S.assessments.length+' tasks',badge:urg}
+           {id:'dinners',icon:'🍽',label:'Dinners',sub:'Weekly meal plan'+(S.dinners?.length?' · '+S.dinners.length+' meals':''),badge:0}
           ].map((cat,i,arr)=>`<button class="btn" onclick="S.listTab='${cat.id}';render()" style="width:100%;padding:14px 16px;display:flex;align-items:center;gap:14px;border-bottom:${i<arr.length-1?'1px solid #F2F2F7':'none'};text-align:left">
           <div style="width:48px;height:48px;border-radius:12px;background:#F2F2F7;font-size:26px;display:flex;align-items:center;justify-content:center">${cat.icon}</div>
           <div style="flex:1"><div style="font-size:16px;font-weight:600">${cat.label}</div><div style="font-size:13px;color:#8E8E93">${cat.sub}</div></div>
@@ -1297,6 +1704,23 @@ function sSettings(){
   +'</div>'
   +'</div>'
   // Sign out
+  +'<div class="sh" style="margin-bottom:6px">📆 iOS Calendar Sync</div>'
+  +'<div class="card" style="margin-bottom:12px">'
+  +'<div style="padding:14px 16px;border-bottom:1px solid var(--row-border)">'
+  +'<div style="font-size:14px;font-weight:600;margin-bottom:6px">Add events to Apple Calendar</div>'
+  +'<div style="font-size:13px;color:var(--text-secondary);line-height:1.5;margin-bottom:8px">Tap below to download a calendar file. On iPhone, open the file → Calendar will import all your HomeBase events including recurring ones.</div>'
+  +'<div style="font-size:12px;color:var(--text-secondary);line-height:1.5;background:var(--bg);padding:10px;border-radius:8px"><strong>💡 Tip:</strong> Re-download anytime to refresh. For automatic live sync (subscribe URL), Firebase Cloud Functions need to be set up first.</div>'
+  +'</div>'
+  +'<button onclick="exportAllToCalendar()" style="width:100%;padding:14px 16px;color:var(--navy);font-size:15px;font-weight:600;text-align:left;border:none;background:none;cursor:pointer;font-family:inherit">📥 Download .ics Calendar File</button>'
+  +'</div>'
+  +'<div class="sh" style="margin-bottom:6px">🌙 Appearance</div>'
+  +'<div class="card" style="margin-bottom:12px">'
+  +'<div class="row">'
+  +'<span style="font-size:20px">'+(S.nightMode?'🌙':'☀️')+'</span>'
+  +'<div style="flex:1"><div style="font-size:15px">Night Mode</div><div style="font-size:13px;color:var(--text-secondary)">Dark theme for low light</div></div>'
+  +tog(S.nightMode,"toggleNightMode()")
+  +'</div>'
+  +'</div>'
   +'<div class="sh" style="margin-bottom:6px">⚠️ Danger Zone</div>'
   +'<div class="card" style="margin-bottom:12px">'
   +'<button class="btn" onclick="hDeleteFamily()" style="width:100%;padding:14px 16px;color:#FF3B30;font-size:15px;font-weight:600;text-align:left;border-bottom:1px solid #F2F2F7">🗑 Delete Family Permanently</button>'
@@ -1381,13 +1805,15 @@ function sAddAssessment(){
 }
 
 function sAddGrocery(){
-  return `<div style="min-height:100%;display:flex;flex-direction:column;background:#F2F2F7">
-    <div style="background:#fff;padding:14px 16px;display:flex;align-items:center;border-bottom:1px solid #F2F2F7;position:sticky;top:0;z-index:10">
+  // Get all unique frequent items (not currently on list)
+  const freqItems=S.groceries.filter(g=>g.isFrequent&&!g.addedToList).sort((a,b)=>a.label.localeCompare(b.label));
+  return `<div style="min-height:100%;display:flex;flex-direction:column;background:var(--bg)">
+    <div style="background:var(--card);padding:14px 16px;display:flex;align-items:center;border-bottom:1px solid var(--row-border);position:sticky;top:0;z-index:10">
       <button class="back-btn" onclick="back()">${bk()} Back</button>
       <div style="flex:1;text-align:center;font-size:17px;font-weight:600">Add Grocery Item</div>
       <div style="width:60px"></div>
     </div>
-    <div style="padding:20px;display:flex;flex-direction:column;gap:12px">
+    <div style="padding:20px;display:flex;flex-direction:column;gap:12px;max-width:560px;margin:auto;width:100%">
       <input class="input" id="gl" type="text" placeholder="Item (e.g. Milk, Bread, Apples)"/>
       <input class="input" id="gq" type="number" placeholder="Quantity" value="1" min="1"/>
       <div style="display:flex;align-items:center;gap:12px;padding:4px 0">
@@ -1396,6 +1822,18 @@ function sAddGrocery(){
       </div>
       <div id="gerr" class="err"></div>
       <button class="primary-btn" onclick="hAddGrocery()">Add to List</button>
+
+      <!-- Frequent items quick-add -->
+      ${freqItems.length>0?`
+      <div style="margin-top:18px">
+        <div class="sh" style="margin-bottom:6px;padding-left:0">⭐ Frequent Items · Tap to add</div>
+        <div class="card" style="margin:0">
+          ${freqItems.map((g,i)=>`<div class="row" style="border-bottom:${i<freqItems.length-1?'1px solid var(--row-border)':'none'}">
+            <span style="flex:1;font-size:15px">${g.label}</span>
+            <button onclick="quickAddFreq('${g.id}')" style="padding:6px 14px;border-radius:8px;background:var(--navy);border:none;cursor:pointer;color:#fff;font-size:13px;font-weight:600;font-family:inherit">+ Add</button>
+          </div>`).join('')}
+        </div>
+      </div>`:''}
     </div>
   </div>`;
 }
@@ -1451,7 +1889,8 @@ function render(){
       addGrocery:sAddGrocery,addGift:sAddGift,childProfile:sFamily,
       editChild:sEditChild,editFamily:sEditFamily,
       addCaregiver:sAddCaregiver,editCaregiver:sEditCaregiver,
-      addDinner:sAddDinner
+      addDinner:sAddDinner,
+      addPlayDate:sAddPlayDate,viewPlayDate:sViewPlayDate
     };
     html=(map[S.screen]||sToday)();
   } else {
@@ -1471,7 +1910,7 @@ function render(){
       {id:'today',icon:'🏠',label:'Today'},
       {id:'calendar',icon:'📅',label:'Calendar'},
       {id:'events',icon:'📋',label:'Events'},
-      {id:'lists',icon:'🛒',label:'Lists'},
+      {id:'lists',icon:'🍴',label:'Kitchen'},
       {id:'family',icon:'👨‍👩‍👧',label:'Family'},
       {id:'settings',icon:'⚙️',label:'Settings'}
     ].map(t=>`<button class="tab ${S.tab===t.id?'active':''}" onclick="setTab('${t.id}')"><span style="font-size:20px">${t.icon}</span>${t.label}</button>`).join('');
@@ -1656,16 +2095,33 @@ window.hSaveCaregiver=async function(uid){
   const rel=document.getElementById('ec-rel')?.value||'';
   const role=document.getElementById('ec-role')?.value||'Member';
   const color=document.getElementById('ec-color')?.value||NAVY;
+  const photoData=document.getElementById('photo-data')?.value;
   const fnameEl=document.getElementById('ec-fname');
   const fname=fnameEl?fnameEl.value.trim():null;
   const err=document.getElementById('ecerr');
   if(!name){if(err)err.textContent='Please enter a name';return;}
   try{
+    let photoURL=photoData||'';
+    // If new photo (data URI), upload it
+    if(photoData&&photoData.startsWith('data:')){
+      try{
+        const uploadPromise=(async()=>{
+          const sr=sref(storage,'families/'+fid()+'/caregivers/'+uid+'_'+Date.now()+'.jpg');
+          await uploadString(sr,photoData,'data_url');
+          return await getDownloadURL(sr);
+        })();
+        const timeoutPromise=new Promise((_,rej)=>setTimeout(()=>rej(new Error('timeout')),8000));
+        photoURL=await Promise.race([uploadPromise,timeoutPromise]);
+      }catch(se){
+        photoURL=await shrinkImage(photoData,200);
+      }
+    }
     const updates={
       ['members.'+uid+'.name']:name,
       ['members.'+uid+'.role']:role,
       ['members.'+uid+'.color']:color,
-      ['members.'+uid+'.relationship']:rel
+      ['members.'+uid+'.relationship']:rel,
+      ['members.'+uid+'.photoURL']:photoURL
     };
     if(fname)updates.name=fname;
     await updateDoc(doc(db,'families',S.familyId),updates);
@@ -1867,6 +2323,7 @@ window.tGroc=async(id,val)=>{try{await fupd(['groceries',id],{checked:val});}cat
 window.dGroc=async id=>{try{await fdel(['groceries',id]);}catch(ex){}};
 window.clearDone=async()=>{const done=S.groceries.filter(g=>g.addedToList&&g.checked);for(const g of done)try{await fdel(['groceries',g.id]);}catch(e){}notify('List cleared ✅');};
 window.addFreq=async id=>{try{await fupd(['groceries',id],{addedToList:true});notify('Added to list ✅');}catch(ex){}};
+window.quickAddFreq=async id=>{try{await fupd(['groceries',id],{addedToList:true,checked:false});notify('Added to list ✅');}catch(ex){}};
 let gIsFreq=false,gIsPriv=false;
 window.toggleFreq=()=>{gIsFreq=!gIsFreq;const el=$('gfcb');if(el){el.style.background=gIsFreq?'#1C3A6B':'transparent';el.innerHTML=gIsFreq?ck():'';el.style.borderColor=gIsFreq?'#1C3A6B':'#C7C7CC';}};
 window.togglePriv=()=>{gIsPriv=!gIsPriv;const el=$('gfpriv');if(el){el.style.background=gIsPriv?'#1C3A6B':'transparent';el.innerHTML=gIsPriv?ck():'';el.style.borderColor=gIsPriv?'#1C3A6B':'#C7C7CC';}};
@@ -1899,6 +2356,186 @@ window.hAddDinner=async function(){
   }catch(ex){if(err)err.textContent=ex.message;}
 };
 window.dDinner=async function(id){try{await fdel(['dinners',id]);notify('Dinner removed','🗑️');}catch(ex){}};
+
+// ── PLAY DATE HANDLERS ─────────────────────────────────────────────
+window.setPlayDateType=function(type){
+  document.getElementById('pd-type').value=type;
+  ['playdate','sleepover','birthday'].forEach(t=>{
+    const btn=document.getElementById('ptype-'+t);
+    if(btn)btn.classList.toggle('on',t===type);
+  });
+  // Toggle birthday-only fields
+  const ocrCard=document.getElementById('pd-ocr-card');
+  if(ocrCard)ocrCard.style.display=type==='birthday'?'block':'none';
+};
+window.setPlayDateRsvp=function(status){
+  document.getElementById('pd-rsvp').value=status;
+  ['yes','no','maybe'].forEach(r=>{
+    const btn=document.getElementById('prsvp-'+r);
+    if(btn)btn.classList.toggle('on',r===status);
+  });
+};
+window.togglePlayDateRemind=function(){
+  const cb=document.getElementById('pd-remind-cb');
+  const inp=document.getElementById('pd-remind');
+  const on=inp.value==='1';
+  inp.value=on?'0':'1';
+  cb.classList.toggle('on',!on);
+  if(!on){cb.style.background='var(--navy)';cb.style.border='none';cb.innerHTML=ck();}
+  else{cb.style.background='transparent';cb.style.border='2px solid #C7C7CC';cb.innerHTML='';}
+};
+window.openMapsForLocation=function(){
+  const loc=document.getElementById('pd-location')?.value?.trim();
+  if(!loc){notify('Type an address first, then tap to refine in Maps','📍');return;}
+  window.open('https://maps.apple.com/?q='+encodeURIComponent(loc),'_blank');
+};
+window.runPlayDateOCR=async function(input){
+  if(!input||!input.files||!input.files[0])return;
+  const file=input.files[0];
+  const status=document.getElementById('pd-ocr-status');
+  if(status)status.innerHTML='⏳ Loading OCR engine...';
+  try{
+    const T=await loadTesseract();
+    if(status)status.innerHTML='📖 Reading invite (10-20 seconds)...';
+    const r=await T.recognize(file,'eng',{
+      logger:m=>{if(m.status==='recognizing text'&&status)status.innerHTML='📖 Reading... '+Math.round(m.progress*100)+'%';}
+    });
+    const text=r.data.text;
+    if(status)status.innerHTML='✅ Done! Review & edit fields below.';
+    // Try to find name (usually largest line, often "X's Birthday")
+    const lines=text.split(/\\n+/).map(l=>l.trim()).filter(l=>l.length>2);
+    const nameMatch=text.match(/(\\w+)['\u2019]s\\s+(\\d+(?:st|nd|rd|th)?\\s+)?birthday/i);
+    if(nameMatch){
+      document.getElementById('pd-title').value=nameMatch[0];
+      if(nameMatch[1])document.getElementById('pd-host').value=nameMatch[1];
+    }else if(lines[0]&&lines[0].length<60){
+      document.getElementById('pd-title').value=lines[0];
+    }
+    // Date
+    const dateMatch=text.match(/(\\d{1,2})[\\/\\-\\s]+(\\d{1,2}|Jan|Feb|Mar|Apr|May|Jun|Jul|Aug|Sep|Oct|Nov|Dec|January|February|March|April|May|June|July|August|September|October|November|December)[\\/\\-\\s]+(\\d{2,4})/i);
+    if(dateMatch){
+      const day=dateMatch[1].padStart(2,'0');
+      let month=dateMatch[2];
+      const year=dateMatch[3].length===2?'20'+dateMatch[3]:dateMatch[3];
+      const monthMap={jan:'01',feb:'02',mar:'03',apr:'04',may:'05',jun:'06',jul:'07',aug:'08',sep:'09',oct:'10',nov:'11',dec:'12'};
+      const mLower=month.toLowerCase().slice(0,3);
+      if(monthMap[mLower])month=monthMap[mLower];
+      else month=String(month).padStart(2,'0');
+      document.getElementById('pd-date').value=year+'-'+month+'-'+day;
+    }
+    // Time
+    const timeMatch=text.match(/(\\d{1,2})[:\\.]?(\\d{0,2})\\s*(am|pm|AM|PM)\\s*[-–to]+\\s*(\\d{1,2})[:\\.]?(\\d{0,2})\\s*(am|pm|AM|PM)?/);
+    if(timeMatch)document.getElementById('pd-time').value=timeMatch[0];
+    // Phone (Australian format)
+    const phoneMatch=text.match(/(\\+?61|0)\\d[\\s\\-]?\\d{3,4}[\\s\\-]?\\d{3,4}/);
+    if(phoneMatch)document.getElementById('pd-host-phone').value=phoneMatch[0];
+    // Address - look for words after "at" or street keywords
+    const addrMatch=text.match(/(?:at|address:)\\s*([^\\n]{10,80})/i);
+    if(addrMatch)document.getElementById('pd-location').value=addrMatch[1].trim();
+    document.getElementById('pd-notes').value=text.substring(0,500);
+  }catch(ex){
+    if(status)status.innerHTML='❌ OCR failed — '+ex.message+' — please enter manually';
+  }
+};
+window.hSavePlayDate=async function(editId){
+  const type=document.getElementById('pd-type')?.value||'playdate';
+  const title=document.getElementById('pd-title')?.value?.trim();
+  const childId=document.getElementById('pd-child')?.value;
+  const date=document.getElementById('pd-date')?.value;
+  const time=document.getElementById('pd-time')?.value?.trim();
+  const host=document.getElementById('pd-host')?.value?.trim();
+  const hostParent=document.getElementById('pd-host-parent')?.value?.trim();
+  const hostPhone=document.getElementById('pd-host-phone')?.value?.trim();
+  const hostEmail=document.getElementById('pd-host-email')?.value?.trim();
+  const location=document.getElementById('pd-location')?.value?.trim();
+  const dropoff=document.getElementById('pd-dropoff')?.value;
+  const pickup=document.getElementById('pd-pickup')?.value;
+  const rsvpStatus=document.getElementById('pd-rsvp')?.value;
+  const presents=document.getElementById('pd-presents')?.value?.trim()||'';
+  const notes=document.getElementById('pd-notes')?.value?.trim()||'';
+  const remind=document.getElementById('pd-remind')?.value==='1';
+  const err=document.getElementById('pderr');
+  if(!title&&!host){if(err)err.textContent='Add a title or host name';return;}
+  if(!date){if(err)err.textContent='Please pick a date';return;}
+  try{
+    const data={type,title:title||(host?host+"'s "+(type==='birthday'?'birthday':type==='sleepover'?'sleepover':'place'):''),childId,date,time,host,hostParent,hostPhone,hostEmail,location,dropoff,pickup,rsvpStatus,presents,notes,remind};
+    if(editId){
+      await fupd(['playdates',editId],data);
+      notify('✅ Updated!','🎉');
+    }else{
+      await fadd(['playdates'],data);
+      notify('✅ Saved!','🎉');
+      // Schedule reminder if push notifs enabled
+      if(remind&&typeof Notification!=='undefined'&&Notification.permission==='granted'){
+        scheduleDayBeforeNotif(data);
+      }
+    }
+    back();
+  }catch(ex){if(err)err.textContent=ex.message;}
+};
+function scheduleDayBeforeNotif(pd){
+  if(!pd.date)return;
+  const eventDate=new Date(pd.date+'T09:00');
+  const dayBefore=new Date(eventDate);dayBefore.setDate(eventDate.getDate()-1);
+  const now=new Date();
+  const delay=dayBefore-now;
+  if(delay>0&&delay<7*86400000){
+    setTimeout(function(){
+      try{
+        const typeLabel={playdate:'Play Date',sleepover:'Sleep Over',birthday:'Birthday Party'}[pd.type]||'Event';
+        new Notification('🎉 Tomorrow: '+typeLabel,{body:(pd.title||'')+(pd.time?' · '+pd.time:'')+(pd.location?' · '+pd.location:''),tag:'pd-'+pd.date,icon:'data:image/png;base64,iVBORw0KGgo='});
+      }catch(e){}
+    },delay);
+  }
+}
+window.dPlayDate=async function(id,name){
+  if(!confirm('Delete "'+name+'"?'))return;
+  try{await fdel(['playdates',id]);notify('Deleted','🗑️');back();}
+  catch(ex){alert('Error: '+ex.message);}
+};
+window.saveHostAsContact=async function(playdateId){
+  const pd=S.playdates.find(p=>p.id===playdateId);
+  if(!pd||!pd.hostParent)return;
+  try{
+    await fadd(['contacts'],{
+      name:pd.hostParent,
+      phone:pd.hostPhone||'',
+      email:pd.hostEmail||'',
+      relatedTo:pd.host||'',
+      notes:'Host parent of '+(pd.host||'play date')
+    });
+    notify('Contact saved! 📇');
+  }catch(ex){alert('Error: '+ex.message);}
+};
+window.addMealIdea=async function(){
+  const label=prompt('Add a meal idea (e.g. "Spaghetti carbonara")');
+  if(!label||!label.trim())return;
+  try{await fadd(['mealIdeas'],{label:label.trim()});notify('Added to ideas 💡');}
+  catch(ex){alert('Error: '+ex.message);}
+};
+window.dMealIdea=async function(id){
+  if(!confirm('Remove this meal idea?'))return;
+  try{await fdel(['mealIdeas',id]);notify('Removed','🗑️');}catch(ex){}
+};
+window.useMealIdea=function(id){
+  const m=(S.mealIdeas||[]).find(x=>x.id===id);
+  if(!m)return;
+  go('addDinner',{prefillMeal:m.label});
+};
+window.saveAsMealIdea=async function(dinnerId){
+  const d=(S.dinners||[]).find(x=>x.id===dinnerId);
+  if(!d||!d.meal)return;
+  // Avoid duplicates
+  const exists=(S.mealIdeas||[]).some(m=>m.label.toLowerCase().trim()===d.meal.toLowerCase().trim());
+  if(exists){notify('Already in your ideas 💡');return;}
+  try{await fadd(['mealIdeas'],{label:d.meal.trim()});notify('Saved to ideas! 💡');}
+  catch(ex){alert('Error: '+ex.message);}
+};
+window.reuseDinner=async function(id){
+  const d=S.dinners.find(x=>x.id===id);
+  if(!d){notify('Meal not found');return;}
+  go('addDinner',{prefillMeal:d.meal,prefillCook:d.cook,prefillNotes:d.notes||''});
+};
 window.selCalDate=function(ds){
   S.calDate=ds;
   render();
@@ -2032,9 +2669,40 @@ window.hLeaveFamily=async function(){
     setTimeout(function(){window.location.reload();},1200);
   }catch(ex){alert('Error: '+ex.message);}
 };
+window.exportAllToCalendar=function(){
+  if(!S.events||S.events.length===0){notify('No events to export','📆');return;}
+  // Include playdates as events too
+  const allEvs=[...S.events];
+  (S.playdates||[]).forEach(pd=>{
+    if(pd.date)allEvs.push({
+      id:pd.id,
+      title:(pd.title||'Play Date'),
+      emoji:{playdate:'🎈',sleepover:'🛏',birthday:'🎂'}[pd.type]||'🎉',
+      date:pd.date,
+      time:pd.time,
+      location:pd.location,
+      notes:pd.notes,
+      dropoff:pd.dropoff,
+      pickup:pd.pickup
+    });
+  });
+  downloadICS(allEvs,'homebase-'+(S.family?.name||'family').replace(/\s/g,'-').toLowerCase());
+  notify('✅ Exported! Open the .ics file on your iPhone to add to Calendar','📆');
+};
+window.toggleNightMode=function(){
+  S.nightMode=!S.nightMode;
+  if(S.nightMode){
+    document.documentElement.setAttribute('data-theme','dark');
+    try{localStorage.setItem('hb_night_mode','1');}catch(e){}
+  }else{
+    document.documentElement.removeAttribute('data-theme');
+    try{localStorage.setItem('hb_night_mode','0');}catch(e){}
+  }
+  render();
+};
 window.hSignOut=async()=>{
   S.unsubs.forEach(u=>u());S.unsubs=[];
-  Object.assign(S,{family:null,familyId:null,children:[],packing:{},events:[],assessments:[],groceries:[],gifts:[],dinners:[],screen:null,screenParams:{},tab:'today',morningMode:false,activeChild:null,fabOpen:false,notif:null,weather:null,evTab:'events',listTab:'menu',listFilter:'all',ef:{freq:'once',days:{Mon:false,Tue:false,Wed:false,Thu:false,Fri:false,Sat:false,Sun:false},packItems:[],emoji:'📅'}});
+  Object.assign(S,{family:null,familyId:null,children:[],packing:{},events:[],assessments:[],groceries:[],gifts:[],dinners:[],playdates:[],contacts:[],mealIdeas:[],mealIdeas:[],screen:null,screenParams:{},tab:'today',morningMode:false,activeChild:null,fabOpen:false,notif:null,weather:null,evTab:'events',listTab:'menu',listFilter:'all',ef:{freq:'once',days:{Mon:false,Tue:false,Wed:false,Thu:false,Fri:false,Sat:false,Sun:false},packItems:[],emoji:'📅'}});
   await signOut(auth);
 };
 window.copyCode=()=>{const c=S.family?.inviteCode;if(c&&navigator.clipboard)navigator.clipboard.writeText(c).then(()=>notify('Family code copied! 🔗'));else alert('Code: '+(c||''));};
@@ -2058,6 +2726,8 @@ try{
   if(nt)S.notifTime=nt;
   const td=JSON.parse(localStorage.getItem('hb_terms')||'null');
   if(td)S.termDates=td;
+  const nm=localStorage.getItem('hb_night_mode');
+  if(nm==='1'){S.nightMode=true;document.documentElement.setAttribute('data-theme','dark');}
 }catch(e){}
 
 onAuthStateChanged(auth,async user=>{
