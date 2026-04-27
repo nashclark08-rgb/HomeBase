@@ -89,7 +89,7 @@ body{font-family:-apple-system,BlinkMacSystemFont,system-ui,sans-serif;backgroun
 </div>
 <script type="module">
 import{initializeApp}from'https://www.gstatic.com/firebasejs/10.7.1/firebase-app.js';
-import{getAuth,createUserWithEmailAndPassword,signInWithEmailAndPassword,signOut,onAuthStateChanged,updateProfile,GoogleAuthProvider,signInWithPopup}from'https://www.gstatic.com/firebasejs/10.7.1/firebase-auth.js';
+import{getAuth,createUserWithEmailAndPassword,signInWithEmailAndPassword,signOut,onAuthStateChanged,updateProfile,GoogleAuthProvider,signInWithPopup,sendPasswordResetEmail}from'https://www.gstatic.com/firebasejs/10.7.1/firebase-auth.js';
 import{getFirestore,doc,setDoc,getDoc,collection,addDoc,onSnapshot,updateDoc,deleteDoc,query,where,getDocs}from'https://www.gstatic.com/firebasejs/10.7.1/firebase-firestore.js';
 import{getStorage,ref as sref,uploadString,getDownloadURL}from'https://www.gstatic.com/firebasejs/10.7.1/firebase-storage.js';
 
@@ -366,7 +366,8 @@ function sLogin(){
       <input class="input" id="lp" type="password" placeholder="Password" autocomplete="current-password"/>
       <div id="lerr" class="err"></div>
       <button class="primary-btn" onclick="hLogin()">Sign In</button>
-      <button class="btn" onclick="go('signup')" style="color:#1C3A6B;font-size:15px;font-weight:600;padding:8px;text-align:center">Create Account</button>
+      <button class="btn" onclick="hForgotPassword()" style="color:#1C3A6B;font-size:14px;font-weight:500;padding:6px;text-align:center">Forgot password?</button>
+      <button class="btn" onclick="go(\'signup\')" style="color:#1C3A6B;font-size:15px;font-weight:600;padding:8px;text-align:center">Create Account</button>
       <div style="display:flex;align-items:center;gap:10px"><div style="flex:1;height:1px;background:#E5E5EA"></div><span style="font-size:13px;color:#8E8E93">or</span><div style="flex:1;height:1px;background:#E5E5EA"></div></div>
       <button class="secondary-btn" onclick="hGoogle()" style="display:flex;align-items:center;justify-content:center;gap:10px">
         <svg width="18" height="18" viewBox="0 0 48 48"><path fill="#EA4335" d="M24 9.5c3.54 0 6.71 1.22 9.21 3.6l6.85-6.85C35.9 2.38 30.47 0 24 0 14.62 0 6.51 5.38 2.56 13.22l7.98 6.19C12.43 13.72 17.74 9.5 24 9.5z"/><path fill="#4285F4" d="M46.98 24.55c0-1.57-.15-3.09-.38-4.55H24v9.02h12.94c-.58 2.96-2.26 5.48-4.78 7.18l7.73 6c4.51-4.18 7.09-10.36 7.09-17.65z"/><path fill="#FBBC05" d="M10.53 28.59c-.48-1.45-.76-2.99-.76-4.59s.27-3.14.76-4.59l-7.98-6.19C.92 16.46 0 20.12 0 24c0 3.88.92 7.54 2.56 10.78l7.97-6.19z"/><path fill="#34A853" d="M24 48c6.48 0 11.93-2.13 15.89-5.81l-7.73-6c-2.18 1.48-4.97 2.31-8.16 2.31-6.26 0-11.57-4.22-13.47-9.91l-7.98 6.19C6.51 42.62 14.62 48 24 48z"/></svg>
@@ -766,13 +767,19 @@ function sToday(){
           todayFamilyEvs.map((ev,i)=>{
             const ec=S.children.find(c=>c.id===ev.childId);
             const col=ec?.color||NAVY;
-            return `<div class="row" style="border-bottom:${i<todayFamilyEvs.length-1?'1px solid #F2F2F7':'none'}">
-              <div style="width:44px;text-align:right;font-size:12px;font-weight:600;color:#8E8E93;flex-shrink:0">${ev.time||''}</div>
+            // Check if logged-in user is responsible
+          const myName=S.user?.displayName||'';
+          const myFirstName=myName.split(' ')[0];
+          const isMyDropoff=ev.dropoff&&(ev.dropoff===myName||ev.dropoff===myFirstName);
+          const isMyPickup=ev.pickup&&(ev.pickup===myName||ev.pickup===myFirstName);
+          const isMine=isMyDropoff||isMyPickup;
+          return `<div class="row" style="border-bottom:${i<todayFamilyEvs.length-1?'1px solid var(--row-border)':'none'};${isMine?'background:#FFF8E5':''}">
+              <div style="width:44px;text-align:right;font-size:12px;font-weight:600;color:var(--text-secondary);flex-shrink:0">${ev.time||''}</div>
               <div style="width:32px;height:32px;border-radius:16px;background:${col}18;border:2px solid ${col};display:flex;align-items:center;justify-content:center;font-size:14px;flex-shrink:0">${ev.emoji||'📅'}</div>
               <div style="flex:1">
-                <div style="font-size:14px;font-weight:600">${ev.title}</div>
-                <div style="font-size:12px;color:#8E8E93">${ec?ec.name:'Family'}${ev.location?' · 📍'+ev.location:''}</div>
-                ${ev.dropoff||ev.pickup?`<div style="font-size:11px;color:${NAVY};font-weight:500">${ev.dropoff?'🚗 '+ev.dropoff:''}${ev.dropoff&&ev.pickup?' · ':''}${ev.pickup?'🏠 '+ev.pickup:''}</div>`:''}
+                <div style="font-size:14px;font-weight:600;display:flex;align-items:center;gap:6px">${ev.title}${isMine?'<span style="font-size:10px;font-weight:700;padding:2px 7px;border-radius:8px;background:#FF9500;color:#fff">YOU</span>':''}</div>
+                <div style="font-size:12px;color:var(--text-secondary)">${ec?ec.name:'Family'}${ev.location?' · 📍'+ev.location:''}</div>
+                ${ev.dropoff||ev.pickup?`<div style="font-size:11px;color:${NAVY};font-weight:500">${ev.dropoff?(isMyDropoff?'🚗 <strong>'+ev.dropoff+' (you)</strong>':'🚗 '+ev.dropoff):''}${ev.dropoff&&ev.pickup?' · ':''}${ev.pickup?(isMyPickup?'🏠 <strong>'+ev.pickup+' (you)</strong>':'🏠 '+ev.pickup):''}</div>`:''}
               </div>
             </div>`;
           }).join('')}
@@ -833,9 +840,10 @@ function sToday(){
 
     <div class="fab">
       ${S.fabOpen?`<div class="fab-menu">
-        <button class="fab-item" onclick="S.fabOpen=false;go('addEvent')">📆 Add Event</button>
-        <button class="fab-item" onclick="S.fabOpen=false;go('addNote')">📝 Quick Note</button>
+        <button class="fab-item" onclick="S.fabOpen=false;quickAddEvent()" style="background:#34C759">⚡ Quick Event</button>
+        <button class="fab-item" onclick="S.fabOpen=false;go('addEvent')">📆 Full Event</button>
         <button class="fab-item" onclick="S.fabOpen=false;go('addAssessment')">📚 Assessment</button>
+        <button class="fab-item" onclick="S.fabOpen=false;go('addNote')">📝 Quick Note</button>
       </div>`:''}
       <button class="fab-btn" style="background:${S.fabOpen?'#636366':NAVY};transform:${S.fabOpen?'rotate(45deg)':'none'}" onclick="S.fabOpen=!S.fabOpen;render()">+</button>
     </div>`;
@@ -1048,7 +1056,7 @@ function sEvents(){
     </div>
     ${tabBar}
     <div class="scroll-view" style="padding:14px 0 80px">
-      ${allEvs.length===0?`<div style="text-align:center;padding:60px 20px"><div style="font-size:56px;margin-bottom:14px">📅</div><div style="font-size:17px;font-weight:700;margin-bottom:6px">No events yet</div><div style="font-size:14px;color:#8E8E93">Tap + to add your first activity</div></div>`:
+      ${allEvs.length===0?`<div style="text-align:center;padding:60px 20px"><div style="font-size:56px;margin-bottom:14px">📅</div><div style="font-size:17px;font-weight:700;margin-bottom:6px;color:var(--text)">No events yet</div><div style="font-size:14px;color:var(--text-secondary);margin-bottom:20px;line-height:1.5">Add soccer practice, swimming lessons, music classes —<br>anything that happens at a regular time.</div><button onclick="go('addEvent')" style="padding:12px 24px;border-radius:12px;background:var(--navy);border:none;color:#fff;font-size:15px;font-weight:600;cursor:pointer;font-family:inherit">+ Add your first event</button></div>`:
       `<div class="card">${allEvs.map((ev,i)=>{const ec=S.children.find(c=>c.id===ev.childId);const col=ec?.color||NAVY;return `<div class="row" style="border-bottom:${i<allEvs.length-1?'1px solid #F2F2F7':'none'}">
         <div style="width:48px;height:48px;border-radius:12px;background:${col}15;display:flex;align-items:center;justify-content:center;font-size:26px">${ev.emoji||'📅'}</div>
         <div style="flex:1">
@@ -1504,7 +1512,7 @@ function sGroceries(){
       <div class="scroll-view" style="padding:14px 0">
         <div class="sh" style="margin-bottom:6px">Shopping List (${todo.length})</div>
         <div class="card" style="margin-bottom:14px">
-          ${todo.length+done.length===0?'<div class="row" style="color:#8E8E93;font-size:14px;justify-content:center">Your list is empty</div>':''}
+          ${todo.length+done.length===0?`<div style="padding:40px 20px;text-align:center"><div style="font-size:48px;margin-bottom:10px">🛒</div><div style="font-size:15px;font-weight:600;color:var(--text);margin-bottom:4px">Your shopping list is empty</div><div style="font-size:13px;color:var(--text-secondary);margin-bottom:16px;line-height:1.5">Tap + Add to add items.<br>Mark them as "Frequent" to build a quick-add bank.</div></div>`:''}
           ${todo.map((g,i)=>`<div class="row" style="border-bottom:${i<todo.length-1||done.length?'1px solid #F2F2F7':'none'}">
             <div class="cb" onclick="tGroc('${g.id}',true)"></div>
             <span style="flex:1;font-size:16px">${g.label}${g.quantity>1?' ×'+g.quantity:''}</span>
@@ -1701,7 +1709,7 @@ function sSettings(){
   +'<div class="card" style="margin-bottom:12px">'
   +'<div style="padding:14px 16px;border-bottom:1px solid #F2F2F7">'
   +'<div style="font-size:14px;color:#1C1C1E;margin-bottom:8px">Browser push notifications</div>'
-  +'<div style="font-size:12px;color:#8E8E93;line-height:1.5;margin-bottom:10px">For notifications to work on your phone, save this site to your iPhone home screen (Share button → Add to Home Screen). Then enable notifications below.</div>'
+  +'<div style="font-size:12px;color:#8E8E93;line-height:1.5;margin-bottom:10px">⚠️ <strong>Currently: notifications only fire while HomeBase is open in your browser.</strong> Always-on push notifications need Firebase Cloud setup (coming soon). For now, save HomeBase to your iPhone home screen (Share → Add to Home Screen) for the best experience.</div>'
   +'<button onclick="requestNotifPerm()" style="width:100%;padding:11px;border-radius:10px;background:#1C3A6B;border:none;color:#fff;font-size:14px;font-weight:600;cursor:pointer;font-family:inherit">'+(typeof Notification!=='undefined'&&Notification.permission==='granted'?'✅ Notifications enabled':'Enable Notifications')+'</button>'
   +'</div>'
   +'<div class="row">'
@@ -2123,18 +2131,57 @@ async function shrinkImage(dataUrl, maxSize){
 }
 
 // ── ALL HANDLERS ──────────────────────────────────
+function authErrMsg(code,raw){
+  const map={
+    'auth/invalid-credential':'Incorrect email or password',
+    'auth/wrong-password':'Incorrect password',
+    'auth/user-not-found':'No account found with this email',
+    'auth/invalid-email':'Please enter a valid email address',
+    'auth/email-already-in-use':'An account already exists with this email — try signing in instead',
+    'auth/weak-password':'Password is too weak (must be at least 6 characters)',
+    'auth/too-many-requests':'Too many attempts. Please wait a few minutes and try again',
+    'auth/network-request-failed':'Network error — check your connection and try again',
+    'auth/popup-closed-by-user':'Sign in cancelled',
+    'auth/popup-blocked':'Pop-up blocked — please allow pop-ups for this site',
+    'auth/missing-password':'Please enter your password',
+    'auth/missing-email':'Please enter your email'
+  };
+  return map[code]||(raw?String(raw).replace(/Firebase:\s*/,'').replace(/\(.*\)/,'').trim():'Something went wrong');
+}
 window.hLogin=async()=>{
   const e=$('le')?.value?.trim(),p=$('lp')?.value,err=$('lerr');
   if(!e||!p){if(err)err.textContent='Please fill in all fields';return;}
+  // Show loading state
+  const btn=document.querySelector('button[onclick="hLogin()"]');
+  if(btn){btn.textContent='Signing in...';btn.disabled=true;}
   try{await signInWithEmailAndPassword(auth,e,p);}
-  catch(ex){if(err)err.textContent=ex.code==='auth/invalid-credential'?'Incorrect email or password':ex.message.replace('Firebase:','').replace(/\(.*\)/,'').trim();}
+  catch(ex){
+    if(err)err.textContent=authErrMsg(ex.code,ex.message);
+    if(btn){btn.textContent='Sign In';btn.disabled=false;}
+  }
+};
+window.hForgotPassword=async()=>{
+  const e=$('le')?.value?.trim(),err=$('lerr');
+  if(!e){if(err)err.textContent='Enter your email above first, then tap Forgot password';return;}
+  try{
+    await sendPasswordResetEmail(auth,e);
+    if(err){err.textContent='';err.style.color='#34C759';err.textContent='✅ Reset link sent to '+e+' — check your inbox';}
+  }catch(ex){
+    if(err){err.style.color='#FF3B30';err.textContent=authErrMsg(ex.code,ex.message);}
+  }
 };
 window.hGoogle=async()=>{try{await signInWithPopup(auth,gp);}catch(ex){}};
 window.hSignup=async()=>{
   const n=$('sn')?.value?.trim(),e=$('se')?.value?.trim(),p=$('sp')?.value,err=$('serr');
   if(!n||!e||!p){if(err)err.textContent='Please fill in all fields';return;}
+  if(p.length<6){if(err)err.textContent='Password must be at least 6 characters';return;}
+  const btn=document.querySelector('button[onclick="hSignup()"]');
+  if(btn){btn.textContent='Creating account...';btn.disabled=true;}
   try{const c=await createUserWithEmailAndPassword(auth,e,p);await updateProfile(c.user,{displayName:n});S.user={...c.user,displayName:n};back();}
-  catch(ex){if(err)err.textContent=ex.message.replace('Firebase:','').replace(/\(.*\)/,'').trim();}
+  catch(ex){
+    if(err)err.textContent=authErrMsg(ex.code,ex.message);
+    if(btn){btn.textContent='Create Account';btn.disabled=false;}
+  }
 };
 window.hCreateFamily=async()=>{
   const n=$('fn')?.value?.trim(),err=$('ferr');
@@ -2434,7 +2481,53 @@ window.hSaveEvent=async()=>{
     back();notify('Event saved! 📅');
   }catch(ex){if(err)err.textContent=ex.message;}
 };
-window.dEvent=async id=>{try{await fdel(['events',id]);notify('Event deleted','🗑️');}catch(ex){}};
+window.quickAddEvent=async function(){
+  const title=prompt('Quick event — what is it?\n(e.g. "Sam soccer Saturday 10am")');
+  if(!title||!title.trim())return;
+  // Try to parse date/time from the title
+  const text=title.trim();
+  let date=todayStr,time='',cleanTitle=text;
+  // Day of week
+  const dayMatch=text.match(/\b(monday|tuesday|wednesday|thursday|friday|saturday|sunday|mon|tue|wed|thu|fri|sat|sun|tomorrow|today)\b/i);
+  if(dayMatch){
+    const d=new Date(today);
+    const dn=dayMatch[1].toLowerCase().slice(0,3);
+    if(dn==='tom'){d.setDate(today.getDate()+1);date=fd(d);}
+    else if(dn==='tod'){date=todayStr;}
+    else{
+      const days=['sun','mon','tue','wed','thu','fri','sat'];
+      const target=days.indexOf(dn);
+      if(target>=0){
+        const cur=today.getDay();
+        const diff=(target-cur+7)%7||7;
+        d.setDate(today.getDate()+diff);
+        date=fd(d);
+      }
+    }
+    cleanTitle=cleanTitle.replace(dayMatch[0],'').trim();
+  }
+  // Time (e.g. 10am, 3:45pm, 14:30)
+  const timeMatch=text.match(/\b(\d{1,2})(?::(\d{2}))?\s*(am|pm)\b/i);
+  if(timeMatch){
+    time=timeMatch[0];
+    cleanTitle=cleanTitle.replace(timeMatch[0],'').trim();
+  }
+  if(!cleanTitle)cleanTitle=title.trim();
+  try{
+    await fadd(['events'],{title:cleanTitle,emoji:'📅',freq:'once',date,time,days:{},packItems:[],notes:''});
+    notify('✅ Event added: '+cleanTitle,'⚡');
+  }catch(ex){alert('Error: '+ex.message);}
+};
+window.dEvent=async id=>{
+  const ev=S.events.find(x=>x.id===id);
+  if(!ev)return;
+  try{
+    await fdel(['events',id]);
+    if(window._pendingUndo&&window._pendingUndo.timer)clearTimeout(window._pendingUndo.timer);
+    window._pendingUndo={data:{...ev},type:'event'};
+    showUndoToast(ev.title+' deleted','event');
+  }catch(ex){}
+};
 window.tPack=async(cid,iid,val)=>{try{await fupd(['children',cid,'packing',iid],{checked:val===true||val==='true'});}catch(ex){}};
 window.dPack=async(cid,iid)=>{try{await fdel(['children',cid,'packing',iid]);}catch(ex){}};
 window.hAddPackItem=async()=>{
@@ -2504,7 +2597,48 @@ window.hAddAssessment=async()=>{
 };
 window.dAssessment=async id=>{try{await fdel(['assessments',id]);notify('Deleted','🗑️');}catch(ex){}};
 window.tGroc=async(id,val)=>{try{await fupd(['groceries',id],{checked:val});}catch(ex){}};
-window.dGroc=async id=>{try{await fdel(['groceries',id]);}catch(ex){}};
+window._pendingUndo=null;
+window.dGroc=async id=>{
+  // Soft delete with undo - get item first
+  const g=S.groceries.find(x=>x.id===id);
+  if(!g)return;
+  try{
+    await fdel(['groceries',id]);
+    // Show undo toast
+    if(window._pendingUndo&&window._pendingUndo.timer)clearTimeout(window._pendingUndo.timer);
+    window._pendingUndo={data:{...g},type:'grocery'};
+    showUndoToast(g.label+' removed','grocery');
+  }catch(ex){}
+};
+function showUndoToast(msg,type){
+  const old=document.getElementById('undo-toast');if(old)old.remove();
+  const el=document.createElement('div');
+  el.id='undo-toast';
+  el.style.cssText='position:fixed;bottom:80px;left:16px;right:16px;background:#1C1C1E;color:#fff;border-radius:14px;padding:12px 16px;display:flex;align-items:center;gap:10px;z-index:999;box-shadow:0 4px 16px rgba(0,0,0,0.3);animation:sdown 0.3s ease';
+  el.innerHTML='<span style="flex:1;font-size:14px">'+msg+'</span><button onclick="undoLastDelete()" style="background:#FF9500;color:#fff;border:none;padding:7px 14px;border-radius:8px;font-size:13px;font-weight:700;cursor:pointer;font-family:inherit">Undo</button>';
+  document.body.appendChild(el);
+  if(window._pendingUndo)window._pendingUndo.timer=setTimeout(function(){el.remove();window._pendingUndo=null;},5000);
+}
+window.undoLastDelete=async function(){
+  if(!window._pendingUndo)return;
+  const u=window._pendingUndo;
+  if(u.timer)clearTimeout(u.timer);
+  const tEl=document.getElementById('undo-toast');if(tEl)tEl.remove();
+  try{
+    if(u.type==='grocery'){
+      const{id,...data}=u.data;
+      await fadd(['groceries'],data);
+    }else if(u.type==='event'){
+      const{id,...data}=u.data;
+      await fadd(['events'],data);
+    }else if(u.type==='dinner'){
+      const{id,...data}=u.data;
+      await fadd(['dinners'],data);
+    }
+    notify('Restored ✅');
+  }catch(ex){alert('Could not restore: '+ex.message);}
+  window._pendingUndo=null;
+};
 window.clearDone=async()=>{const done=S.groceries.filter(g=>g.addedToList&&g.checked);for(const g of done)try{await fdel(['groceries',g.id]);}catch(e){}notify('List cleared ✅');};
 window.addFreq=async id=>{try{await fupd(['groceries',id],{addedToList:true});notify('Added to list ✅');}catch(ex){}};
 window.quickAddFreq=async id=>{try{await fupd(['groceries',id],{addedToList:true,checked:false});notify('Added to list ✅');}catch(ex){}};
@@ -2539,7 +2673,16 @@ window.hAddDinner=async function(){
     back();notify('✅ Dinner planned!','🍽');
   }catch(ex){if(err)err.textContent=ex.message;}
 };
-window.dDinner=async function(id){try{await fdel(['dinners',id]);notify('Dinner removed','🗑️');}catch(ex){}};
+window.dDinner=async function(id){
+  const d=S.dinners.find(x=>x.id===id);
+  if(!d)return;
+  try{
+    await fdel(['dinners',id]);
+    if(window._pendingUndo&&window._pendingUndo.timer)clearTimeout(window._pendingUndo.timer);
+    window._pendingUndo={data:{...d},type:'dinner'};
+    showUndoToast(d.meal+' removed','dinner');
+  }catch(ex){}
+};
 
 // ── PLAY DATE HANDLERS ─────────────────────────────────────────────
 window.setPlayDateType=function(type){
