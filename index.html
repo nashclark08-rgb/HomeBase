@@ -215,12 +215,37 @@ function notify(msg,icon){
   icon=icon||'🏠';
   if(S.nTimer)clearTimeout(S.nTimer);
   S.notif={msg,icon};
+  // If this looks like a save confirmation, record the timestamp
+  if(/\b(saved|added|updated|deleted|removed|created|set|changed|posted|done)\b/i.test(msg)){
+    S.lastSavedAt=Date.now();
+    S.lastSavedMsg=msg;
+  }
   document.querySelectorAll('.notif').forEach(e=>e.remove());
   const el=document.createElement('div');el.className='notif';
   el.onclick=()=>{S.notif=null;el.remove();};
   el.innerHTML='<div style="display:flex;gap:10px;align-items:flex-start"><div style="width:34px;height:34px;border-radius:10px;background:'+NAVY+';display:flex;align-items:center;justify-content:center;font-size:16px">'+icon+'</div><div style="flex:1"><div style="font-size:13px;font-weight:700;color:#fff;margin-bottom:2px">HomeBase</div><div style="font-size:13px;color:rgba(255,255,255,0.88);line-height:1.4">'+msg+'</div></div></div>';
   $('screen').appendChild(el);
-  S.nTimer=setTimeout(()=>{S.notif=null;el.remove();},4000);
+  S.nTimer=setTimeout(()=>{S.notif=null;el.remove();renderLastSaved();},6000);
+  renderLastSaved();
+}
+// Show a subtle persistent "Last saved at HH:MM" indicator under the topbar
+function renderLastSaved(){
+  const existing=document.getElementById('last-saved-bar');
+  if(existing)existing.remove();
+  if(!S.lastSavedAt)return;
+  // Only show if last save was within 30 seconds
+  const sec=Math.round((Date.now()-S.lastSavedAt)/1000);
+  if(sec>30)return;
+  const time=new Date(S.lastSavedAt);
+  const hh=String(time.getHours()).padStart(2,'0');
+  const mm=String(time.getMinutes()).padStart(2,'0');
+  const ss=String(time.getSeconds()).padStart(2,'0');
+  const bar=document.createElement('div');
+  bar.id='last-saved-bar';
+  bar.style.cssText='position:fixed;top:60px;left:50%;transform:translateX(-50%);z-index:80;background:#34C759;color:#fff;padding:5px 14px;border-radius:0 0 12px 12px;font-size:12px;font-weight:600;box-shadow:0 2px 8px rgba(52,199,89,0.3);font-family:inherit';
+  bar.textContent='✓ Saved at '+hh+':'+mm+':'+ss;
+  document.body.appendChild(bar);
+  setTimeout(function(){const b=document.getElementById('last-saved-bar');if(b)b.remove();},5000);
 }
 
 function go(sc,params){S.screen=sc;S.screenParams=params||{};S.fabOpen=false;render();}
@@ -1015,6 +1040,9 @@ function sMorning(){
 function sAddEvent(){
   const ef=S.ef;
   const mems=members();
+  const preChildId=S.screenParams?.childId||'';
+  const preAdultUid=S.screenParams?.adultUid||'';
+  const preselectVal=preAdultUid?'adult:'+preAdultUid:preChildId;
   return `<div style="min-height:100%;display:flex;flex-direction:column;background:#F2F2F7">
     <div style="background:#fff;padding:14px 16px;display:flex;align-items:center;border-bottom:1px solid #F2F2F7;position:sticky;top:0;z-index:10">
       <button class="back-btn" onclick="back()">${bk()} Back</button>
@@ -1033,8 +1061,13 @@ function sAddEvent(){
         </div>
 
         <select class="input" id="echild">
-          <option value="">No specific child</option>
-          ${S.children.map(c=>`<option value="${c.id}">${c.name}</option>`).join('')}
+          <option value="" ${!preselectVal?'selected':''}>Family event (no specific person)</option>
+          <optgroup label="Children">
+            ${S.children.map(c=>`<option value="${c.id}" ${preselectVal===c.id?'selected':''}>${c.name}${c.year?' ('+c.year+')':''}</option>`).join('')}
+          </optgroup>
+          <optgroup label="Adults">
+            ${members().map(m=>`<option value="adult:${m.uid}" ${preselectVal==='adult:'+m.uid?'selected':''}>${m.name}${m.relationship?' ('+m.relationship+')':''}</option>`).join('')}
+          </optgroup>
         </select>
 
         <div>
@@ -2051,9 +2084,12 @@ function sPersonProfile(){
   // Events for THIS person on view date
   let dayEvents=[];
   if(person.isAdult){
-    // Adult: events where they're drop-off or pick-up
+    // Adult: events tied directly to them, OR where they're drop-off / pick-up
     dayEvents=S.events.filter(e=>{
-      if(e.dropoff!==name&&e.pickup!==name&&e.dropoff!==name.split(' ')[0]&&e.pickup!==name.split(' ')[0])return false;
+      const isMyEvent=e.adultUid===person.id;
+      const firstName=name.split(' ')[0];
+      const isMyDuty=e.dropoff===name||e.pickup===name||e.dropoff===firstName||e.pickup===firstName;
+      if(!isMyEvent&&!isMyDuty)return false;
       if(!e.freq||e.freq==='once')return e.date===viewDateStr;
       const start=new Date((e.startDate||e.date||viewDateStr)+'T12:00');
       const end=e.endDate?new Date(e.endDate+'T12:00'):null;
@@ -2104,7 +2140,7 @@ function sPersonProfile(){
             ${ev.dropoff||ev.pickup?`<div style="font-size:11px;color:${color};font-weight:500">${ev.dropoff?'🚗 '+ev.dropoff:''}${ev.dropoff&&ev.pickup?' · ':''}${ev.pickup?'🏠 '+ev.pickup:''}</div>`:''}
           </div>
         </div>`).join('')}
-        <button onclick="go('addEvent',{childId:'${person.isAdult?'':person.id}'})" style="width:100%;padding:13px 16px;border-top:1px solid var(--row-border);background:none;border-left:none;border-right:none;border-bottom:none;color:${color};font-size:14px;font-weight:600;cursor:pointer;font-family:inherit;text-align:center">+ Add Event for ${name.split(' ')[0]}</button>
+        <button onclick="go('addEvent',{${person.isAdult?`adultUid:'${person.id}'`:`childId:'${person.id}'`}})" style="width:100%;padding:13px 16px;border-top:1px solid var(--row-border);background:none;border-left:none;border-right:none;border-bottom:none;color:${color};font-size:14px;font-weight:600;cursor:pointer;font-family:inherit;text-align:center">+ Add Event for ${name.split(' ')[0]}</button>
       </div>
 
       ${!person.isAdult?`
@@ -2940,9 +2976,16 @@ window.hSaveEvent=async()=>{
   const dropoff=dropRaw==='__other'?prompt('Enter drop-off person name:')||'':dropRaw;
   const pickup=pickRaw==='__other'?prompt('Enter pick-up person name:')||'':pickRaw;
   try{
-    const childId=$('echild')?.value||'';
+    const echildVal=$('echild')?.value||'';
+    let childId='';
+    let adultUid='';
+    if(echildVal.startsWith('adult:')){
+      adultUid=echildVal.replace('adult:','');
+    }else{
+      childId=echildVal;
+    }
     await fadd(['events'],{
-      title,emoji:ef.emoji||'📅',childId,
+      title,emoji:ef.emoji||'📅',childId,adultUid,
       freq:ef.freq,
       date:ef.freq==='once'?$('edate')?.value:'',
       startDate:ef.freq!=='once'?$('estartdate')?.value||fd(today):'',
@@ -3208,83 +3251,132 @@ window.runPlayDateOCR=async function(input){
     const r=await T.recognize(file,'eng',{
       logger:m=>{if(m.status==='recognizing text'&&status)status.innerHTML='📖 Reading... '+Math.round(m.progress*100)+'%';}
     });
-    const text=r.data.text;
-    const lines=text.split(/\n+/).map(l=>l.trim()).filter(l=>l.length>1);
-    let filledCount=0;
-    const setVal=(id,val)=>{
+    const text=r.data.text||'';
+    const cleanText=text.replace(/[^\x20-\x7E\n]/g,' '); // strip weird OCR artefacts
+    const lines=cleanText.split(/\n+/).map(l=>l.trim()).filter(l=>l.length>1);
+    const filledFields=[];
+    const setVal=(id,val,label)=>{
       const el=document.getElementById(id);
-      if(el&&val){el.value=val;filledCount++;}
+      if(el&&val){el.value=val;filledFields.push(label||id);}
     };
+    // Helper: determine if a string looks like coherent words (≥60% alphabetic chars, has 2+ letters in a row)
+    function looksLikeText(s){
+      if(!s||s.length<3)return false;
+      const alpha=(s.match(/[a-zA-Z]/g)||[]).length;
+      const total=s.length;
+      if(alpha/total<0.5)return false;
+      // Must contain a real word (2+ consecutive letters)
+      if(!/[a-zA-Z]{3,}/.test(s))return false;
+      // Reject if too many special chars
+      const specials=(s.match(/[^a-zA-Z0-9\s'\-,.&]/g)||[]).length;
+      if(specials/total>0.2)return false;
+      return true;
+    }
 
-    // ── TITLE: Look for "X's Birthday" / "X turns Y" / largest top line ──
+    // ── TITLE: Strictly look for "X's Birthday" pattern, otherwise leave blank ──
     let title='';
-    const birthdayMatch=text.match(/(\w+)['\u2019]s\s+(?:(\d+)(?:st|nd|rd|th)?\s+)?birthday/i);
-    const turnsMatch=text.match(/(\w+)\s+turns\s+(\d+)/i);
+    const birthdayMatch=cleanText.match(/([A-Z][a-z]+)['\u2019]s\s+(?:(\d+)(?:st|nd|rd|th)?\s+)?birthday/i);
+    const turnsMatch=cleanText.match(/([A-Z][a-z]+)\s+turns?\s+(\d+)/i);
+    const partyMatch=cleanText.match(/([A-Z][a-z]+)['\u2019]s\s+(?:birthday\s+)?party/i);
     if(birthdayMatch){
       title=birthdayMatch[0].trim();
-      setVal('pd-host',birthdayMatch[1]);
+      setVal('pd-host',birthdayMatch[1],'host name');
     }else if(turnsMatch){
-      title=turnsMatch[1]+"'s "+turnsMatch[2]+(turnsMatch[2].endsWith('1')?'st':turnsMatch[2].endsWith('2')?'nd':turnsMatch[2].endsWith('3')?'rd':'th')+' Birthday';
-      setVal('pd-host',turnsMatch[1]);
+      const num=turnsMatch[2];
+      const suffix=num.endsWith('1')&&num!=='11'?'st':num.endsWith('2')&&num!=='12'?'nd':num.endsWith('3')&&num!=='13'?'rd':'th';
+      title=turnsMatch[1]+"'s "+num+suffix+' Birthday';
+      setVal('pd-host',turnsMatch[1],'host name');
+    }else if(partyMatch){
+      title=partyMatch[1]+"'s Birthday Party";
+      setVal('pd-host',partyMatch[1],'host name');
     }else{
-      // Use first short line as title
-      title=lines.slice(0,3).find(l=>l.length>3&&l.length<60)||lines[0]||'';
+      // Conservative fallback: only use first line if it really looks like clean text
+      const firstClean=lines.find(l=>looksLikeText(l)&&l.length>=5&&l.length<=60);
+      if(firstClean)title=firstClean;
     }
-    if(title)setVal('pd-title',title);
+    if(title&&looksLikeText(title))setVal('pd-title',title,'title');
 
-    // ── DATE ──
-    const dateMatch=text.match(/(\d{1,2})(?:st|nd|rd|th)?[\s\/\-]+(\d{1,2}|Jan|Feb|Mar|Apr|May|Jun|Jul|Aug|Sep|Oct|Nov|Dec|January|February|March|April|May|June|July|August|September|October|November|December)[\s\/\-]+(\d{2,4})/i);
-    if(dateMatch){
-      const day=dateMatch[1].padStart(2,'0');
-      let month=dateMatch[2];
-      const year=dateMatch[3].length===2?'20'+dateMatch[3]:dateMatch[3];
-      const monthMap={jan:'01',feb:'02',mar:'03',apr:'04',may:'05',jun:'06',jul:'07',aug:'08',sep:'09',oct:'10',nov:'11',dec:'12'};
-      const mLower=month.toLowerCase().slice(0,3);
-      if(monthMap[mLower])month=monthMap[mLower];
-      else month=String(month).padStart(2,'0');
-      setVal('pd-date',year+'-'+month+'-'+day);
+    // ── DATE: Need explicit month name OR proper dd/mm/yyyy format with 4-digit year ──
+    let foundDate='';
+    // Pattern 1: "15 April 2026" / "15th April 2026" / "April 15, 2026"
+    const monthName=cleanText.match(/(\d{1,2})(?:st|nd|rd|th)?\s+(jan|feb|mar|apr|may|jun|jul|aug|sep|oct|nov|dec)[a-z]*\s+(\d{4})/i)
+      || cleanText.match(/(jan|feb|mar|apr|may|jun|jul|aug|sep|oct|nov|dec)[a-z]*\s+(\d{1,2})(?:st|nd|rd|th)?[,\s]+(\d{4})/i);
+    // Pattern 2: dd/mm/yyyy with 4-digit year
+    const slashDate=cleanText.match(/(\d{1,2})[\/](\d{1,2})[\/](\d{4})/);
+    const monthMap={jan:'01',feb:'02',mar:'03',apr:'04',may:'05',jun:'06',jul:'07',aug:'08',sep:'09',oct:'10',nov:'11',dec:'12'};
+    if(monthName){
+      // Need to detect order
+      const isMonthFirst=/^(jan|feb|mar|apr|may|jun|jul|aug|sep|oct|nov|dec)/i.test(monthName[1]);
+      const day=isMonthFirst?monthName[2]:monthName[1];
+      const monthStr=(isMonthFirst?monthName[1]:monthName[2]).toLowerCase().slice(0,3);
+      const year=monthName[3];
+      const m=monthMap[monthStr];
+      if(m&&day>=1&&day<=31&&year>=2024&&year<=2100){
+        foundDate=year+'-'+m+'-'+String(day).padStart(2,'0');
+      }
+    }else if(slashDate){
+      const day=parseInt(slashDate[1]),month=parseInt(slashDate[2]),year=parseInt(slashDate[3]);
+      if(day>=1&&day<=31&&month>=1&&month<=12&&year>=2024&&year<=2100){
+        foundDate=year+'-'+String(month).padStart(2,'0')+'-'+String(day).padStart(2,'0');
+      }
     }
+    if(foundDate)setVal('pd-date',foundDate,'date');
 
-    // ── TIME (start–end or start only) ──
-    const timeRangeMatch=text.match(/(\d{1,2})(?:[:\.](\d{2}))?\s*(am|pm)?\s*(?:-|–|—|to|until|till)\s*(\d{1,2})(?:[:\.](\d{2}))?\s*(am|pm)?/i);
-    const timeOneMatch=text.match(/(\d{1,2})[:\.](\d{2})\s*(am|pm)/i);
+    // ── TIME: Need am/pm explicitly ──
+    let foundTime='';
+    const timeRangeMatch=cleanText.match(/(\d{1,2})(?:[:\.](\d{2}))?\s*(am|pm)?\s*(?:-|–|—|to|until|till)\s*(\d{1,2})(?:[:\.](\d{2}))?\s*(am|pm)/i);
+    const timeOneMatch=cleanText.match(/(\d{1,2})[:\.](\d{2})\s*(am|pm)/i);
     if(timeRangeMatch){
-      setVal('pd-time',timeRangeMatch[0].replace(/\s+/g,' ').trim());
+      foundTime=timeRangeMatch[0].replace(/\s+/g,' ').trim();
     }else if(timeOneMatch){
-      setVal('pd-time',timeOneMatch[0].replace(/\s+/g,' ').trim());
+      foundTime=timeOneMatch[0].replace(/\s+/g,' ').trim();
     }
+    if(foundTime)setVal('pd-time',foundTime,'time');
 
     // ── PHONE (Australian) ──
-    const phoneMatch=text.match(/(?:\+?61|0)\s?\d(?:[\s\-]?\d){7,9}/);
-    if(phoneMatch)setVal('pd-host-phone',phoneMatch[0].trim());
+    const phoneMatch=cleanText.match(/(?:\+?61|0)\s?\d(?:[\s\-]?\d){7,9}/);
+    if(phoneMatch){
+      const phone=phoneMatch[0].trim();
+      // Validate digits only count is reasonable (8-12)
+      const digits=phone.replace(/\D/g,'');
+      if(digits.length>=9&&digits.length<=12)setVal('pd-host-phone',phone,'phone');
+    }
 
-    // ── HOST PARENT NAME (after "RSVP", "From", "Contact", "love") ──
-    const rsvpNameMatch=text.match(/(?:rsvp(?:\sto)?|from|contact|love(?:\sfrom)?)[\s,:]+([A-Z][a-z]+(?:\s+[A-Z][a-z]+)?)/i);
-    if(rsvpNameMatch&&!document.getElementById('pd-host-parent').value){
-      setVal('pd-host-parent',rsvpNameMatch[1].trim());
+    // ── HOST PARENT NAME (after "RSVP", "From", "Contact", "love from") ──
+    const rsvpNameMatch=cleanText.match(/(?:rsvp(?:\s+to)?|from|contact|love\s+from)[\s,:]+([A-Z][a-z]+(?:\s+[A-Z][a-z]+)?)/i);
+    if(rsvpNameMatch&&document.getElementById('pd-host-parent')&&!document.getElementById('pd-host-parent').value){
+      const candidate=rsvpNameMatch[1].trim();
+      if(looksLikeText(candidate))setVal('pd-host-parent',candidate,'host parent name');
     }
 
     // ── ADDRESS (lines containing street suffixes or after "at"/"venue:"/"address:") ──
-    const addrPatternMatch=text.match(/(?:at|venue:?|address:?|location:?)\s+([^\n]{8,100})/i);
     let address='';
-    if(addrPatternMatch){
+    const addrPatternMatch=cleanText.match(/(?:venue:?|address:?|location:?)\s+([^\n]{8,100})/i);
+    if(addrPatternMatch&&looksLikeText(addrPatternMatch[1])){
       address=addrPatternMatch[1].trim();
     }else{
-      // Look for lines with street suffixes
-      const streetSuffix=/\b(street|st\.?|road|rd\.?|avenue|ave\.?|drive|dr\.?|lane|ln\.?|crescent|cres\.?|place|pl\.?|way|terrace|tce\.?|close|cl\.?|court|ct\.?|highway|hwy\.?|park|parade|pde\.?)\b/i;
-      const streetLine=lines.find(l=>streetSuffix.test(l)&&l.length<100);
+      // Look for lines with street suffixes (must also look like text)
+      const streetSuffix=/\b(street|road|avenue|drive|lane|crescent|place|terrace|close|court|highway|park|parade)\b/i;
+      const streetLine=lines.find(l=>streetSuffix.test(l)&&l.length<100&&looksLikeText(l));
       if(streetLine)address=streetLine;
     }
-    if(address)setVal('pd-location',address);
+    if(address)setVal('pd-location',address,'location');
 
-    // ── NOTES (raw text for reference) ──
-    setVal('pd-notes',text.trim().substring(0,500));
+    // ── NOTES (raw text but only if short) ──
+    // Don't count this in filledFields - it's always filled
+    const notesEl=document.getElementById('pd-notes');
+    if(notesEl){
+      // Only set notes if user hasn't already typed something
+      if(!notesEl.value){
+        notesEl.value='[OCR raw text — edit as needed]\n'+text.trim().substring(0,400);
+      }
+    }
 
     if(status){
-      if(filledCount>0){
-        status.innerHTML='✅ Filled '+filledCount+' field'+(filledCount===1?'':'s')+'! Review & edit below.';
+      if(filledFields.length>0){
+        status.innerHTML='✅ Filled: '+filledFields.join(', ')+'. Review & edit below.';
       }else{
-        status.innerHTML='⚠️ Could not detect details. Please enter manually below.';
+        status.innerHTML='⚠️ Could not detect details cleanly. Raw text saved to Notes — please enter fields manually.';
       }
     }
   }catch(ex){
