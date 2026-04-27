@@ -832,7 +832,7 @@ function sEditCaregiver(){
 function sToday(){
   if(S.children.length===0){
     return `<div style="padding:60px 20px;text-align:center">
-      <div style="font-size:72px;margin-bottom:16px">🏠</div>
+      <img src="${(document.querySelector('link[rel=apple-touch-icon]')||{}).href||''}" style="width:96px;height:96px;border-radius:22px;margin-bottom:16px;box-shadow:0 6px 22px rgba(28,58,107,0.25)" alt="HomeBase"/>
       <div style="font-size:24px;font-weight:800;color:#1C3A6B;margin-bottom:10px">Welcome to ${S.family?.name||'HomeBase'}!</div>
       <div style="font-size:15px;color:#8E8E93;line-height:1.6;margin-bottom:28px">Add your first child to get started.<br>New here? <a onclick="go('help')" style="color:#1C3A6B;font-weight:600;cursor:pointer">See how HomeBase works →</a></div>
       <button class="primary-btn" style="max-width:280px;margin:0 auto" onclick="go('addChild')">Add Your First Child</button>
@@ -936,7 +936,16 @@ function sToday(){
       ${!S.weather?`<div style="margin:0 16px 14px;background:#fff;border-radius:12px;padding:10px 14px;display:flex;align-items:center;gap:8px;box-shadow:0 1px 3px rgba(0,0,0,0.05);border:1px solid #F2F2F7"><span style="font-size:18px">🌤</span><span style="flex:1;font-size:13px;color:#8E8E93">No weather — set location</span><button onclick="setTab('settings')" style="padding:5px 10px;border-radius:8px;background:#1C3A6B;border:none;color:#fff;font-size:12px;font-weight:600;cursor:pointer;font-family:inherit">Set up →</button></div>`:''}
 
       <!-- FAMILY ACTIVITIES TODAY -->
-      <div class="sh" style="margin-bottom:6px">📅 ${(()=>{const o=S.dayOffset||0;return o===0?"Today's Activities":o===1?"Tomorrow's Activities":o===-1?"Yesterday's Activities":DAYNAMES[viewDateObj.getDay()]+"'s Activities";})()}</div>
+      <div class="sh" style="margin-bottom:6px;display:flex;align-items:center;justify-content:space-between;padding-right:16px">
+        <span>📅 ${(()=>{const o=S.dayOffset||0;return o===0?"Today's Activities":o===1?"Tomorrow's Activities":o===-1?"Yesterday's Activities":DAYNAMES[viewDateObj.getDay()]+"'s Activities";})()}</span>
+        ${(()=>{
+          // Count events where YOU are responsible
+          const myName=S.user?.displayName||'';
+          const myFirstName=myName.split(' ')[0];
+          const myCount=todayFamilyEvs.filter(ev=>(ev.dropoff===myName||ev.dropoff===myFirstName||ev.pickup===myName||ev.pickup===myFirstName)).length;
+          return myCount>0?`<span style="font-size:10px;font-weight:600;background:#FF9500;color:#fff;padding:3px 8px;border-radius:8px;text-transform:none;letter-spacing:0">${myCount} for ${myFirstName||'you'}</span>`:'';
+        })()}
+      </div>
       <div class="card" style="margin-bottom:14px">
         ${todayFamilyEvs.length===0?'<div class="row" style="color:#8E8E93;font-size:14px;justify-content:center">Nothing scheduled '+(S.dayOffset===0||!S.dayOffset?'today':S.dayOffset===1?'tomorrow':'this day')+' 🎉</div>':
           todayFamilyEvs.map((ev,i)=>{
@@ -2032,7 +2041,7 @@ function sFamily(){
         ${S.children.map((child,i)=>{
           const hasCode=!!child.personalCode;
           return `<div style="display:flex;align-items:center;gap:12px;padding:14px 16px;border-bottom:${i<S.children.length-1?'1px solid #F2F2F7':'none'}">
-          <div onclick="go('personProfile',{kind:'child',childId:'${child.id}'})" style="display:flex;align-items:center;gap:12px;flex:1;cursor:pointer">
+          <div onclick="go('personProfile',{kind:'child',childId:'${child.id}',fromFamily:true})" style="display:flex;align-items:center;gap:12px;flex:1;cursor:pointer">
             ${av(child.name,child.color||NAVY,48,child.photoURL)}
             <div style="flex:1">
               <div style="font-size:17px;font-weight:600">${child.name}</div>
@@ -2052,7 +2061,7 @@ function sFamily(){
           const rel=m.relationship||'';
           const hasCode=!!m.personalCode;
           return `<div style="display:flex;align-items:center;gap:12px;padding:13px 16px;border-bottom:1px solid #F2F2F7">
-            <div onclick="go('personProfile',{kind:'adult',uid:'${m.uid}'})" style="display:flex;align-items:center;gap:12px;flex:1;cursor:pointer">
+            <div onclick="go('personProfile',{kind:'adult',uid:'${m.uid}',fromFamily:true})" style="display:flex;align-items:center;gap:12px;flex:1;cursor:pointer">
               ${av(m.name,m.color,48,m.photoURL)}
               <div style="flex:1">
                 <div style="font-size:17px;font-weight:600">${m.name}${isMe?' (You)':''}</div>
@@ -2375,8 +2384,8 @@ function sPersonProfile(){
       </div>
       `:''}
 
-      <!-- Personal invite code -->
-      ${(()=>{
+      <!-- Personal invite code (only when accessed from Family page) -->
+      ${S.screenParams?.fromFamily?(()=>{
         const m=person.isAdult?members().find(x=>x.uid===person.id):null;
         const code=person.isAdult?(m?.personalCode||''):(person.personalCode||'');
         return `<div class="sh" style="padding:0 16px;margin-bottom:6px">🔑 Personal Invite Code</div>
@@ -2395,7 +2404,7 @@ function sPersonProfile(){
             <button onclick="generatePersonalCode('${person.id}','${person.isAdult?'adult':'child'}')" style="background:#fff;border:none;border-radius:10px;padding:10px 18px;color:${color};font-size:13px;font-weight:700;cursor:pointer;font-family:inherit">🔑 Generate Invite Code</button>
           `}
         </div>`;
-      })()}
+      })():''}
     </div>
   </div>`;
 }
@@ -2410,7 +2419,7 @@ function sHelp(){
     <div style="padding:20px;max-width:680px;margin:auto;width:100%">
 
       <div style="text-align:center;margin-bottom:24px">
-        <div style="font-size:42px;margin-bottom:6px">🏠</div>
+        <img src="${(document.querySelector('link[rel=apple-touch-icon]')||{}).href||''}" style="width:64px;height:64px;border-radius:16px;margin-bottom:8px;box-shadow:0 4px 16px rgba(28,58,107,0.2)" alt="HomeBase"/>
         <div style="font-size:22px;font-weight:800;color:var(--text)">Welcome to HomeBase</div>
         <div style="font-size:14px;color:var(--text-secondary);margin-top:4px;line-height:1.5">A simple way to keep your whole family in sync — events, packing, dinners, school logistics.</div>
       </div>
