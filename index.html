@@ -163,6 +163,24 @@ const tomorrow=new Date(today);tomorrow.setDate(today.getDate()+1);
 const tomorrowStr=fd(tomorrow);
 function fd(d){return d.getFullYear()+'-'+String(d.getMonth()+1).padStart(2,'0')+'-'+String(d.getDate()).padStart(2,'0');}
 
+// Parse a user-entered time string into minutes-since-midnight for sorting
+// Handles: "9:30am", "5:25 AM", "14:30", "2pm", "9:30 - 11:00am", "5:45 to 7pm", "9.30am"
+function parseTimeToMinutes(timeStr){
+  if(!timeStr)return 99999; // events without times go last
+  const s=String(timeStr).trim().toLowerCase();
+  // Take only the first time if there's a range
+  const firstPart=s.split(/\s*(?:to|-|–|—|until|till)\s*/)[0].trim();
+  // Try to match h:mm am/pm or h am/pm or h:mm or h.mm
+  const m=firstPart.match(/^(\d{1,2})[:\.]?(\d{2})?\s*(am|pm)?/);
+  if(!m)return 99998;
+  let h=parseInt(m[1],10);
+  const min=m[2]?parseInt(m[2],10):0;
+  const period=m[3];
+  if(period==='pm'&&h<12)h+=12;
+  if(period==='am'&&h===12)h=0;
+  return h*60+min;
+}
+
 // ── STATE ────────────────────────────────────────
 const S={
   user:null,familyId:null,family:null,
@@ -178,7 +196,7 @@ const S={
   dayOffset:0,
   toggles:{notifs:true,loc:false},unsubs:[],
   // event form
-  ef:{freq:'once',days:{Mon:false,Tue:false,Wed:false,Thu:false,Fri:false,Sat:false,Sun:false},packItems:[],emoji:'📅'}
+  ef:{freq:'once',days:{Mon:false,Tue:false,Wed:false,Thu:false,Fri:false,Sat:false,Sun:false},packItems:[],emoji:'📅',category:''}
 };
 
 // ── HELPERS ──────────────────────────────────────
@@ -515,7 +533,7 @@ function eventsForChildOnDate(child, dateStr){
       return true;
     }
     return false;
-  }).sort((a,b)=>(a.time||'').localeCompare(b.time||''));
+  }).sort((a,b)=>parseTimeToMinutes(a.time)-parseTimeToMinutes(b.time));
 }
 
 // Compute packing items for a child on a given date, derived from that day's events
@@ -553,7 +571,7 @@ function todayEventsForChild(child){
       return true;
     }
     return false;
-  }).sort((a,b)=>(a.time||'').localeCompare(b.time||''));
+  }).sort((a,b)=>parseTimeToMinutes(a.time)-parseTimeToMinutes(b.time));
 }
 
 function sEditChild(){
@@ -742,7 +760,7 @@ function sToday(){
       return wks%2===0;
     }
     return true;
-  }).sort((a,b)=>(a.time||'').localeCompare(b.time||''));
+  }).sort((a,b)=>parseTimeToMinutes(a.time)-parseTimeToMinutes(b.time));
 
   // Shopping list summary
   const shoppingTodo=S.groceries.filter(g=>g.addedToList&&!g.checked);
@@ -835,7 +853,7 @@ function sToday(){
               <div style="width:44px;text-align:right;font-size:12px;font-weight:600;color:var(--text-secondary);flex-shrink:0">${ev.time||''}</div>
               <div style="width:32px;height:32px;border-radius:16px;background:${col}18;border:2px solid ${col};display:flex;align-items:center;justify-content:center;font-size:14px;flex-shrink:0">${ev.emoji||'📅'}</div>
               <div style="flex:1">
-                <div style="font-size:14px;font-weight:600;display:flex;align-items:center;gap:6px">${ev.title}${isMine?'<span style="font-size:10px;font-weight:700;padding:2px 7px;border-radius:8px;background:#FF9500;color:#fff">YOU</span>':''}</div>
+                <div style="font-size:14px;font-weight:600;display:flex;align-items:center;gap:6px;flex-wrap:wrap">${ev.title}${isMine?'<span style="font-size:10px;font-weight:700;padding:2px 7px;border-radius:8px;background:#FF9500;color:#fff">YOU</span>':''}${ev.category==='school'?'<span style="font-size:10px;font-weight:700;padding:2px 7px;border-radius:8px;background:#1C3A6B18;color:#1C3A6B">🏫 SCHOOL</span>':ev.category==='sport'?'<span style="font-size:10px;font-weight:700;padding:2px 7px;border-radius:8px;background:#34C75920;color:#1F8E3F">⚽ SPORT</span>':ev.category==='music'?'<span style="font-size:10px;font-weight:700;padding:2px 7px;border-radius:8px;background:#AF52DE20;color:#7B2CBF">🎵 MUSIC</span>':ev.category==='medical'?'<span style="font-size:10px;font-weight:700;padding:2px 7px;border-radius:8px;background:#FF3B3020;color:#C0392B">🏥 MEDICAL</span>':ev.category==='social'?'<span style="font-size:10px;font-weight:700;padding:2px 7px;border-radius:8px;background:#FF6B9D20;color:#D6336C">🎉 SOCIAL</span>':''}</div>
                 <div style="font-size:12px;color:var(--text-secondary)">${ec?ec.name:'Family'}${ev.location?' · 📍'+ev.location:''}</div>
                 ${ev.dropoff||ev.pickup?`<div style="font-size:11px;color:${NAVY};font-weight:500">${ev.dropoff?(isMyDropoff?'🚗 <strong>'+ev.dropoff+' (you)</strong>':'🚗 '+ev.dropoff):''}${ev.dropoff&&ev.pickup?' · ':''}${ev.pickup?(isMyPickup?'🏠 <strong>'+ev.pickup+' (you)</strong>':'🏠 '+ev.pickup):''}</div>`:''}
               </div>
@@ -1034,8 +1052,56 @@ function sAddEvent(){
           <div><input class="input" id="eenddate" type="date"/><div style="font-size:12px;color:#8E8E93;margin-top:4px;padding-left:4px">End date (optional)</div></div>
         </div>
 
-        <input class="input" id="etime" type="text" placeholder="Time (e.g. 3:45pm – 5:00pm)"/>
+        <!-- Structured time picker -->
+        <div>
+          <div style="font-size:14px;font-weight:600;margin-bottom:8px">⏰ Time</div>
+          <div style="display:flex;gap:6px;align-items:center">
+            <select class="input" id="etime-h-start" style="flex:1">
+              ${Array.from({length:12},(_,i)=>{const h=i+1;return `<option value="${h}" ${h===3?'selected':''}>${h}</option>`;}).join('')}
+            </select>
+            <span style="color:var(--text-secondary);font-weight:600">:</span>
+            <select class="input" id="etime-m-start" style="flex:1">
+              ${['00','05','10','15','20','25','30','35','40','45','50','55'].map(m=>`<option value="${m}" ${m==='30'?'selected':''}>${m}</option>`).join('')}
+            </select>
+            <select class="input" id="etime-p-start" style="flex:0.8">
+              <option value="am">AM</option><option value="pm" selected>PM</option>
+            </select>
+          </div>
+          <div style="display:flex;align-items:center;gap:10px;margin-top:8px">
+            <div class="cb" id="etime-end-cb" onclick="toggleEndTime()" style="border-color:#C7C7CC"></div>
+            <span style="font-size:14px;color:var(--text-secondary)">Set end time</span>
+          </div>
+          <div id="etime-end-row" style="display:none;gap:6px;align-items:center;margin-top:8px">
+            <span style="font-size:13px;color:var(--text-secondary);width:32px">to</span>
+            <select class="input" id="etime-h-end" style="flex:1">
+              ${Array.from({length:12},(_,i)=>{const h=i+1;return `<option value="${h}" ${h===4?'selected':''}>${h}</option>`;}).join('')}
+            </select>
+            <span style="color:var(--text-secondary);font-weight:600">:</span>
+            <select class="input" id="etime-m-end" style="flex:1">
+              ${['00','05','10','15','20','25','30','35','40','45','50','55'].map(m=>`<option value="${m}" ${m==='30'?'selected':''}>${m}</option>`).join('')}
+            </select>
+            <select class="input" id="etime-p-end" style="flex:0.8">
+              <option value="am">AM</option><option value="pm" selected>PM</option>
+            </select>
+          </div>
+        </div>
+
         <input class="input" id="eloc" type="text" placeholder="Location (optional)"/>
+
+        <!-- Category tags -->
+        <div>
+          <div style="font-size:14px;font-weight:600;margin-bottom:8px">🏷 Category (optional)</div>
+          <div style="display:flex;gap:8px;flex-wrap:wrap">
+            ${[
+              {id:'school',label:'🏫 School Event'},
+              {id:'sport',label:'⚽ Sport'},
+              {id:'music',label:'🎵 Music'},
+              {id:'social',label:'🎉 Social'},
+              {id:'medical',label:'🏥 Medical'},
+              {id:'other',label:'📌 Other'}
+            ].map(t=>`<button type="button" onclick="toggleCategory('${t.id}')" id="cat-${t.id}" class="freq-btn ${(S.ef.category===t.id)?'on':''}" style="padding:8px 14px;font-size:13px">${t.label}</button>`).join('')}
+          </div>
+        </div>
 
         <div>
           <div style="font-size:14px;font-weight:600;margin-bottom:8px">🚗 Drop-off caregiver</div>
@@ -1088,7 +1154,7 @@ function sCalendar(){
     if(now<start||(end&&now>end))return false;
     const dn=DAYSH[now.getDay()];
     return ev.days&&ev.days[dn];
-  }).sort((a,b)=>(a.time||'').localeCompare(b.time||''));
+  }).sort((a,b)=>parseTimeToMinutes(a.time)-parseTimeToMinutes(b.time));
 
   return `
     <div style="background:#fff;padding:14px 16px 0;border-bottom:1px solid #F2F2F7;position:sticky;top:0;z-index:10">
@@ -1889,7 +1955,7 @@ function sPersonProfile(){
   }else{
     dayEvents=eventsForChildOnDate(person,viewDateStr);
   }
-  dayEvents.sort((a,b)=>(a.time||'').localeCompare(b.time||''));
+  dayEvents.sort((a,b)=>parseTimeToMinutes(a.time)-parseTimeToMinutes(b.time));
 
   // Packing for child / events for adult — only items needed for this date's events (+ pinned)
   const pk=person.isAdult?[]:packingForChildOnDate(person,viewDateStr);
@@ -2656,6 +2722,43 @@ window.rmPackItem=i=>{
   const list=$('ev-pack-list');
   if(list)list.innerHTML=S.ef.packItems.map((item,j)=>'<div style="display:flex;align-items:center;gap:8px;padding:8px 12px;background:#fff;border-radius:10px;border:1px solid #E5E5EA;margin-bottom:6px"><span style="flex:1;font-size:15px">'+item+'</span><button onclick="rmPackItem('+j+')" style="color:#FF3B30;font-size:18px;border:none;background:none;cursor:pointer">×</button></div>').join('');
 };
+window.toggleEndTime=function(){
+  const cb=document.getElementById('etime-end-cb');
+  const row=document.getElementById('etime-end-row');
+  if(!cb||!row)return;
+  const on=cb.classList.contains('on');
+  if(on){
+    cb.classList.remove('on');
+    cb.style.background='transparent';cb.style.border='2px solid #C7C7CC';cb.innerHTML='';
+    row.style.display='none';
+  }else{
+    cb.classList.add('on');
+    cb.style.background='var(--navy)';cb.style.border='none';cb.innerHTML=ck();
+    row.style.display='flex';
+  }
+};
+window.toggleCategory=function(catId){
+  S.ef.category=S.ef.category===catId?'':catId;
+  ['school','sport','music','social','medical','other'].forEach(c=>{
+    const btn=document.getElementById('cat-'+c);
+    if(btn)btn.classList.toggle('on',S.ef.category===c);
+  });
+};
+function buildTimeString(){
+  const hs=document.getElementById('etime-h-start')?.value;
+  const ms=document.getElementById('etime-m-start')?.value;
+  const ps=document.getElementById('etime-p-start')?.value;
+  const hasEnd=document.getElementById('etime-end-cb')?.classList.contains('on');
+  if(!hs||!ms||!ps)return '';
+  const startStr=hs+':'+ms+ps;
+  if(hasEnd){
+    const he=document.getElementById('etime-h-end')?.value;
+    const me=document.getElementById('etime-m-end')?.value;
+    const pe=document.getElementById('etime-p-end')?.value;
+    if(he&&me&&pe)return startStr+' – '+he+':'+me+pe;
+  }
+  return startStr;
+}
 window.hSaveEvent=async()=>{
   const title=$('et')?.value?.trim(),err=$('everr');
   if(!title){if(err)err.textContent='Please enter a title';return;}
@@ -2675,7 +2778,8 @@ window.hSaveEvent=async()=>{
       startDate:ef.freq!=='once'?$('estartdate')?.value||fd(today):'',
       endDate:ef.freq!=='once'?$('eenddate')?.value||'':'',
       days:ef.freq!=='once'?{...ef.days}:{},
-      time:$('etime')?.value?.trim()||'',
+      time:buildTimeString(),
+      category:ef.category||'',
       location:$('eloc')?.value?.trim()||'',
       dropoff,pickup,
       packItems:[...ef.packItems],
@@ -2684,7 +2788,7 @@ window.hSaveEvent=async()=>{
     if(childId&&ef.packItems.length){
       for(const item of ef.packItems){try{await fadd(['children',childId,'packing'],{label:item,checked:false,pinned:false,section:'afterschool'});}catch(e){}}
     }
-    S.ef={freq:'once',days:{Mon:false,Tue:false,Wed:false,Thu:false,Fri:false,Sat:false,Sun:false},packItems:[],emoji:'📅'};
+    S.ef={freq:'once',days:{Mon:false,Tue:false,Wed:false,Thu:false,Fri:false,Sat:false,Sun:false},packItems:[],emoji:'📅',category:''};
     back();notify('Event saved! 📅');
   }catch(ex){if(err)err.textContent=ex.message;}
 };
@@ -3250,7 +3354,7 @@ window.toggleNightMode=function(){
 };
 window.hSignOut=async()=>{
   S.unsubs.forEach(u=>u());S.unsubs=[];
-  Object.assign(S,{family:null,familyId:null,children:[],packing:{},events:[],assessments:[],groceries:[],gifts:[],dinners:[],playdates:[],contacts:[],mealIdeas:[],mealIdeas:[],screen:null,screenParams:{},tab:'today',morningMode:false,activeChild:null,fabOpen:false,notif:null,weather:null,evTab:'events',listTab:'menu',listFilter:'all',ef:{freq:'once',days:{Mon:false,Tue:false,Wed:false,Thu:false,Fri:false,Sat:false,Sun:false},packItems:[],emoji:'📅'}});
+  Object.assign(S,{family:null,familyId:null,children:[],packing:{},events:[],assessments:[],groceries:[],gifts:[],dinners:[],playdates:[],contacts:[],mealIdeas:[],mealIdeas:[],screen:null,screenParams:{},tab:'today',morningMode:false,activeChild:null,fabOpen:false,notif:null,weather:null,evTab:'events',listTab:'menu',listFilter:'all',ef:{freq:'once',days:{Mon:false,Tue:false,Wed:false,Thu:false,Fri:false,Sat:false,Sun:false},packItems:[],emoji:'📅',category:''}});
   await signOut(auth);
 };
 window.emailCodeInvite=function(){
