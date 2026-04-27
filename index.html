@@ -876,7 +876,9 @@ function sToday(){
         ${todayFamilyEvs.length===0?'<div class="row" style="color:#8E8E93;font-size:14px;justify-content:center">Nothing scheduled '+(S.dayOffset===0||!S.dayOffset?'today':S.dayOffset===1?'tomorrow':'this day')+' 🎉</div>':
           todayFamilyEvs.map((ev,i)=>{
             const ec=S.children.find(c=>c.id===ev.childId);
-            const col=ec?.color||NAVY;
+            const adultMember=ev.adultUid?members().find(x=>x.uid===ev.adultUid):null;
+            const col=ec?.color||adultMember?.color||NAVY;
+            const ownerName=ec?ec.name:adultMember?adultMember.name:'Family';
             // Check if logged-in user is responsible
           const myName=S.user?.displayName||'';
           const myFirstName=myName.split(' ')[0];
@@ -888,7 +890,7 @@ function sToday(){
               <div style="width:32px;height:32px;border-radius:16px;background:${col}18;border:2px solid ${col};display:flex;align-items:center;justify-content:center;font-size:14px;flex-shrink:0">${ev.emoji||'📅'}</div>
               <div style="flex:1">
                 <div style="font-size:14px;font-weight:600;display:flex;align-items:center;gap:6px;flex-wrap:wrap">${ev.title}${isMine?'<span style="font-size:10px;font-weight:700;padding:2px 7px;border-radius:8px;background:#FF9500;color:#fff">YOU</span>':''}${ev.category==='school'?'<span style="font-size:10px;font-weight:700;padding:2px 7px;border-radius:8px;background:#1C3A6B18;color:#1C3A6B">🏫 SCHOOL</span>':ev.category==='sport'?'<span style="font-size:10px;font-weight:700;padding:2px 7px;border-radius:8px;background:#34C75920;color:#1F8E3F">⚽ SPORT</span>':ev.category==='music'?'<span style="font-size:10px;font-weight:700;padding:2px 7px;border-radius:8px;background:#AF52DE20;color:#7B2CBF">🎵 MUSIC</span>':ev.category==='medical'?'<span style="font-size:10px;font-weight:700;padding:2px 7px;border-radius:8px;background:#FF3B3020;color:#C0392B">🏥 MEDICAL</span>':ev.category==='social'?'<span style="font-size:10px;font-weight:700;padding:2px 7px;border-radius:8px;background:#FF6B9D20;color:#D6336C">🎉 SOCIAL</span>':''}</div>
-                <div style="font-size:12px;color:var(--text-secondary)">${ec?ec.name:'Family'}${ev.location?' · 📍'+ev.location:''}</div>
+                <div style="font-size:12px;color:var(--text-secondary)">${ownerName}${ev.location?' · 📍'+ev.location:''}</div>
                 ${ev.dropoff||ev.pickup?`<div style="font-size:11px;color:${NAVY};font-weight:500">${ev.dropoff?(isMyDropoff?'🚗 <strong>'+ev.dropoff+' (you)</strong>':'🚗 '+ev.dropoff):''}${ev.dropoff&&ev.pickup?' · ':''}${ev.pickup?(isMyPickup?'🏠 <strong>'+ev.pickup+' (you)</strong>':'🏠 '+ev.pickup):''}</div>`:''}
               </div>
             </div>`;
@@ -1205,20 +1207,19 @@ function sCalendar(){
 
   const dayEvs=eventsOnDate(sel);
 
-  // Render a child's events for this day as a single colour-block card
-  function childEventsBlock(child, events){
-    const col=child?.color||NAVY;
-    const childName=child?child.name:'Family';
-    const childFirst=child?child.name.split(' ')[0]:'Family';
-    // For dark mode keep the colour saturation; pick text color based on contrast
+  // Render a person's events (child OR adult) for this day as a single colour-block card
+  function personEventsBlock(person, events, isAdult){
+    const col=person?.color||NAVY;
+    const personName=person?person.name:'Family';
+    const personFirst=person?person.name.split(' ')[0]:'Family';
+    const profileKind=isAdult?'adult':'child';
+    const profileParams=isAdult?`{kind:'adult',uid:'${person.id}'}`:`{kind:'child',childId:'${person.id}'}`;
     return `<div style="width:calc(100% - 32px);margin:0 16px 12px;background:${col};border-radius:16px;box-shadow:var(--shadow-md);overflow:hidden;display:flex;align-items:stretch;color:#fff">
       <div style="flex:1;padding:14px 14px 14px 18px;min-width:0">
-        <!-- Child name header -->
-        ${child?`<div onclick="go('personProfile',{kind:'child',childId:'${child.id}'})" style="display:flex;align-items:center;gap:8px;margin-bottom:10px;cursor:pointer;padding-bottom:8px;border-bottom:1px solid rgba(255,255,255,0.25)">
-          <div style="font-size:13px;font-weight:800;color:#fff;letter-spacing:0.3px">${childFirst.toUpperCase()}</div>
+        ${person?`<div onclick="go('personProfile',${profileParams})" style="display:flex;align-items:center;gap:8px;margin-bottom:10px;cursor:pointer;padding-bottom:8px;border-bottom:1px solid rgba(255,255,255,0.25)">
+          <div style="font-size:13px;font-weight:800;color:#fff;letter-spacing:0.3px">${personFirst.toUpperCase()}</div>
           <div style="font-size:11px;color:rgba(255,255,255,0.8);font-weight:500">· ${events.length} ${events.length===1?'event':'events'}</div>
         </div>`:''}
-        <!-- Events list -->
         <div style="display:flex;flex-direction:column;gap:10px">
           ${events.map((ev,i)=>`<div style="${i>0?'padding-top:10px;border-top:1px solid rgba(255,255,255,0.18)':''}">
             <div style="display:flex;align-items:center;gap:8px;margin-bottom:4px;flex-wrap:wrap">
@@ -1237,33 +1238,50 @@ function sCalendar(){
           </div>`).join('')}
         </div>
       </div>
-      ${child?`<div onclick="go('personProfile',{kind:'child',childId:'${child.id}'})" style="width:90px;background:rgba(255,255,255,0.15);display:flex;flex-direction:column;align-items:center;justify-content:center;cursor:pointer;padding:12px 6px">
-        ${child.photoURL?`<div style="width:64px;height:64px;border-radius:32px;border:3px solid #fff;background-image:url('${child.photoURL}');background-size:cover;background-position:center;margin-bottom:6px;box-shadow:0 4px 12px rgba(0,0,0,0.2)"></div>`:`<div style="width:64px;height:64px;border-radius:32px;background:#fff;display:flex;align-items:center;justify-content:center;color:${col};font-size:22px;font-weight:800;margin-bottom:6px;box-shadow:0 4px 12px rgba(0,0,0,0.2)">${child.name.split(' ').map(n=>n[0]).slice(0,2).join('').toUpperCase()}</div>`}
-        <div style="font-size:12px;font-weight:800;color:#fff;text-align:center;line-height:1.1;letter-spacing:0.2px">${childFirst}</div>
+      ${person?`<div onclick="go('personProfile',${profileParams})" style="width:90px;background:rgba(255,255,255,0.15);display:flex;flex-direction:column;align-items:center;justify-content:center;cursor:pointer;padding:12px 6px">
+        ${person.photoURL?`<div style="width:64px;height:64px;border-radius:32px;border:3px solid #fff;background-image:url('${person.photoURL}');background-size:cover;background-position:center;margin-bottom:6px;box-shadow:0 4px 12px rgba(0,0,0,0.2)"></div>`:`<div style="width:64px;height:64px;border-radius:32px;background:#fff;display:flex;align-items:center;justify-content:center;color:${col};font-size:22px;font-weight:800;margin-bottom:6px;box-shadow:0 4px 12px rgba(0,0,0,0.2)">${person.name.split(' ').map(n=>n[0]).slice(0,2).join('').toUpperCase()}</div>`}
+        <div style="font-size:12px;font-weight:800;color:#fff;text-align:center;line-height:1.1;letter-spacing:0.2px">${personFirst}</div>
       </div>`:''}
     </div>`;
   }
+  // Backwards-compat alias
+  function childEventsBlock(child, events){return personEventsBlock(child, events, false);}
 
   // Group day events by child
   function groupEventsByChild(events){
-    const groups=new Map();
+    const childGroups=new Map();
+    const adultGroups=new Map();
     const familyGroup=[];
     events.forEach(ev=>{
-      const cid=ev.childId||'';
-      if(!cid){familyGroup.push(ev);return;}
-      if(!groups.has(cid))groups.set(cid,[]);
-      groups.get(cid).push(ev);
+      if(ev.adultUid){
+        if(!adultGroups.has(ev.adultUid))adultGroups.set(ev.adultUid,[]);
+        adultGroups.get(ev.adultUid).push(ev);
+      }else if(ev.childId){
+        if(!childGroups.has(ev.childId))childGroups.set(ev.childId,[]);
+        childGroups.get(ev.childId).push(ev);
+      }else{
+        familyGroup.push(ev);
+      }
     });
-    // Order: by earliest event time per child
+    // Order: by earliest event time per person
     const arr=[];
-    groups.forEach((evs,cid)=>{
+    childGroups.forEach((evs,cid)=>{
       const child=S.children.find(c=>c.id===cid);
       const earliest=Math.min(...evs.map(e=>parseTimeToMinutes(e.time)));
-      arr.push({child,events:evs,earliest});
+      arr.push({person:child,isAdult:false,events:evs,earliest});
+    });
+    adultGroups.forEach((evs,uid)=>{
+      const m=members().find(x=>x.uid===uid);
+      if(m){
+        // Build a person-like object from member
+        const person={id:m.uid,name:m.name,color:m.color,photoURL:m.photoURL};
+        const earliest=Math.min(...evs.map(e=>parseTimeToMinutes(e.time)));
+        arr.push({person,isAdult:true,events:evs,earliest});
+      }
     });
     if(familyGroup.length){
       const earliest=Math.min(...familyGroup.map(e=>parseTimeToMinutes(e.time)));
-      arr.push({child:null,events:familyGroup,earliest});
+      arr.push({person:null,isAdult:false,events:familyGroup,earliest});
     }
     arr.sort((a,b)=>a.earliest-b.earliest);
     return arr;
@@ -1301,19 +1319,22 @@ function sCalendar(){
       ${view==='day'?`
         ${dayEvs.length===0?`<div style="text-align:center;padding:60px 20px"><div style="font-size:56px;margin-bottom:14px">🎉</div><div style="font-size:18px;font-weight:700;margin-bottom:6px;color:var(--text)">Nothing on!</div><div style="font-size:15px;color:var(--text-secondary)">Tap + to add an event</div></div>`:
           `<div class="sh" style="margin-bottom:10px">${new Date(sel+'T12:00').toLocaleDateString('en-AU',{weekday:'long',day:'numeric',month:'long'})}</div>
-          ${groupEventsByChild(dayEvs).map(g=>childEventsBlock(g.child,g.events)).join('')}`
+          ${groupEventsByChild(dayEvs).map(g=>personEventsBlock(g.person,g.events,g.isAdult)).join('')}`
         }
       `:`
         ${wDates.map(d=>{
           const ds=fd(d);
           const evs=eventsOnDate(ds);
           const isTod=ds===todayStr;
-          // Group events by child for week view
-          const byChild={};
+          // Group events by person (children + adults) for week view
+          const byPerson={};
           evs.forEach(ev=>{
-            const cid=ev.childId||'__family';
-            if(!byChild[cid])byChild[cid]=[];
-            byChild[cid].push(ev);
+            let key;
+            if(ev.adultUid)key='adult:'+ev.adultUid;
+            else if(ev.childId)key='child:'+ev.childId;
+            else key='__family';
+            if(!byPerson[key])byPerson[key]=[];
+            byPerson[key].push(ev);
           });
           return `<div style="margin-bottom:18px">
             <div style="padding:0 16px;display:flex;align-items:baseline;gap:10px;margin-bottom:8px">
@@ -1321,16 +1342,23 @@ function sCalendar(){
               <div style="font-size:14px;color:var(--text-secondary)">${d.getDate()} ${MONTHS[d.getMonth()]}</div>
               ${evs.length===0?`<div style="font-size:12px;color:var(--text-secondary);margin-left:auto">—</div>`:''}
             </div>
-            ${evs.length===0?'':Object.entries(byChild).map(([cid,cEvs])=>{
-              const ec=cid==='__family'?null:S.children.find(c=>c.id===cid);
-              const col=ec?.color||NAVY;
-              const childName=ec?ec.name:'Family';
+            ${evs.length===0?'':Object.entries(byPerson).map(([key,pEvs])=>{
+              let person=null,col=NAVY,personName='Family',profileNav='';
+              if(key.startsWith('child:')){
+                const cid=key.replace('child:','');
+                person=S.children.find(c=>c.id===cid);
+                if(person){col=person.color||NAVY;personName=person.name;profileNav=`go('personProfile',{kind:'child',childId:'${cid}'})`;}
+              }else if(key.startsWith('adult:')){
+                const uid=key.replace('adult:','');
+                const m=members().find(x=>x.uid===uid);
+                if(m){person={id:m.uid,name:m.name,color:m.color,photoURL:m.photoURL};col=m.color||NAVY;personName=m.name;profileNav=`go('personProfile',{kind:'adult',uid:'${uid}'})`;}
+              }
               return `<div style="margin:0 16px 6px;background:var(--card);border-radius:12px;padding:10px 12px;border-left:4px solid ${col};box-shadow:var(--shadow-sm)">
-                <div onclick="${ec?`go('personProfile',{kind:'child',childId:'${ec.id}'})`:''}" style="display:flex;align-items:center;gap:8px;margin-bottom:6px;${ec?'cursor:pointer':''}">
-                  ${ec?av(ec.name,col,22,ec.photoURL):''}
-                  <div style="font-size:12px;font-weight:700;color:${col}">${childName}</div>
+                <div onclick="${profileNav}" style="display:flex;align-items:center;gap:8px;margin-bottom:6px;${profileNav?'cursor:pointer':''}">
+                  ${person?av(person.name,col,22,person.photoURL):''}
+                  <div style="font-size:12px;font-weight:700;color:${col}">${personName}</div>
                 </div>
-                ${cEvs.map((ev,i)=>`<div onclick="selCalDate('${ds}');S.calView='day';render()" style="display:flex;align-items:flex-start;gap:8px;padding:5px 0;cursor:pointer;${i<cEvs.length-1?'border-bottom:1px solid var(--row-border)':''}">
+                ${pEvs.map((ev,i)=>`<div onclick="selCalDate('${ds}');S.calView='day';render()" style="display:flex;align-items:flex-start;gap:8px;padding:5px 0;cursor:pointer;${i<pEvs.length-1?'border-bottom:1px solid var(--row-border)':''}">
                   <span style="font-size:13px;font-weight:600;color:var(--text-secondary);min-width:60px">${ev.time||''}</span>
                   <span style="font-size:14px">${ev.emoji||'📅'}</span>
                   <span style="flex:1;font-size:14px;color:var(--text)">${ev.title}</span>
