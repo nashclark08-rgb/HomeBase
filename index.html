@@ -529,6 +529,13 @@ function sSignup(){
         <input class="input" id="sn" type="text" placeholder="Your full name"/>
         <input class="input" id="se" type="email" placeholder="Email address"/>
         <input class="input" id="sp" type="password" placeholder="Password (min 6 characters)"/>
+
+        <div style="background:#fff;border:1px solid #E5E5EA;border-radius:12px;padding:14px;margin-top:6px">
+          <div style="font-size:14px;font-weight:700;color:#1C3A6B;margin-bottom:4px">🔑 Got a personal invite code?</div>
+          <div style="font-size:12px;color:#8E8E93;margin-bottom:10px;line-height:1.45">Optional — paste it here to join an existing family directly. Otherwise you can create a new family on the next screen.</div>
+          <input class="input" id="sinvite" type="text" placeholder="HB-A-XXXXX or HB-C-XXXXX" style="font-family:monospace;text-transform:uppercase"/>
+        </div>
+
         <div id="serr" class="err"></div>
         <button class="primary-btn" onclick="hSignup()">Create Account</button>
       </div>
@@ -2853,8 +2860,28 @@ window.hSignup=async()=>{
   if(p.length<6){if(err)err.textContent='Password must be at least 6 characters';return;}
   const btn=document.querySelector('button[onclick="hSignup()"]');
   if(btn){btn.textContent='Creating account...';btn.disabled=true;}
-  try{const c=await createUserWithEmailAndPassword(auth,e,p);await updateProfile(c.user,{displayName:n});S.user={...c.user,displayName:n};back();}
-  catch(ex){
+  try{
+    const c=await createUserWithEmailAndPassword(auth,e,p);
+    await updateProfile(c.user,{displayName:n});
+    S.user={...c.user,displayName:n};
+    // If they entered an invite code on the signup screen, join immediately
+    const inviteCode=$('sinvite')?.value?.trim();
+    if(inviteCode){
+      if(btn)btn.textContent='Joining family...';
+      try{
+        S.familyId=await joinFamily(inviteCode);
+        subscribe();
+        render();
+        return;
+      }catch(joinEx){
+        // Account created but join failed — fall through to family setup screen with a message
+        if(err)err.textContent='Account created, but invite code not recognised. You can try again on the next screen.';
+        back();
+        return;
+      }
+    }
+    back();
+  }catch(ex){
     if(err)err.textContent=authErrMsg(ex.code,ex.message);
     if(btn){btn.textContent='Create Account';btn.disabled=false;}
   }
