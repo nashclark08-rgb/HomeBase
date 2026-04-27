@@ -181,6 +181,76 @@ function parseTimeToMinutes(timeStr){
   return h*60+min;
 }
 
+// Parse a time string into {start, end} minutes. If no end specified, returns end = start + 60 (assumed 1-hour event).
+function parseTimeRange(timeStr){
+  if(!timeStr)return null;
+  const s=String(timeStr).trim().toLowerCase();
+  const parts=s.split(/\s*(?:to|-|–|—|until|till)\s*/);
+  const startStr=parts[0];
+  const endStr=parts[1];
+  const parseOne=(str,defaultPeriod)=>{
+    const m=str.match(/^(\d{1,2})[:\.]?(\d{2})?\s*(am|pm)?/);
+    if(!m)return null;
+    let h=parseInt(m[1],10);
+    const min=m[2]?parseInt(m[2],10):0;
+    const period=m[3]||defaultPeriod;
+    if(period==='pm'&&h<12)h+=12;
+    if(period==='am'&&h===12)h=0;
+    return h*60+min;
+  };
+  // First detect end period to inform start (e.g. "3-4pm" → both pm)
+  const endPeriodMatch=endStr?endStr.match(/(am|pm)/):null;
+  const inferredPeriod=endPeriodMatch?endPeriodMatch[1]:null;
+  const start=parseOne(startStr,inferredPeriod);
+  if(start===null)return null;
+  const end=endStr?parseOne(endStr):start+60;
+  return {start,end:end!==null?end:start+60};
+}
+
+// Determine if a draft event conflicts (overlaps in time) with any existing event
+// for the same person on the same date. Returns array of conflicting events.
+function findConflicts(draft,excludeId){
+  const dRange=parseTimeRange(draft.time);
+  if(!dRange)return [];
+  const draftIds=Array.isArray(draft.participantIds)&&draft.participantIds.length?draft.participantIds:[draft.childId,draft.adultUid].filter(Boolean);
+  if(!draftIds.length)return []; // family-wide event — skip
+  // Determine which dates the draft occurs on (just check the start date for simplicity)
+  const draftDate=draft.freq==='once'?draft.date:draft.startDate;
+  if(!draftDate)return [];
+  const draftDayName=DAYSH[new Date(draftDate+'T12:00').getDay()];
+  return S.events.filter(ev=>{
+    if(ev.id===excludeId)return false;
+    // Check participant overlap
+    const evIds=Array.isArray(ev.participantIds)&&ev.participantIds.length?ev.participantIds:[ev.childId,ev.adultUid].filter(Boolean);
+    const sharesPerson=evIds.some(id=>draftIds.includes(id));
+    // Also check if drop-off / pick-up is one of the draft's adult participants (logistics overlap)
+    const draftAdultNames=draftIds.map(id=>{
+      const m=members().find(x=>x.uid===id);return m?m.name:null;
+    }).filter(Boolean);
+    const sharesDuty=draftAdultNames.some(name=>{
+      const first=name.split(' ')[0];
+      return ev.dropoff===name||ev.pickup===name||ev.dropoff===first||ev.pickup===first;
+    });
+    if(!sharesPerson&&!sharesDuty)return false;
+    // Check if ev happens on draft date
+    let happens=false;
+    if(!ev.freq||ev.freq==='once'){
+      happens=(ev.date===draftDate);
+    }else{
+      const start=new Date((ev.startDate||ev.date||draftDate)+'T12:00');
+      const end=ev.endDate?new Date(ev.endDate+'T12:00'):null;
+      const v=new Date(draftDate+'T12:00');
+      if(v<start||(end&&v>end))happens=false;
+      else happens=ev.days&&ev.days[draftDayName];
+    }
+    if(!happens)return false;
+    const evRange=parseTimeRange(ev.time);
+    if(!evRange)return false;
+    // Overlap test: dRange.start < evRange.end && evRange.start < dRange.end
+    return dRange.start<evRange.end&&evRange.start<dRange.end;
+  });
+}
+
 // ── STATE ────────────────────────────────────────
 const S={
   user:null,familyId:null,family:null,
@@ -837,13 +907,47 @@ function sEditCaregiver(){
 }
 
 function sToday(){
-  if(S.children.length===0){
-    return `<div style="padding:60px 20px;text-align:center">
-      <img src="${(document.querySelector('link[rel=apple-touch-icon]')||{}).href||''}" style="width:96px;height:96px;border-radius:22px;margin-bottom:16px;box-shadow:0 6px 22px rgba(28,58,107,0.25)" alt="HomeBase"/>
-      <div style="font-size:24px;font-weight:800;color:#1C3A6B;margin-bottom:10px">Welcome to ${S.family?.name||'HomeBase'}!</div>
-      <div style="font-size:15px;color:#8E8E93;line-height:1.6;margin-bottom:28px">Add your first child to get started.<br>New here? <a onclick="go('help')" style="color:#1C3A6B;font-weight:600;cursor:pointer">See how HomeBase works →</a></div>
-      <button class="primary-btn" style="max-width:280px;margin:0 auto" onclick="go('addChild')">Add Your First Child</button>
-      <button onclick="go('help')" style="max-width:280px;margin:12px auto 0;display:block;width:100%;padding:14px;border-radius:12px;background:#F2F2F7;color:#1C3A6B;border:none;font-size:15px;font-weight:600;cursor:pointer;font-family:inherit">📖 How HomeBase works</button>
+  // Onboarding checklist - shows until all 3 steps done
+  const hasKids=S.children.length>0;
+  const hasEvents=S.events.length>0;
+  const hasOtherAdult=members().filter(m=>m.uid!==S.user?.uid).length>0;
+  const onboardingDone=hasKids&&hasEvents&&hasOtherAdult;
+  // If completely fresh (no kids), show the big welcome
+  if(!hasKids){
+    return `<div style="padding:32px 20px;max-width:520px;margin:auto;text-align:center">
+      <img src="${(document.querySelector('link[rel=apple-touch-icon]')||{}).href||''}" style="width:84px;height:84px;border-radius:20px;margin-bottom:14px;box-shadow:0 6px 22px rgba(28,58,107,0.25)" alt="HomeBase"/>
+      <div style="font-size:24px;font-weight:800;color:#1C3A6B;margin-bottom:6px">Welcome${S.family?.name?', the '+S.family.name:' to HomeBase'}!</div>
+      <div style="font-size:14px;color:#8E8E93;line-height:1.55;margin-bottom:20px">Three quick steps to get HomeBase working for your family.</div>
+
+      <!-- Step 1 -->
+      <div style="background:#fff;border-radius:14px;padding:14px 16px;margin-bottom:10px;text-align:left;box-shadow:0 1px 4px rgba(0,0,0,0.06);display:flex;align-items:center;gap:12px">
+        <div style="width:30px;height:30px;border-radius:15px;background:#1C3A6B;color:#fff;display:flex;align-items:center;justify-content:center;font-size:14px;font-weight:800;flex-shrink:0">1</div>
+        <div style="flex:1">
+          <div style="font-size:15px;font-weight:700;color:#1C1C1E">Add your kids</div>
+          <div style="font-size:12px;color:#8E8E93;margin-top:2px">Names, year level, photo (optional)</div>
+        </div>
+        <button onclick="go('addChild')" style="padding:9px 16px;border-radius:10px;background:#1C3A6B;border:none;color:#fff;font-size:13px;font-weight:700;cursor:pointer;font-family:inherit">Start →</button>
+      </div>
+
+      <!-- Step 2 - greyed -->
+      <div style="background:#fff;border-radius:14px;padding:14px 16px;margin-bottom:10px;text-align:left;opacity:0.55;display:flex;align-items:center;gap:12px">
+        <div style="width:30px;height:30px;border-radius:15px;background:#E5E5EA;color:#8E8E93;display:flex;align-items:center;justify-content:center;font-size:14px;font-weight:800;flex-shrink:0">2</div>
+        <div style="flex:1">
+          <div style="font-size:15px;font-weight:700;color:#1C1C1E">Add a recurring event</div>
+          <div style="font-size:12px;color:#8E8E93;margin-top:2px">School, sport, music — anything that happens every week</div>
+        </div>
+      </div>
+
+      <!-- Step 3 - greyed -->
+      <div style="background:#fff;border-radius:14px;padding:14px 16px;margin-bottom:18px;text-align:left;opacity:0.55;display:flex;align-items:center;gap:12px">
+        <div style="width:30px;height:30px;border-radius:15px;background:#E5E5EA;color:#8E8E93;display:flex;align-items:center;justify-content:center;font-size:14px;font-weight:800;flex-shrink:0">3</div>
+        <div style="flex:1">
+          <div style="font-size:15px;font-weight:700;color:#1C1C1E">Invite your partner / co-parent</div>
+          <div style="font-size:12px;color:#8E8E93;margin-top:2px">Personal invite codes — no shared passwords</div>
+        </div>
+      </div>
+
+      <button onclick="go('help')" style="background:none;border:none;color:#1C3A6B;font-size:13px;font-weight:600;cursor:pointer;font-family:inherit">📖 How HomeBase works</button>
     </div>`;
   }
 
@@ -941,6 +1045,34 @@ function sToday(){
 
     <div style="padding:16px 0 100px">
       ${!S.weather?`<div style="margin:0 16px 14px;background:#fff;border-radius:12px;padding:10px 14px;display:flex;align-items:center;gap:8px;box-shadow:0 1px 3px rgba(0,0,0,0.05);border:1px solid #F2F2F7"><span style="font-size:18px">🌤</span><span style="flex:1;font-size:13px;color:#8E8E93">No weather — set location</span><button onclick="setTab('settings')" style="padding:5px 10px;border-radius:8px;background:#1C3A6B;border:none;color:#fff;font-size:12px;font-weight:600;cursor:pointer;font-family:inherit">Set up →</button></div>`:''}
+
+      ${!onboardingDone&&!S.hideOnboarding?(()=>{
+        const stepsDone=[hasKids,hasEvents,hasOtherAdult].filter(Boolean).length;
+        return `<div style="margin:0 16px 14px;background:linear-gradient(135deg,#1C3A6B,#2E5FBF);border-radius:14px;padding:14px 16px;color:#fff">
+          <div style="display:flex;align-items:center;gap:8px;margin-bottom:10px">
+            <span style="font-size:14px;font-weight:700">🚀 Set up HomeBase</span>
+            <span style="margin-left:auto;font-size:11px;font-weight:700;background:rgba(255,255,255,0.22);padding:2px 8px;border-radius:10px">${stepsDone}/3</span>
+            <button onclick="dismissOnboarding()" title="Dismiss" style="background:none;border:none;color:rgba(255,255,255,0.6);font-size:16px;cursor:pointer;padding:0 0 0 4px">×</button>
+          </div>
+          <div style="display:flex;flex-direction:column;gap:6px">
+            <div onclick="${hasKids?'':"go('addChild')"}" style="display:flex;align-items:center;gap:8px;padding:7px 10px;border-radius:10px;background:rgba(255,255,255,0.12);${hasKids?'opacity:0.7':'cursor:pointer'}">
+              <span style="font-size:14px">${hasKids?'✅':'①'}</span>
+              <span style="font-size:12px;font-weight:600;flex:1;${hasKids?'text-decoration:line-through':''}">Add your kids</span>
+              ${!hasKids?`<span style="font-size:11px;font-weight:700">→</span>`:''}
+            </div>
+            <div onclick="${hasEvents?'':"go('addEvent')"}" style="display:flex;align-items:center;gap:8px;padding:7px 10px;border-radius:10px;background:rgba(255,255,255,0.12);${hasEvents?'opacity:0.7':'cursor:pointer'}">
+              <span style="font-size:14px">${hasEvents?'✅':'②'}</span>
+              <span style="font-size:12px;font-weight:600;flex:1;${hasEvents?'text-decoration:line-through':''}">Add a recurring event</span>
+              ${!hasEvents?`<span style="font-size:11px;font-weight:700">→</span>`:''}
+            </div>
+            <div onclick="${hasOtherAdult?'':"setTab('family')"}" style="display:flex;align-items:center;gap:8px;padding:7px 10px;border-radius:10px;background:rgba(255,255,255,0.12);${hasOtherAdult?'opacity:0.7':'cursor:pointer'}">
+              <span style="font-size:14px">${hasOtherAdult?'✅':'③'}</span>
+              <span style="font-size:12px;font-weight:600;flex:1;${hasOtherAdult?'text-decoration:line-through':''}">Invite your partner / co-parent</span>
+              ${!hasOtherAdult?`<span style="font-size:11px;font-weight:700">→</span>`:''}
+            </div>
+          </div>
+        </div>`;
+      })():''}
 
       <!-- FAMILY ACTIVITIES TODAY -->
       <div class="sh" style="margin-bottom:6px;display:flex;align-items:center;justify-content:space-between;padding-right:16px">
@@ -1395,8 +1527,9 @@ function sCalendar(){
         <div style="font-size:26px;font-weight:800;color:var(--text)">Calendar</div>
         <!-- View toggle -->
         <div style="display:flex;background:var(--bg);border-radius:10px;padding:3px">
-          <button onclick="S.calView='day';render()" style="padding:6px 14px;border-radius:8px;border:none;background:${view==='day'?'var(--navy)':'transparent'};color:${view==='day'?'#fff':'var(--text-secondary)'};font-size:13px;font-weight:600;cursor:pointer;font-family:inherit">Day</button>
-          <button onclick="S.calView='week';render()" style="padding:6px 14px;border-radius:8px;border:none;background:${view==='week'?'var(--navy)':'transparent'};color:${view==='week'?'#fff':'var(--text-secondary)'};font-size:13px;font-weight:600;cursor:pointer;font-family:inherit">Week</button>
+          <button onclick="S.calView='day';render()" style="padding:6px 12px;border-radius:8px;border:none;background:${view==='day'?'var(--navy)':'transparent'};color:${view==='day'?'#fff':'var(--text-secondary)'};font-size:13px;font-weight:600;cursor:pointer;font-family:inherit">Day</button>
+          <button onclick="S.calView='week';render()" style="padding:6px 12px;border-radius:8px;border:none;background:${view==='week'?'var(--navy)':'transparent'};color:${view==='week'?'#fff':'var(--text-secondary)'};font-size:13px;font-weight:600;cursor:pointer;font-family:inherit">Week</button>
+          <button onclick="S.calView='coverage';render()" style="padding:6px 12px;border-radius:8px;border:none;background:${view==='coverage'?'var(--navy)':'transparent'};color:${view==='coverage'?'#fff':'var(--text-secondary)'};font-size:13px;font-weight:600;cursor:pointer;font-family:inherit">Coverage</button>
         </div>
       </div>
       <div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:8px">
@@ -1423,7 +1556,64 @@ function sCalendar(){
           `<div class="sh" style="margin-bottom:10px">${new Date(sel+'T12:00').toLocaleDateString('en-AU',{weekday:'long',day:'numeric',month:'long'})}</div>
           ${groupEventsByChild(dayEvs).map(g=>personEventsBlock(g.person,g.events,g.isAdult)).join('')}`
         }
-      `:`
+      `:view==='coverage'?(()=>{
+        // COVERAGE GRID: Adults × Days, count of drop-offs/pick-ups per cell
+        const adults=members();
+        if(adults.length===0)return `<div style="text-align:center;padding:60px 20px;color:var(--text-secondary)">Add adults to your family to use Coverage view</div>`;
+        // For each adult × day cell, count duties this week
+        const cellData=adults.map(a=>{
+          const fname=a.name.split(' ')[0];
+          return {
+            adult:a,
+            days:wDates.map(d=>{
+              const ds=fd(d);
+              const evs=eventsOnDate(ds);
+              const duties=evs.filter(ev=>ev.dropoff===a.name||ev.pickup===a.name||ev.dropoff===fname||ev.pickup===fname);
+              return {dateStr:ds,duties};
+            })
+          };
+        });
+        // Totals per adult and per day
+        const adultTotals=cellData.map(r=>r.days.reduce((s,d)=>s+d.duties.length,0));
+        const dayTotals=wDates.map((_,i)=>cellData.reduce((s,r)=>s+r.days[i].duties.length,0));
+        const grandTotal=adultTotals.reduce((s,n)=>s+n,0);
+        return `<div class="sh" style="margin-bottom:10px;padding:0 16px">🚗 Who's covering what · ${grandTotal} drop-offs / pick-ups this week</div>
+        <div style="margin:0 16px 14px;background:var(--card);border-radius:14px;padding:12px;box-shadow:var(--shadow-md);overflow-x:auto">
+          <table style="width:100%;border-collapse:collapse;font-size:12px;color:var(--text);min-width:380px">
+            <thead>
+              <tr>
+                <th style="text-align:left;padding:6px 8px;font-weight:700;color:var(--text-secondary);font-size:11px">Adult</th>
+                ${wDates.map((d,i)=>{const isTod=fd(d)===todayStr;return `<th style="text-align:center;padding:6px 4px;font-weight:700;font-size:10px;color:${isTod?'#FF3B30':'var(--text-secondary)'}">${DAYSH[d.getDay()].toUpperCase()}<br><span style="font-size:9px;font-weight:500;opacity:0.7">${d.getDate()}</span></th>`;}).join('')}
+                <th style="text-align:center;padding:6px 4px;font-weight:700;color:var(--text-secondary);font-size:10px">TOT</th>
+              </tr>
+            </thead>
+            <tbody>
+              ${cellData.map((row,ri)=>`<tr style="border-top:1px solid var(--row-border)">
+                <td style="padding:8px 8px;display:flex;align-items:center;gap:6px">
+                  <div style="width:18px;height:18px;border-radius:9px;background:${row.adult.color};color:#fff;font-size:9px;font-weight:700;display:inline-flex;align-items:center;justify-content:center;flex-shrink:0">${row.adult.name.split(' ').map(n=>n[0]).slice(0,2).join('').toUpperCase()}</div>
+                  <span style="font-weight:600;font-size:11px">${row.adult.name.split(' ')[0]}</span>
+                </td>
+                ${row.days.map((cell,ci)=>{
+                  const n=cell.duties.length;
+                  const isTod=cell.dateStr===todayStr;
+                  return `<td onclick="${n>0?`selCalDate('${cell.dateStr}');S.calView='day';render()`:''}" style="text-align:center;padding:8px 2px;${n>0?'cursor:pointer':''};${isTod?'background:rgba(255,149,0,0.06)':''}">
+                    ${n>0?`<div style="display:inline-block;min-width:22px;padding:3px 6px;border-radius:11px;background:${row.adult.color};color:#fff;font-size:11px;font-weight:700">${n}</div>`:`<span style="color:var(--text-secondary);opacity:0.4">·</span>`}
+                  </td>`;
+                }).join('')}
+                <td style="text-align:center;padding:8px 4px;font-weight:700;color:var(--text)">${adultTotals[ri]}</td>
+              </tr>`).join('')}
+              <tr style="border-top:2px solid var(--border)">
+                <td style="padding:6px 8px;font-size:10px;color:var(--text-secondary);font-weight:700">DAY TOTAL</td>
+                ${dayTotals.map(t=>`<td style="text-align:center;padding:6px 2px;font-size:11px;font-weight:700;color:var(--text-secondary)">${t||'·'}</td>`).join('')}
+                <td style="text-align:center;padding:6px 4px;font-size:11px;font-weight:800;color:var(--navy)">${grandTotal}</td>
+              </tr>
+            </tbody>
+          </table>
+        </div>
+        <div style="margin:0 16px;font-size:12px;color:var(--text-secondary);line-height:1.55">
+          Each cell shows how many drop-offs / pick-ups that adult has on that day. Tap any number to jump to that day's events.
+        </div>`;
+      })():`
         ${wDates.map(d=>{
           const ds=fd(d);
           const evs=eventsOnDate(ds);
@@ -1713,8 +1903,8 @@ function sAddPlayDate(){
 
         <!-- OCR scan card (birthday only) -->
         <div id="pd-ocr-card" style="display:${(data.type||presetType)==='birthday'?'block':'none'};background:linear-gradient(135deg,var(--navy),#2E5FBF);border-radius:14px;padding:16px;color:#fff">
-          <div style="font-size:14px;font-weight:700;margin-bottom:4px">📸 Scan Invite</div>
-          <div style="font-size:12px;opacity:0.85;margin-bottom:10px">Take a photo or upload — we'll auto-fill what we can</div>
+          <div style="font-size:14px;font-weight:700;margin-bottom:4px">📸 Quick Capture</div>
+          <div style="font-size:12px;opacity:0.85;margin-bottom:10px">Snap an invite — we'll fill what we can. Review and tweak the rest.</div>
           <input type="file" id="pd-ocr-input" accept="image/*" capture="environment" style="display:none" onchange="runPlayDateOCR(this)"/>
           <button onclick="document.getElementById('pd-ocr-input').click()" style="width:100%;padding:11px;border-radius:10px;background:rgba(255,255,255,0.22);border:none;color:#fff;font-size:14px;font-weight:600;cursor:pointer;font-family:inherit">📷 Take Photo or Upload</button>
           <div id="pd-ocr-status" style="font-size:12px;margin-top:8px;opacity:0.9;min-height:16px"></div>
@@ -2438,7 +2628,7 @@ function sHelp(){
         {icon:'🍴',title:'Kitchen',desc:'Shopping list and dinner planner. Tick off groceries as you shop. The "Save as frequent" checkbox builds a quick-add bank for items you buy often. Plan dinners up to a week ahead and assign who’s cooking.'},
         {icon:'👨‍👩‍👧',title:'Family',desc:'Manage children and adult profiles. Tap any tile to view, edit, or get their personal invite code. Share their code so they can sign up — their account links directly to that profile.'},
         {icon:'⚙️',title:'Settings',desc:'Configure weather location (so the topbar shows your local conditions), school term dates (so school only appears on real school days), daily reminder time, and switch between light and night mode.'},
-        {icon:'📸',title:'Smart scan (OCR)',desc:'When adding an assessment or birthday invite, tap the "Scan" button to take a photo. HomeBase reads the text and auto-fills the date, title, and details. Edit anything that’s wrong, then save.'},
+        {icon:'📸',title:'Quick capture (camera)',desc:'When adding an assessment or birthday invite, tap "Quick Capture" to snap a photo. HomeBase reads what it can — date, title, address — and pre-fills the form. It works best on clean printed text and gets it right most of the time, not all of the time. Always review the fields before saving.'},
         {icon:'🌙',title:'Night mode',desc:'Tap the moon icon in the top right of any screen to switch to dark theme — easier on the eyes in the evening.'},
         {icon:'📆',title:'iOS Calendar sync',desc:'Settings → iOS Calendar Sync → Download .ics file. Open it on your iPhone and Calendar will import all your HomeBase events.'},
       ].map(item=>`<div style="margin-bottom:14px">
@@ -2632,8 +2822,8 @@ function sAddAssessment(){
     <div class="scroll-view" style="padding:20px;max-width:560px;margin:auto;width:100%">
       <div style="display:flex;flex-direction:column;gap:12px">
         <div style="background:linear-gradient(135deg,#1C3A6B,#2E5FBF);border-radius:14px;padding:16px;color:#fff">
-          <div style="font-size:14px;font-weight:700;margin-bottom:4px">📸 Scan Assessment Sheet</div>
-          <div style="font-size:12px;opacity:0.85;margin-bottom:10px">Take a photo or upload — we'll auto-fill the details using OCR</div>
+          <div style="font-size:14px;font-weight:700;margin-bottom:4px">📸 Quick Capture</div>
+          <div style="font-size:12px;opacity:0.85;margin-bottom:10px">Snap an assessment sheet — we'll fill what we can. Review the details before saving.</div>
           <input type="file" id="ocr-input" accept="image/*" capture="environment" style="display:none" onchange="runOCR(this)"/>
           <button onclick="document.getElementById('ocr-input').click()" style="width:100%;padding:11px;border-radius:10px;background:rgba(255,255,255,0.22);border:none;color:#fff;font-size:14px;font-weight:600;cursor:pointer;font-family:inherit">📷 Take Photo or Upload</button>
           <div id="ocr-status" style="font-size:12px;margin-top:8px;opacity:0.9;min-height:16px"></div>
@@ -2656,6 +2846,9 @@ function sAddAssessment(){
 function sAddGrocery(){
   // Get all unique frequent items (not currently on list)
   const freqItems=S.groceries.filter(g=>g.isFrequent&&!g.addedToList).sort((a,b)=>a.label.localeCompare(b.label));
+  const totalFrequents=S.groceries.filter(g=>g.isFrequent).length;
+  const totalGroceries=S.groceries.length;
+  const showHint=totalFrequents===0&&totalGroceries>=3;
   return `<div style="min-height:100%;display:flex;flex-direction:column;background:var(--bg)">
     <div style="background:var(--card);padding:14px 16px;display:flex;align-items:center;border-bottom:1px solid var(--row-border);position:sticky;top:0;z-index:10">
       <button class="back-btn" onclick="back()">${bk()} Back</button>
@@ -2665,9 +2858,13 @@ function sAddGrocery(){
     <div style="padding:20px;display:flex;flex-direction:column;gap:12px;max-width:560px;margin:auto;width:100%">
       <input class="input" id="gl" type="text" placeholder="Item (e.g. Milk, Bread, Apples)"/>
       <input class="input" id="gq" type="number" placeholder="Quantity" value="1" min="1"/>
-      <div style="display:flex;align-items:center;gap:12px;padding:4px 0">
-        <div class="cb" id="gfcb" onclick="toggleFreq()" style="border-color:#C7C7CC"></div>
-        <span style="font-size:15px">Save as frequent item</span>
+      ${showHint?`<div style="background:linear-gradient(135deg,#FFF8E5,#FFE9B5);border:1px solid #FFD580;border-radius:12px;padding:12px 14px;font-size:13px;color:#6B4900;line-height:1.5">💡 <strong>Pro tip:</strong> Tick "Save as frequent" below for items you buy often (milk, bread, etc.). Next time, tap once to add them — no typing.</div>`:''}
+      <div onclick="toggleFreq()" style="display:flex;align-items:center;gap:12px;padding:12px 14px;border-radius:10px;background:${gIsFreq?'var(--navy-soft)':'var(--card)'};border:1px solid ${gIsFreq?'var(--navy)':'var(--border)'};cursor:pointer;transition:all 0.15s">
+        <div class="cb ${gIsFreq?'on':''}" id="gfcb" style="${gIsFreq?'background:var(--navy);border:none':'border-color:#C7C7CC'}">${gIsFreq?ck():''}</div>
+        <div style="flex:1">
+          <div style="font-size:15px;font-weight:600;color:var(--text)">⭐ Save as frequent</div>
+          <div style="font-size:11px;color:var(--text-secondary);margin-top:2px">Add to your one-tap quick-add bank</div>
+        </div>
       </div>
       <div id="gerr" class="err"></div>
       <button class="primary-btn" onclick="hAddGrocery()">Add to List</button>
@@ -3217,6 +3414,27 @@ window.hSaveEvent=async()=>{
   const pickRaw=$('epick')?.value||'';
   const dropoff=dropRaw==='__other'?prompt('Enter drop-off person name:')||'':dropRaw;
   const pickup=pickRaw==='__other'?prompt('Enter pick-up person name:')||'':pickRaw;
+  const ef2=S.ef;
+  // Build a draft for conflict detection
+  const draft={
+    title,
+    time:buildTimeString(),
+    freq:ef2.freq,
+    date:ef2.freq==='once'?$('edate')?.value:'',
+    startDate:ef2.freq!=='once'?$('estartdate')?.value||fd(today):'',
+    endDate:ef2.freq!=='once'?$('eenddate')?.value||'':'',
+    days:ef2.freq!=='once'?{...ef2.days}:{},
+    participantIds:[...(ef2.participantIds||[])],
+    dropoff,pickup
+  };
+  const conflicts=findConflicts(draft);
+  if(conflicts.length>0&&!ef2._overrideConflict){
+    const lines=conflicts.slice(0,3).map(c=>'• '+(c.emoji||'📅')+' '+c.title+(c.time?' at '+c.time:'')).join('\n');
+    const more=conflicts.length>3?`\n…and ${conflicts.length-3} more`:'';
+    const ok=confirm('⚠️ This overlaps with:\n\n'+lines+more+'\n\nSave anyway?');
+    if(!ok)return;
+    ef2._overrideConflict=true; // user confirmed - don't ask again on retry
+  }
   try{
     const participantIds=Array.isArray(ef.participantIds)?[...ef.participantIds]:[];
     // Derive legacy fields for backwards compat
@@ -3422,8 +3640,18 @@ window.togglePriv=()=>{gIsPriv=!gIsPriv;const el=$('gfpriv');if(el){el.style.bac
 window.hAddGrocery=async()=>{
   const label=$('gl')?.value?.trim(),qty=parseInt($('gq')?.value)||1,err=$('gerr');
   if(!label){if(err)err.textContent='Enter an item';return;}
-  try{await fadd(['groceries'],{label,quantity:qty,isFrequent:gIsFreq,addedToList:true,checked:false});gIsFreq=false;back();notify('Added to list 🛒');}
-  catch(ex){if(err)err.textContent=ex.message;}
+  try{
+    // Celebrate first frequent
+    const wasFirstFrequent=gIsFreq&&S.groceries.filter(g=>g.isFrequent).length===0;
+    await fadd(['groceries'],{label,quantity:qty,isFrequent:gIsFreq,addedToList:true,checked:false});
+    gIsFreq=false;
+    back();
+    if(wasFirstFrequent){
+      notify('🌟 Saved as frequent! Tap "+ Add" next time on the Groceries page — no typing needed.','⭐');
+    }else{
+      notify('Added to list 🛒');
+    }
+  }catch(ex){if(err)err.textContent=ex.message;}
 };
 window.hAddGift=async()=>{
   const label=$('gfl')?.value?.trim(),price=$('gfp')?.value,occasion=$('gfocc')?.value,err=$('gferr');
@@ -3994,6 +4222,11 @@ window.shareCode=()=>{
   if(navigator.share)navigator.share({title:'HomeBase Invite',text}).catch(()=>{});
   else if(navigator.clipboard)navigator.clipboard.writeText(text).then(()=>notify('Invite copied! 📤'));
 };
+window.dismissOnboarding=function(){
+  S.hideOnboarding=true;
+  try{localStorage.setItem('hb_hide_onboarding','1');}catch(e){}
+  render();
+};
 window.changeDayOffset=function(delta){
   S.dayOffset=(S.dayOffset||0)+delta;
   render();
@@ -4010,6 +4243,7 @@ try{
   if(td)S.termDates=td;
   const nm=localStorage.getItem('hb_night_mode');
   if(nm==='1'){S.nightMode=true;document.documentElement.setAttribute('data-theme','dark');}
+  if(localStorage.getItem('hb_hide_onboarding')==='1')S.hideOnboarding=true;
 }catch(e){}
 
 onAuthStateChanged(auth,async user=>{
