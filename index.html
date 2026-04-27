@@ -1597,11 +1597,12 @@ function sFamily(){
     <div class="scroll-view" style="padding:16px 0">
       <div style="margin:0 16px 16px;background:#1C3A6B;border-radius:16px;padding:18px 20px">
         <div style="font-size:12px;font-weight:700;color:rgba(255,255,255,0.7);letter-spacing:0.5px;margin-bottom:4px">FAMILY CODE</div>
-        <div style="font-size:24px;font-weight:800;color:#fff;letter-spacing:2px;font-family:monospace">${code}</div>
-        <div style="font-size:13px;color:rgba(255,255,255,0.7);margin-top:4px">Share this code to invite family members</div>
-        <div style="display:flex;gap:8px;margin-top:10px">
-          <button onclick="copyCode()" class="btn" style="background:rgba(255,255,255,0.2);border-radius:10px;padding:7px 14px;color:#fff;font-size:13px;font-weight:600">📋 Copy</button>
-          <button onclick="shareCode()" class="btn" style="background:rgba(255,255,255,0.2);border-radius:10px;padding:7px 14px;color:#fff;font-size:13px;font-weight:600">📤 Share</button>
+        <div style="font-size:28px;font-weight:800;color:#fff;letter-spacing:2px;font-family:monospace">${code||'—'}</div>
+        <div style="font-size:13px;color:rgba(255,255,255,0.75);margin-top:6px;line-height:1.4">Other adults can join your family by entering this code at <strong>ourhomebase.com.au</strong></div>
+        <div style="display:flex;gap:8px;margin-top:12px;flex-wrap:wrap">
+          <button onclick="copyCode()" class="btn" style="background:rgba(255,255,255,0.22);border-radius:10px;padding:9px 16px;color:#fff;font-size:13px;font-weight:600">📋 Copy</button>
+          <button onclick="shareCode()" class="btn" style="background:rgba(255,255,255,0.22);border-radius:10px;padding:9px 16px;color:#fff;font-size:13px;font-weight:600">📤 Share</button>
+          <button onclick="emailCodeInvite()" class="btn" style="background:#fff;border-radius:10px;padding:9px 16px;color:#1C3A6B;font-size:13px;font-weight:700">📧 Email Invite</button>
         </div>
       </div>
       <div class="sh" style="margin-bottom:6px">Children</div>
@@ -2745,6 +2746,25 @@ window.hSignOut=async()=>{
   S.unsubs.forEach(u=>u());S.unsubs=[];
   Object.assign(S,{family:null,familyId:null,children:[],packing:{},events:[],assessments:[],groceries:[],gifts:[],dinners:[],playdates:[],contacts:[],mealIdeas:[],mealIdeas:[],screen:null,screenParams:{},tab:'today',morningMode:false,activeChild:null,fabOpen:false,notif:null,weather:null,evTab:'events',listTab:'menu',listFilter:'all',ef:{freq:'once',days:{Mon:false,Tue:false,Wed:false,Thu:false,Fri:false,Sat:false,Sun:false},packItems:[],emoji:'📅'}});
   await signOut(auth);
+};
+window.emailCodeInvite=function(){
+  const code=S.family?.inviteCode;
+  if(!code){notify('No family code yet','⚠️');return;}
+  const email=prompt('Email address to invite:');
+  if(!email||!email.trim())return;
+  const fname=S.family?.name||'our family';
+  const subject=encodeURIComponent('Join '+fname+' on HomeBase');
+  const body=encodeURIComponent(
+    'Hi,\n\n'+
+    'I\'d like you to join '+fname+' on HomeBase, our family logistics app.\n\n'+
+    'To join:\n'+
+    '1. Go to https://ourhomebase.com.au\n'+
+    '2. Create an account (or sign in with Google)\n'+
+    '3. When asked, choose "Join existing family"\n'+
+    '4. Enter family code: '+code+'\n\n'+
+    'See you there!'
+  );
+  window.location.href='mailto:'+email.trim()+'?subject='+subject+'&body='+body;
 };
 window.copyCode=()=>{const c=S.family?.inviteCode;if(c&&navigator.clipboard)navigator.clipboard.writeText(c).then(()=>notify('Family code copied! 🔗'));else alert('Code: '+(c||''));};
 window.shareCode=()=>{
