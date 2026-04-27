@@ -658,8 +658,9 @@ function sToday(){
     return `<div style="padding:60px 20px;text-align:center">
       <div style="font-size:72px;margin-bottom:16px">🏠</div>
       <div style="font-size:24px;font-weight:800;color:#1C3A6B;margin-bottom:10px">Welcome to ${S.family?.name||'HomeBase'}!</div>
-      <div style="font-size:15px;color:#8E8E93;line-height:1.6;margin-bottom:28px">Add your first child to get started.</div>
+      <div style="font-size:15px;color:#8E8E93;line-height:1.6;margin-bottom:28px">Add your first child to get started.<br>New here? <a onclick="go('help')" style="color:#1C3A6B;font-weight:600;cursor:pointer">See how HomeBase works →</a></div>
       <button class="primary-btn" style="max-width:280px;margin:0 auto" onclick="go('addChild')">Add Your First Child</button>
+      <button onclick="go('help')" style="max-width:280px;margin:12px auto 0;display:block;width:100%;padding:14px;border-radius:12px;background:#F2F2F7;color:#1C3A6B;border:none;font-size:15px;font-weight:600;cursor:pointer;font-family:inherit">📖 How HomeBase works</button>
     </div>`;
   }
 
@@ -1727,6 +1728,12 @@ function sSettings(){
   +tog(S.nightMode,"toggleNightMode()")
   +'</div>'
   +'</div>'
+  +'<div class="sh" style="margin-bottom:6px">📖 Information</div>'
+  +'<div class="card" style="margin-bottom:12px">'
+  +'<button class="btn" onclick="go(\'help\')" style="width:100%;padding:14px 16px;display:flex;align-items:center;gap:12px;text-align:left;border:none;background:none;cursor:pointer;font-family:inherit;border-bottom:1px solid #F2F2F7"><span style="font-size:20px">❓</span><div style="flex:1"><div style="font-size:15px;font-weight:500;color:#1C1C1E">How HomeBase works</div><div style="font-size:13px;color:#8E8E93">Tour of the main features</div></div><span class="chev"></span></button>'
+  +'<button class="btn" onclick="go(\'privacy\')" style="width:100%;padding:14px 16px;display:flex;align-items:center;gap:12px;text-align:left;border:none;background:none;cursor:pointer;font-family:inherit;border-bottom:1px solid #F2F2F7"><span style="font-size:20px">🔒</span><div style="flex:1"><div style="font-size:15px;font-weight:500;color:#1C1C1E">Privacy & Your Data</div><div style="font-size:13px;color:#8E8E93">What we store and how</div></div><span class="chev"></span></button>'
+  +'<button class="btn" onclick="go(\'about\')" style="width:100%;padding:14px 16px;display:flex;align-items:center;gap:12px;text-align:left;border:none;background:none;cursor:pointer;font-family:inherit"><span style="font-size:20px">ℹ️</span><div style="flex:1"><div style="font-size:15px;font-weight:500;color:#1C1C1E">About HomeBase</div><div style="font-size:13px;color:#8E8E93">Version & credits</div></div><span class="chev"></span></button>'
+  +'</div>'
   +'<div class="sh" style="margin-bottom:6px">⚠️ Danger Zone</div>'
   +'<div class="card" style="margin-bottom:12px">'
   +'<button class="btn" onclick="hDeleteFamily()" style="width:100%;padding:14px 16px;color:#FF3B30;font-size:15px;font-weight:600;text-align:left;border-bottom:1px solid #F2F2F7">🗑 Delete Family Permanently</button>'
@@ -1737,6 +1744,154 @@ function sSettings(){
   +'</div>'
   +'<div style="text-align:center;padding:0 0 24px;color:#C7C7CC;font-size:12px">HomeBase v2.0 · ourhomebase.com.au</div>'
   +'</div>';
+}
+
+// ── HELP / PRIVACY / ABOUT ────────────────────────
+function sHelp(){
+  return `<div style="min-height:100%;display:flex;flex-direction:column;background:var(--bg)">
+    <div style="background:var(--card);padding:14px 16px;display:flex;align-items:center;border-bottom:1px solid var(--row-border);position:sticky;top:0;z-index:10">
+      <button class="back-btn" onclick="back()">${bk()} Back</button>
+      <div style="flex:1;text-align:center;font-size:17px;font-weight:600">How HomeBase works</div>
+      <div style="width:60px"></div>
+    </div>
+    <div style="padding:20px;max-width:680px;margin:auto;width:100%">
+
+      <div style="text-align:center;margin-bottom:24px">
+        <div style="font-size:42px;margin-bottom:6px">🏠</div>
+        <div style="font-size:22px;font-weight:800;color:var(--text)">Welcome to HomeBase</div>
+        <div style="font-size:14px;color:var(--text-secondary);margin-top:4px;line-height:1.5">A simple way to keep your whole family in sync — events, packing, dinners, school logistics.</div>
+      </div>
+
+      ${[
+        {icon:'🏠',title:'Today',desc:'Your family snapshot for any day. Use the ‹ › arrows to scroll forwards or back. Tap "Today" to jump back. Each child has a tile showing their packing progress and event count. Tap a tile to focus on that child.'},
+        {icon:'📅',title:'Calendar',desc:'Weekly view of all family events. Tap any day to see what’s on. Tap the + button to add a new event with drop-off, pick-up, location, and packing items.'},
+        {icon:'📋',title:'Events tab',desc:'Manage everything that happens away from home. Sub-tabs for Events, 🎁 Gifts, 📚 Assessments, and 🎉 Play Dates. Birthday party invites can be scanned with the camera and details auto-filled.'},
+        {icon:'🍴',title:'Kitchen',desc:'Shopping list and dinner planner. Tick off groceries as you shop. The "Save as frequent" checkbox builds a quick-add bank for items you buy often. Plan dinners up to a week ahead and assign who’s cooking.'},
+        {icon:'👨‍👩‍👧',title:'Family',desc:'Manage children and adult profiles. Tap any tile to view or edit. Use the family code to invite other adults — share via Copy, Share, or Email Invite.'},
+        {icon:'⚙️',title:'Settings',desc:'Configure weather location (so the topbar shows your local conditions), school term dates (so school only appears on real school days), daily reminder time, and switch between light and night mode.'},
+        {icon:'📸',title:'Smart scan (OCR)',desc:'When adding an assessment or birthday invite, tap the "Scan" button to take a photo. HomeBase reads the text and auto-fills the date, title, and details. Edit anything that’s wrong, then save.'},
+        {icon:'🌙',title:'Night mode',desc:'Tap the moon icon in the top right of any screen to switch to dark theme — easier on the eyes in the evening.'},
+        {icon:'📆',title:'iOS Calendar sync',desc:'Settings → iOS Calendar Sync → Download .ics file. Open it on your iPhone and Calendar will import all your HomeBase events.'},
+      ].map(item=>`<div style="margin-bottom:14px">
+        <div style="background:var(--card);border-radius:14px;padding:14px 16px;box-shadow:var(--shadow-md)">
+          <div style="display:flex;align-items:flex-start;gap:12px">
+            <div style="font-size:28px;flex-shrink:0">${item.icon}</div>
+            <div style="flex:1">
+              <div style="font-size:16px;font-weight:700;color:var(--text);margin-bottom:4px">${item.title}</div>
+              <div style="font-size:14px;color:var(--text-secondary);line-height:1.55">${item.desc}</div>
+            </div>
+          </div>
+        </div>
+      </div>`).join('')}
+
+      <div style="background:var(--navy-soft);border-radius:14px;padding:16px;margin-top:8px;margin-bottom:80px">
+        <div style="font-size:15px;font-weight:700;color:var(--navy);margin-bottom:6px">💡 Quick tip</div>
+        <div style="font-size:13px;color:var(--text-secondary);line-height:1.5">Save HomeBase to your phone home screen: open the site in Safari → tap the Share button → "Add to Home Screen". It then works just like a normal app and can send you notifications.</div>
+      </div>
+    </div>
+  </div>`;
+}
+
+function sPrivacy(){
+  return `<div style="min-height:100%;display:flex;flex-direction:column;background:var(--bg)">
+    <div style="background:var(--card);padding:14px 16px;display:flex;align-items:center;border-bottom:1px solid var(--row-border);position:sticky;top:0;z-index:10">
+      <button class="back-btn" onclick="back()">${bk()} Back</button>
+      <div style="flex:1;text-align:center;font-size:17px;font-weight:600">Privacy & Your Data</div>
+      <div style="width:60px"></div>
+    </div>
+    <div style="padding:20px;max-width:680px;margin:auto;width:100%">
+
+      <div style="text-align:center;margin-bottom:24px">
+        <div style="font-size:42px;margin-bottom:6px">🔒</div>
+        <div style="font-size:22px;font-weight:800;color:var(--text)">Your family data is private</div>
+        <div style="font-size:14px;color:var(--text-secondary);margin-top:4px;line-height:1.5">Plain English explanation of what we store and how.</div>
+      </div>
+
+      ${[
+        {title:'What we store',body:'• Your name and email (for sign in)<br>• Family name and a unique family code<br>• Children’s names, ages, year level, school, and optional photo<br>• Other adults’ names, contact info, and photos (when you add them)<br>• Events, packing lists, dinners, shopping lists, assessments, gifts, play dates<br>• Your weather location and notification preferences'},
+        {title:'Where it’s stored',body:'All data lives in <strong>Google Firebase</strong> — the same secure platform used by thousands of apps including major brands. Your family’s data is stored in a database hosted in <strong>Sydney, Australia</strong> for fast access and Australian data residency.'},
+        {title:'Who can see your data',body:'<strong>Only people in your family</strong> who have signed in with your family code. We use Firebase’s authentication rules to make this technically enforced — no one else, including search engines or other HomeBase users, can see your information.'},
+        {title:'What we DON’T do',body:'• We don’t sell your data<br>• We don’t share it with advertisers<br>• We don’t track you across other websites<br>• We don’t read your emails or messages outside the app<br>• We don’t use your data to train AI'},
+        {title:'Photos',body:'Photos you upload (children, caregivers) are stored securely in Firebase Storage. Only your family can view them. Delete a profile and the photo goes with it.'},
+        {title:'OCR scanning (assessment / invite photos)',body:'Photos taken with the Scan button are processed <strong>directly on your device</strong> using a free open-source library (Tesseract.js). The image never leaves your phone or browser. Only the extracted text is saved.'},
+        {title:'Notifications',body:'If you enable notifications, your browser stores a permission to show you reminders. We don’t collect device IDs or send notifications via third-party trackers.'},
+        {title:'Deleting your data',body:'• Remove a child or caregiver: tap them in Family → edit → Delete<br>• Leave the family: Settings → Danger Zone → Leave This Family<br>• Delete the entire family permanently: Settings → Danger Zone → Delete Family Permanently (admin only). This wipes all data and cannot be undone.'},
+        {title:'Children’s privacy',body:'HomeBase is designed for parents to manage information about their children. Children’s data should only be added by their parent or legal guardian. We don’t allow children under 13 to create their own accounts.'},
+        {title:'Your rights',body:'You can request a copy of all your data, correct anything wrong, or have it deleted at any time. Email <strong>nashclark08@gmail.com</strong>. Under Australian Privacy Principles and the GDPR (where applicable), you have the right to access, correct, and delete your personal information.'},
+        {title:'Updates',body:'If we change how we use your data in any meaningful way, we’ll let you know via the app and update this page. The current version of these terms is the one shown here at any moment.'},
+      ].map(item=>`<div style="margin-bottom:14px">
+        <div style="background:var(--card);border-radius:14px;padding:14px 16px;box-shadow:var(--shadow-md)">
+          <div style="font-size:15px;font-weight:700;color:var(--text);margin-bottom:6px">${item.title}</div>
+          <div style="font-size:14px;color:var(--text-secondary);line-height:1.6">${item.body}</div>
+        </div>
+      </div>`).join('')}
+
+      <div style="text-align:center;color:var(--text-secondary);font-size:12px;margin-top:8px;margin-bottom:80px;line-height:1.5">Last updated: April 2026<br>Questions? Email nashclark08@gmail.com</div>
+    </div>
+  </div>`;
+}
+
+function sAbout(){
+  return `<div style="min-height:100%;display:flex;flex-direction:column;background:var(--bg)">
+    <div style="background:var(--card);padding:14px 16px;display:flex;align-items:center;border-bottom:1px solid var(--row-border);position:sticky;top:0;z-index:10">
+      <button class="back-btn" onclick="back()">${bk()} Back</button>
+      <div style="flex:1;text-align:center;font-size:17px;font-weight:600">About HomeBase</div>
+      <div style="width:60px"></div>
+    </div>
+    <div style="padding:30px 20px;max-width:560px;margin:auto;width:100%;text-align:center">
+
+      <div style="margin-bottom:24px">
+        <img src="${(document.querySelector('link[rel=apple-touch-icon]')||{}).href||''}" style="width:96px;height:96px;border-radius:22px;box-shadow:0 6px 24px rgba(28,58,107,0.3)" alt="HomeBase"/>
+      </div>
+
+      <div style="font-size:28px;font-weight:800;color:var(--text);letter-spacing:-0.5px">HomeBase</div>
+      <div style="font-size:14px;color:var(--text-secondary);margin-top:4px;margin-bottom:24px">Family logistics, made simple.</div>
+
+      <div style="background:var(--card);border-radius:14px;padding:16px;box-shadow:var(--shadow-md);margin-bottom:14px">
+        <div style="display:flex;justify-content:space-between;padding:6px 0;border-bottom:1px solid var(--row-border)">
+          <span style="font-size:14px;color:var(--text-secondary)">Version</span>
+          <span style="font-size:14px;font-weight:600;color:var(--text);font-family:monospace">2.0.0</span>
+        </div>
+        <div style="display:flex;justify-content:space-between;padding:6px 0;border-bottom:1px solid var(--row-border)">
+          <span style="font-size:14px;color:var(--text-secondary)">Released</span>
+          <span style="font-size:14px;font-weight:600;color:var(--text)">April 2026</span>
+        </div>
+        <div style="display:flex;justify-content:space-between;padding:6px 0;border-bottom:1px solid var(--row-border)">
+          <span style="font-size:14px;color:var(--text-secondary)">Built with</span>
+          <span style="font-size:14px;font-weight:600;color:var(--text)">Firebase + Vanilla JS</span>
+        </div>
+        <div style="display:flex;justify-content:space-between;padding:6px 0">
+          <span style="font-size:14px;color:var(--text-secondary)">Region</span>
+          <span style="font-size:14px;font-weight:600;color:var(--text)">Sydney 🇦🇺</span>
+        </div>
+      </div>
+
+      <div style="background:var(--card);border-radius:14px;padding:16px;box-shadow:var(--shadow-md);margin-bottom:14px;text-align:left">
+        <div style="font-size:15px;font-weight:700;margin-bottom:8px">Made by</div>
+        <div style="font-size:14px;color:var(--text-secondary);line-height:1.6">Built by Nash Clark with the help of Claude (Anthropic). Designed for families who want one calm place to track the chaos of school, sport, dinners, and play dates — without ads, without tracking, and without the algorithm.</div>
+      </div>
+
+      <div style="background:var(--card);border-radius:14px;padding:16px;box-shadow:var(--shadow-md);margin-bottom:14px;text-align:left">
+        <div style="font-size:15px;font-weight:700;margin-bottom:8px">Open source libraries</div>
+        <div style="font-size:13px;color:var(--text-secondary);line-height:1.7">
+          • Firebase 10.7.1 — backend & auth<br>
+          • Tesseract.js 5.0.4 — on-device OCR<br>
+          • Open-Meteo API — free weather data<br>
+          • DejaVu Sans font — system rendering<br>
+        </div>
+      </div>
+
+      <div style="background:var(--card);border-radius:14px;padding:16px;box-shadow:var(--shadow-md);margin-bottom:14px;text-align:left">
+        <div style="font-size:15px;font-weight:700;margin-bottom:8px">Get in touch</div>
+        <div style="font-size:14px;color:var(--text-secondary);line-height:1.7">
+          Found a bug? Have an idea?<br>
+          <a href="mailto:nashclark08@gmail.com" style="color:var(--navy);font-weight:600;text-decoration:none">nashclark08@gmail.com</a>
+        </div>
+      </div>
+
+      <div style="font-size:12px;color:var(--text-secondary);margin-top:16px;margin-bottom:80px">© 2026 HomeBase · ourhomebase.com.au</div>
+    </div>
+  </div>`;
 }
 
 // ── MINI FORMS ────────────────────────────────────
@@ -1896,7 +2051,8 @@ function render(){
       editChild:sEditChild,editFamily:sEditFamily,
       addCaregiver:sAddCaregiver,editCaregiver:sEditCaregiver,
       addDinner:sAddDinner,
-      addPlayDate:sAddPlayDate,viewPlayDate:sViewPlayDate
+      addPlayDate:sAddPlayDate,viewPlayDate:sViewPlayDate,
+      help:sHelp,privacy:sPrivacy,about:sAbout
     };
     html=(map[S.screen]||sToday)();
   } else {
