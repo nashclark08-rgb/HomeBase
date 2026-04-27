@@ -196,7 +196,7 @@ const S={
   dayOffset:0,
   toggles:{notifs:true,loc:false},unsubs:[],
   // event form
-  ef:{freq:'once',days:{Mon:false,Tue:false,Wed:false,Thu:false,Fri:false,Sat:false,Sun:false},packItems:[],emoji:'📅',category:''}
+  ef:{freq:'once',days:{Mon:false,Tue:false,Wed:false,Thu:false,Fri:false,Sat:false,Sun:false},packItems:[],emoji:'📅',category:'',participantIds:[]}
 };
 
 // ── HELPERS ──────────────────────────────────────
@@ -386,13 +386,71 @@ async function createFamily(name){
   return r.id;
 }
 async function joinFamily(code){
-  const q=query(collection(db,'families'),where('inviteCode','==',code.trim().toUpperCase()));
-  const s=await getDocs(q);
-  if(s.empty)throw new Error('Family not found');
-  const fid=s.docs[0].id;
-  await updateDoc(doc(db,'families',fid),{['members.'+S.user.uid]:{name:S.user.displayName,role:'Member',color:COLORS[Math.floor(Math.random()*COLORS.length)]}});
-  await setDoc(doc(db,'users',S.user.uid),{familyId:fid,name:S.user.displayName});
-  return fid;
+  const c=code.trim().toUpperCase();
+  // First try family invite code (HB-XXXXXX format)
+  let q=query(collection(db,'families'),where('inviteCode','==',c));
+  let s=await getDocs(q);
+  if(!s.empty){
+    const fid=s.docs[0].id;
+    await updateDoc(doc(db,'families',fid),{['members.'+S.user.uid]:{name:S.user.displayName,role:'Member',color:COLORS[Math.floor(Math.random()*COLORS.length)]}});
+    await setDoc(doc(db,'users',S.user.uid),{familyId:fid,name:S.user.displayName});
+    return fid;
+  }
+  // Try ADULT personal code: HB-A-XXXXX → search family.members for matching personalCode
+  if(c.startsWith('HB-A-')){
+    const fams=await getDocs(collection(db,'families'));
+    for(const fdoc of fams.docs){
+      const data=fdoc.data();
+      const members=data.members||{};
+      // Find the placeholder member whose personalCode matches
+      const placeholderUid=Object.keys(members).find(uid=>members[uid].personalCode===c);
+      if(placeholderUid){
+        const fid=fdoc.id;
+        const placeholder=members[placeholderUid];
+        const{deleteField}=await import('https://www.gstatic.com/firebasejs/10.7.1/firebase-firestore.js');
+        // Move placeholder data onto the real Firebase Auth uid
+        const updates={};
+        updates['members.'+S.user.uid]={
+          name:S.user.displayName||placeholder.name,
+          role:placeholder.role||'Member',
+          relationship:placeholder.relationship||'',
+          color:placeholder.color||COLORS[Math.floor(Math.random()*COLORS.length)],
+          photoURL:placeholder.photoURL||'',
+          email:placeholder.email||'',
+          phone:placeholder.phone||''
+        };
+        // If the placeholder was a temporary one (uid != real auth uid), remove it
+        if(placeholderUid!==S.user.uid){
+          updates['members.'+placeholderUid]=deleteField();
+        }
+        await updateDoc(doc(db,'families',fid),updates);
+        await setDoc(doc(db,'users',S.user.uid),{familyId:fid,name:S.user.displayName||placeholder.name});
+        return fid;
+      }
+    }
+    throw new Error('Personal code not recognised');
+  }
+  // Try CHILD personal code: HB-C-XXXXX → just join the family as a member, link to that child
+  if(c.startsWith('HB-C-')){
+    const fams=await getDocs(collection(db,'families'));
+    for(const fdoc of fams.docs){
+      const childrenSnap=await getDocs(collection(db,'families',fdoc.id,'children'));
+      const matched=childrenSnap.docs.find(cd=>(cd.data().personalCode||'')===c);
+      if(matched){
+        const fid=fdoc.id;
+        await updateDoc(doc(db,'families',fid),{['members.'+S.user.uid]:{
+          name:S.user.displayName||'Member',
+          role:'Member',
+          color:COLORS[Math.floor(Math.random()*COLORS.length)],
+          linkedChildId:matched.id
+        }});
+        await setDoc(doc(db,'users',S.user.uid),{familyId:fid,name:S.user.displayName,linkedChildId:matched.id});
+        return fid;
+      }
+    }
+    throw new Error('Personal code not recognised');
+  }
+  throw new Error('Family not found');
 }
 const fid=()=>S.familyId;
 const fcol=(p)=>collection(db,'families',fid(),...p);
@@ -544,20 +602,27 @@ function sAddChild(){
 function eventsForChildOnDate(child, dateStr){
   const dateObj = new Date(dateStr+'T12:00');
   return S.events.filter(ev=>{
-    if(!ev.childId||ev.childId===child.id){
-      if(!ev.freq||ev.freq==='once')return ev.date===dateStr;
-      const start=new Date((ev.startDate||ev.date||dateStr)+'T12:00');
-      const end=ev.endDate?new Date(ev.endDate+'T12:00'):null;
-      if(dateObj<start||(end&&dateObj>end))return false;
-      const dn=DAYSH[dateObj.getDay()];
-      if(!ev.days||!ev.days[dn])return false;
-      if(ev.freq==='fortnightly'){
-        const wks=Math.floor((dateObj-start)/(7*86400000));
-        return wks%2===0;
-      }
-      return true;
+    // New model: check participantIds first if present
+    let belongsToChild;
+    if(Array.isArray(ev.participantIds)&&ev.participantIds.length>0){
+      belongsToChild=ev.participantIds.includes(child.id);
+    }else{
+      // Legacy single-owner: belongs to child if childId matches OR
+      // it's a true family event (no childId AND no adultUid)
+      belongsToChild=ev.childId===child.id||(!ev.childId&&!ev.adultUid);
     }
-    return false;
+    if(!belongsToChild)return false;
+    if(!ev.freq||ev.freq==='once')return ev.date===dateStr;
+    const start=new Date((ev.startDate||ev.date||dateStr)+'T12:00');
+    const end=ev.endDate?new Date(ev.endDate+'T12:00'):null;
+    if(dateObj<start||(end&&dateObj>end))return false;
+    const dn=DAYSH[dateObj.getDay()];
+    if(!ev.days||!ev.days[dn])return false;
+    if(ev.freq==='fortnightly'){
+      const wks=Math.floor((dateObj-start)/(7*86400000));
+      return wks%2===0;
+    }
+    return true;
   }).sort((a,b)=>parseTimeToMinutes(a.time)-parseTimeToMinutes(b.time));
 }
 
@@ -1044,6 +1109,10 @@ function sAddEvent(){
   const mems=members();
   const preChildId=S.screenParams?.childId||'';
   const preAdultUid=S.screenParams?.adultUid||'';
+  // Initialize participantIds: if opened from a profile, pre-add that person
+  if(!Array.isArray(ef.participantIds))ef.participantIds=[];
+  if(preChildId&&!ef.participantIds.includes(preChildId))ef.participantIds.push(preChildId);
+  if(preAdultUid&&!ef.participantIds.includes(preAdultUid))ef.participantIds.push(preAdultUid);
   const preselectVal=preAdultUid?'adult:'+preAdultUid:preChildId;
   return `<div style="min-height:100%;display:flex;flex-direction:column;background:#F2F2F7">
     <div style="background:#fff;padding:14px 16px;display:flex;align-items:center;border-bottom:1px solid #F2F2F7;position:sticky;top:0;z-index:10">
@@ -1062,15 +1131,20 @@ function sAddEvent(){
           </div>
         </div>
 
-        <select class="input" id="echild">
-          <option value="" ${!preselectVal?'selected':''}>Family event (no specific person)</option>
-          <optgroup label="Children">
-            ${S.children.map(c=>`<option value="${c.id}" ${preselectVal===c.id?'selected':''}>${c.name}${c.year?' ('+c.year+')':''}</option>`).join('')}
-          </optgroup>
-          <optgroup label="Adults">
-            ${members().map(m=>`<option value="adult:${m.uid}" ${preselectVal==='adult:'+m.uid?'selected':''}>${m.name}${m.relationship?' ('+m.relationship+')':''}</option>`).join('')}
-          </optgroup>
-        </select>
+        <div>
+          <div style="font-size:14px;font-weight:600;margin-bottom:8px">👨‍👩‍👧 Who's participating?</div>
+          <div style="font-size:11px;color:var(--text-secondary);margin-bottom:8px">Tap to toggle — leave all off for a family-wide event</div>
+          <div style="display:flex;flex-wrap:wrap;gap:6px" id="participant-chips">
+            ${S.children.map(c=>{
+              const on=ef.participantIds&&ef.participantIds.includes(c.id);
+              return `<button type="button" onclick="toggleParticipant('${c.id}')" id="chip-${c.id}" style="padding:7px 12px;border-radius:18px;border:2px solid ${c.color||NAVY};background:${on?(c.color||NAVY):'transparent'};color:${on?'#fff':(c.color||NAVY)};font-size:12px;font-weight:600;cursor:pointer;font-family:inherit;display:inline-flex;align-items:center;gap:5px">${on?'✓ ':''}${c.name}</button>`;
+            }).join('')}
+            ${members().map(m=>{
+              const on=ef.participantIds&&ef.participantIds.includes(m.uid);
+              return `<button type="button" onclick="toggleParticipant('${m.uid}')" id="chip-${m.uid}" style="padding:7px 12px;border-radius:18px;border:2px solid ${m.color||NAVY};background:${on?(m.color||NAVY):'transparent'};color:${on?'#fff':(m.color||NAVY)};font-size:12px;font-weight:600;cursor:pointer;font-family:inherit;display:inline-flex;align-items:center;gap:5px">${on?'✓ ':''}${m.name}${m.relationship?' ('+m.relationship+')':''}</button>`;
+            }).join('')}
+          </div>
+        </div>
 
         <div>
           <div style="font-size:14px;font-weight:600;margin-bottom:8px">Frequency</div>
@@ -1253,7 +1327,21 @@ function sCalendar(){
     const adultGroups=new Map();
     const familyGroup=[];
     events.forEach(ev=>{
-      if(ev.adultUid){
+      // New model: participantIds is the source of truth if present
+      if(Array.isArray(ev.participantIds)&&ev.participantIds.length>0){
+        ev.participantIds.forEach(pid=>{
+          // Determine if it's a child or adult
+          const c=S.children.find(ch=>ch.id===pid);
+          const a=members().find(m=>m.uid===pid);
+          if(c){
+            if(!childGroups.has(pid))childGroups.set(pid,[]);
+            childGroups.get(pid).push(ev);
+          }else if(a){
+            if(!adultGroups.has(pid))adultGroups.set(pid,[]);
+            adultGroups.get(pid).push(ev);
+          }
+        });
+      }else if(ev.adultUid){
         if(!adultGroups.has(ev.adultUid))adultGroups.set(ev.adultUid,[]);
         adultGroups.get(ev.adultUid).push(ev);
       }else if(ev.childId){
@@ -1263,7 +1351,6 @@ function sCalendar(){
         familyGroup.push(ev);
       }
     });
-    // Order: by earliest event time per person
     const arr=[];
     childGroups.forEach((evs,cid)=>{
       const child=S.children.find(c=>c.id===cid);
@@ -1273,7 +1360,6 @@ function sCalendar(){
     adultGroups.forEach((evs,uid)=>{
       const m=members().find(x=>x.uid===uid);
       if(m){
-        // Build a person-like object from member
         const person={id:m.uid,name:m.name,color:m.color,photoURL:m.photoURL};
         const earliest=Math.min(...evs.map(e=>parseTimeToMinutes(e.time)));
         arr.push({person,isAdult:true,events:evs,earliest});
@@ -1936,20 +2022,10 @@ function sFamily(){
       <div style="font-size:26px;font-weight:800;color:#1C1C1E">Family</div>
     </div>
     <div class="scroll-view" style="padding:16px 0">
-      <div style="margin:0 16px 16px;background:#1C3A6B;border-radius:16px;padding:18px 20px">
-        <div style="font-size:12px;font-weight:700;color:rgba(255,255,255,0.7);letter-spacing:0.5px;margin-bottom:4px">FAMILY CODE</div>
-        ${code?`
-          <div style="font-size:28px;font-weight:800;color:#fff;letter-spacing:2px;font-family:monospace">${code}</div>
-          <div style="font-size:13px;color:rgba(255,255,255,0.75);margin-top:6px;line-height:1.4">Other adults can join your family by entering this code at <strong>ourhomebase.com.au</strong></div>
-          <div style="display:flex;gap:8px;margin-top:12px;flex-wrap:wrap">
-            <button onclick="copyCode()" class="btn" style="background:rgba(255,255,255,0.22);border-radius:10px;padding:9px 16px;color:#fff;font-size:13px;font-weight:600">📋 Copy</button>
-            <button onclick="shareCode()" class="btn" style="background:rgba(255,255,255,0.22);border-radius:10px;padding:9px 16px;color:#fff;font-size:13px;font-weight:600">📤 Share</button>
-            <button onclick="emailCodeInvite()" class="btn" style="background:#fff;border-radius:10px;padding:9px 16px;color:#1C3A6B;font-size:13px;font-weight:700">📧 Email Invite</button>
-          </div>
-        `:`
-          <div style="font-size:14px;color:#fff;margin:8px 0;line-height:1.5">⚠️ Your family doesn't have a code yet. Tap below to generate one — you can then share it with your partner, co-parent, or other adults so they can join.</div>
-          <button onclick="generateFamilyCode()" style="background:#fff;border-radius:10px;padding:11px 18px;border:none;color:#1C3A6B;font-size:14px;font-weight:700;cursor:pointer;font-family:inherit;margin-top:6px">🔧 Generate Family Code</button>
-        `}
+      <div style="margin:0 16px 16px;background:linear-gradient(135deg,#1C3A6B,#2E5FBF);border-radius:16px;padding:18px 20px;color:#fff">
+        <div style="font-size:13px;font-weight:700;letter-spacing:0.3px;margin-bottom:6px">🔑 How to invite people</div>
+        <div style="font-size:13px;color:rgba(255,255,255,0.92);line-height:1.55">Tap any family member below to open their profile. There you'll find a personal invite code — share it with that person specifically and their account links directly to that profile.</div>
+        <div style="font-size:12px;color:rgba(255,255,255,0.75);line-height:1.5;margin-top:8px">No more shared family codes — each person gets their own unique code, so accounts can't get mixed up.</div>
       </div>
       <div class="sh" style="margin-bottom:6px">Children</div>
       <div class="card" style="margin-bottom:12px">
@@ -2116,24 +2192,39 @@ function sPersonProfile(){
 
   // Events for THIS person on view date
   let dayEvents=[];
+  let dayLogistics=[]; // adult's drop-off/pick-up duties (not their own events)
   if(person.isAdult){
-    // Adult: events tied directly to them, OR where they're drop-off / pick-up
-    dayEvents=S.events.filter(e=>{
-      const isMyEvent=e.adultUid===person.id;
-      const firstName=name.split(' ')[0];
-      const isMyDuty=e.dropoff===name||e.pickup===name||e.dropoff===firstName||e.pickup===firstName;
-      if(!isMyEvent&&!isMyDuty)return false;
-      if(!e.freq||e.freq==='once')return e.date===viewDateStr;
-      const start=new Date((e.startDate||e.date||viewDateStr)+'T12:00');
-      const end=e.endDate?new Date(e.endDate+'T12:00'):null;
-      const v=new Date(viewDateStr+'T12:00');
-      if(v<start||(end&&v>end))return false;
-      return e.days&&e.days[DAYSH[v.getDay()]];
+    const firstName=name.split(' ')[0];
+    S.events.forEach(e=>{
+      // Is this event happening today?
+      let happens=false;
+      if(!e.freq||e.freq==='once'){
+        happens=(e.date===viewDateStr);
+      }else{
+        const start=new Date((e.startDate||e.date||viewDateStr)+'T12:00');
+        const end=e.endDate?new Date(e.endDate+'T12:00'):null;
+        const v=new Date(viewDateStr+'T12:00');
+        if(v<start||(end&&v>end))return;
+        if(!e.days||!e.days[DAYSH[v.getDay()]])return;
+        happens=true;
+      }
+      if(!happens)return;
+      // Determine relationship to this adult
+      const isParticipant=Array.isArray(e.participantIds)
+        ? e.participantIds.includes(person.id)
+        : e.adultUid===person.id;
+      const isDuty=(e.dropoff===name||e.pickup===name||e.dropoff===firstName||e.pickup===firstName);
+      if(isParticipant){
+        dayEvents.push(e);
+      }else if(isDuty){
+        dayLogistics.push(e);
+      }
     });
   }else{
     dayEvents=eventsForChildOnDate(person,viewDateStr);
   }
   dayEvents.sort((a,b)=>parseTimeToMinutes(a.time)-parseTimeToMinutes(b.time));
+  dayLogistics.sort((a,b)=>parseTimeToMinutes(a.time)-parseTimeToMinutes(b.time));
 
   // Packing for child / events for adult — only items needed for this date's events (+ pinned)
   const pk=person.isAdult?[]:packingForChildOnDate(person,viewDateStr);
@@ -2175,6 +2266,39 @@ function sPersonProfile(){
         </div>`).join('')}
         <button onclick="go('addEvent',{${person.isAdult?`adultUid:'${person.id}'`:`childId:'${person.id}'`}})" style="width:100%;padding:13px 16px;border-top:1px solid var(--row-border);background:none;border-left:none;border-right:none;border-bottom:none;color:${color};font-size:14px;font-weight:600;cursor:pointer;font-family:inherit;text-align:center">+ Add Event for ${name.split(' ')[0]}</button>
       </div>
+
+      ${person.isAdult?`
+      <!-- Today's Logistics (drop-off/pick-up duties) -->
+      <div class="sh" style="padding:0 16px;margin-bottom:6px">🚗 ${dayLabel}'s Logistics ${dayLogistics.length?'('+dayLogistics.length+')':''}</div>
+      <div class="card" style="margin-bottom:14px">
+        ${dayLogistics.length===0?`<div style="padding:20px;text-align:center;color:var(--text-secondary);font-size:14px">No drop-offs or pick-ups ${dayLabel.toLowerCase()}</div>`:''}
+        ${dayLogistics.map((ev,i)=>{
+          const firstName=name.split(' ')[0];
+          const isMyDropoff=ev.dropoff===name||ev.dropoff===firstName;
+          const isMyPickup=ev.pickup===name||ev.pickup===firstName;
+          // Find the participant child(ren) for context
+          let participantNames='';
+          if(Array.isArray(ev.participantIds)&&ev.participantIds.length){
+            participantNames=ev.participantIds.map(pid=>{
+              const c=S.children.find(ch=>ch.id===pid);return c?c.name:null;
+            }).filter(Boolean).join(', ');
+          }else if(ev.childId){
+            const c=S.children.find(ch=>ch.id===ev.childId);
+            if(c)participantNames=c.name;
+          }
+          return `<div class="row" style="border-bottom:${i<dayLogistics.length-1?'1px solid var(--row-border)':'none'}">
+            <div style="width:44px;text-align:right;font-size:12px;font-weight:600;color:var(--text-secondary);flex-shrink:0">${ev.time||''}</div>
+            <div style="width:32px;height:32px;border-radius:16px;background:${color}18;border:2px solid ${color};display:flex;align-items:center;justify-content:center;font-size:14px;flex-shrink:0">${isMyDropoff&&isMyPickup?'🔄':isMyDropoff?'🚗':'🏠'}</div>
+            <div style="flex:1">
+              <div style="font-size:14px;font-weight:600;color:var(--text)">${ev.title}</div>
+              ${participantNames?`<div style="font-size:12px;color:var(--text-secondary)">For ${participantNames}</div>`:''}
+              ${ev.location?`<div style="font-size:12px;color:var(--text-secondary)">📍 ${ev.location}</div>`:''}
+              <div style="font-size:11px;color:${color};font-weight:600">${isMyDropoff?'🚗 Drop-off':''}${isMyDropoff&&isMyPickup?' · ':''}${isMyPickup?'🏠 Pick-up':''}</div>
+            </div>
+          </div>`;
+        }).join('')}
+      </div>
+      `:''}
 
       ${!person.isAdult?`
       <!-- Packing list (children only) -->
@@ -2241,6 +2365,28 @@ function sPersonProfile(){
         ${person.email?`<div class="row"><span style="flex:1;color:var(--text-secondary);font-size:14px">Email</span><span style="color:var(--text);font-weight:600;font-size:13px">${person.email}</span></div>`:''}
       </div>
       `:''}
+
+      <!-- Personal invite code -->
+      ${(()=>{
+        const m=person.isAdult?members().find(x=>x.uid===person.id):null;
+        const code=person.isAdult?(m?.personalCode||''):(person.personalCode||'');
+        return `<div class="sh" style="padding:0 16px;margin-bottom:6px">🔑 Personal Invite Code</div>
+        <div style="margin:0 16px 14px;background:${color};border-radius:14px;padding:16px 18px;color:#fff">
+          ${code?`
+            <div style="font-size:11px;font-weight:700;color:rgba(255,255,255,0.78);letter-spacing:0.5px;margin-bottom:4px">FOR ${name.toUpperCase()} ONLY</div>
+            <div style="font-size:22px;font-weight:800;letter-spacing:2px;font-family:monospace;margin-bottom:4px">${code}</div>
+            <div style="font-size:12px;color:rgba(255,255,255,0.85);margin-bottom:10px;line-height:1.5">When ${name.split(' ')[0]} signs up at <strong>ourhomebase.com.au</strong> using this code, their account will link directly to this profile.</div>
+            <div style="display:flex;gap:6px;flex-wrap:wrap">
+              <button onclick="copyPersonalCode('${code}','${name.replace(/'/g,"\\\\'")}')" style="background:rgba(255,255,255,0.22);border:none;border-radius:8px;padding:8px 14px;color:#fff;font-size:12px;font-weight:600;cursor:pointer;font-family:inherit">📋 Copy</button>
+              <button onclick="sharePersonalCode('${code}','${name.replace(/'/g,"\\\\'")}')" style="background:rgba(255,255,255,0.22);border:none;border-radius:8px;padding:8px 14px;color:#fff;font-size:12px;font-weight:600;cursor:pointer;font-family:inherit">📤 Share</button>
+              <button onclick="emailPersonalCode('${code}','${name.replace(/'/g,"\\\\'")}','${person.email||''}')" style="background:#fff;border:none;border-radius:8px;padding:8px 14px;color:${color};font-size:12px;font-weight:700;cursor:pointer;font-family:inherit">📧 Email</button>
+            </div>
+          `:`
+            <div style="font-size:13px;color:rgba(255,255,255,0.92);margin-bottom:10px;line-height:1.5">Generate a personal invite code for ${name.split(' ')[0]}. Sharing this code (instead of the family code) ensures their sign-up links directly to this profile.</div>
+            <button onclick="generatePersonalCode('${person.id}','${person.isAdult?'adult':'child'}')" style="background:#fff;border:none;border-radius:10px;padding:10px 18px;color:${color};font-size:13px;font-weight:700;cursor:pointer;font-family:inherit">🔑 Generate Invite Code</button>
+          `}
+        </div>`;
+      })()}
     </div>
   </div>`;
 }
@@ -2976,6 +3122,24 @@ window.toggleEndTime=function(){
     row.style.display='flex';
   }
 };
+window.toggleParticipant=function(id){
+  if(!Array.isArray(S.ef.participantIds))S.ef.participantIds=[];
+  const idx=S.ef.participantIds.indexOf(id);
+  if(idx>=0)S.ef.participantIds.splice(idx,1);
+  else S.ef.participantIds.push(id);
+  // Update the chip button visually without re-rendering form
+  const btn=document.getElementById('chip-'+id);
+  if(!btn)return;
+  // Find color from children or members
+  const c=S.children.find(ch=>ch.id===id);
+  const m=members().find(x=>x.uid===id);
+  const colour=c?.color||m?.color||NAVY;
+  const name=c?c.name:m?(m.name+(m.relationship?' ('+m.relationship+')':'')):'';
+  const on=S.ef.participantIds.includes(id);
+  btn.style.background=on?colour:'transparent';
+  btn.style.color=on?'#fff':colour;
+  btn.innerHTML=(on?'✓ ':'')+name;
+};
 window.toggleCategory=function(catId){
   S.ef.category=S.ef.category===catId?'':catId;
   ['school','sport','music','social','medical','other'].forEach(c=>{
@@ -3009,16 +3173,20 @@ window.hSaveEvent=async()=>{
   const dropoff=dropRaw==='__other'?prompt('Enter drop-off person name:')||'':dropRaw;
   const pickup=pickRaw==='__other'?prompt('Enter pick-up person name:')||'':pickRaw;
   try{
-    const echildVal=$('echild')?.value||'';
+    const participantIds=Array.isArray(ef.participantIds)?[...ef.participantIds]:[];
+    // Derive legacy fields for backwards compat
     let childId='';
     let adultUid='';
-    if(echildVal.startsWith('adult:')){
-      adultUid=echildVal.replace('adult:','');
-    }else{
-      childId=echildVal;
+    if(participantIds.length===1){
+      const c=S.children.find(ch=>ch.id===participantIds[0]);
+      const a=members().find(m=>m.uid===participantIds[0]);
+      if(c)childId=participantIds[0];
+      else if(a)adultUid=participantIds[0];
     }
     await fadd(['events'],{
-      title,emoji:ef.emoji||'📅',childId,adultUid,
+      title,emoji:ef.emoji||'📅',
+      participantIds,
+      childId,adultUid,
       freq:ef.freq,
       date:ef.freq==='once'?$('edate')?.value:'',
       startDate:ef.freq!=='once'?$('estartdate')?.value||fd(today):'',
@@ -3031,10 +3199,14 @@ window.hSaveEvent=async()=>{
       packItems:[...ef.packItems],
       notes:$('enotes')?.value?.trim()||''
     });
-    if(childId&&ef.packItems.length){
-      for(const item of ef.packItems){try{await fadd(['children',childId,'packing'],{label:item,checked:false,pinned:false,section:'afterschool'});}catch(e){}}
+    // Add packing items to all child participants
+    const childParticipants=participantIds.filter(pid=>S.children.find(c=>c.id===pid));
+    for(const cid of childParticipants){
+      if(ef.packItems.length){
+        for(const item of ef.packItems){try{await fadd(['children',cid,'packing'],{label:item,checked:false,pinned:false,section:'afterschool'});}catch(e){}}
+      }
     }
-    S.ef={freq:'once',days:{Mon:false,Tue:false,Wed:false,Thu:false,Fri:false,Sat:false,Sun:false},packItems:[],emoji:'📅',category:''};
+    S.ef={freq:'once',days:{Mon:false,Tue:false,Wed:false,Thu:false,Fri:false,Sat:false,Sun:false},packItems:[],emoji:'📅',category:'',participantIds:[]};
     back();notify('Event saved! 📅');
   }catch(ex){if(err)err.textContent=ex.message;}
 };
@@ -3695,7 +3867,7 @@ window.toggleNightMode=function(){
 };
 window.hSignOut=async()=>{
   S.unsubs.forEach(u=>u());S.unsubs=[];
-  Object.assign(S,{family:null,familyId:null,children:[],packing:{},events:[],assessments:[],groceries:[],gifts:[],dinners:[],playdates:[],contacts:[],mealIdeas:[],mealIdeas:[],screen:null,screenParams:{},tab:'today',morningMode:false,activeChild:null,fabOpen:false,notif:null,weather:null,evTab:'events',listTab:'menu',listFilter:'all',ef:{freq:'once',days:{Mon:false,Tue:false,Wed:false,Thu:false,Fri:false,Sat:false,Sun:false},packItems:[],emoji:'📅',category:''}});
+  Object.assign(S,{family:null,familyId:null,children:[],packing:{},events:[],assessments:[],groceries:[],gifts:[],dinners:[],playdates:[],contacts:[],mealIdeas:[],mealIdeas:[],screen:null,screenParams:{},tab:'today',morningMode:false,activeChild:null,fabOpen:false,notif:null,weather:null,evTab:'events',listTab:'menu',listFilter:'all',ef:{freq:'once',days:{Mon:false,Tue:false,Wed:false,Thu:false,Fri:false,Sat:false,Sun:false},packItems:[],emoji:'📅',category:'',participantIds:[]}});
   await signOut(auth);
 };
 window.emailCodeInvite=function(){
@@ -3716,6 +3888,44 @@ window.emailCodeInvite=function(){
     'See you there!'
   );
   window.location.href='mailto:'+email.trim()+'?subject='+subject+'&body='+body;
+};
+window.generatePersonalCode=async function(personId,kind){
+  if(!S.familyId){notify('No family found','⚠️');return;}
+  const code='HB-'+(kind==='adult'?'A':'C')+'-'+Math.random().toString(36).substring(2,7).toUpperCase();
+  try{
+    if(kind==='child'){
+      await updateDoc(doc(db,'families',S.familyId,'children',personId),{personalCode:code});
+      // local update
+      const c=S.children.find(ch=>ch.id===personId);
+      if(c)c.personalCode=code;
+    }else{
+      // Adult: update the family.members map
+      const path='members.'+personId+'.personalCode';
+      await updateDoc(doc(db,'families',S.familyId),{[path]:code});
+      if(S.family?.members?.[personId])S.family.members[personId].personalCode=code;
+    }
+    notify('✅ Code created: '+code,'🔑');
+    render();
+  }catch(ex){
+    notify('Error: '+ex.message,'❌');
+  }
+};
+window.copyPersonalCode=function(code,name){
+  if(navigator.clipboard)navigator.clipboard.writeText(code).then(()=>notify(name+"'s code copied! 🔑"));
+  else alert('Code: '+code);
+};
+window.sharePersonalCode=function(code,name){
+  const text='Join '+(S.family?.name||'our family')+" on HomeBase! Use "+name+"'s personal invite code: "+code+"\n\nSign up at: https://ourhomebase.com.au";
+  if(navigator.share){
+    navigator.share({title:'HomeBase invite for '+name,text});
+  }else{
+    navigator.clipboard?.writeText(text).then(()=>notify('Invite text copied to clipboard! 📋'));
+  }
+};
+window.emailPersonalCode=function(code,name,toEmail){
+  const subj=encodeURIComponent('Your HomeBase invite, '+name);
+  const body=encodeURIComponent("Hi "+name+",\n\nI've set up a profile for you on HomeBase — our family logistics app.\n\nYour personal invite code is:\n\n"+code+"\n\nSign up at https://ourhomebase.com.au and enter this code when prompted. It'll link your account directly to your profile.\n\nSee you there!");
+  window.location.href='mailto:'+(toEmail||'')+'?subject='+subj+'&body='+body;
 };
 window.generateFamilyCode=async function(){
   if(!S.familyId){notify('No family found','⚠️');return;}
