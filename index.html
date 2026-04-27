@@ -552,11 +552,11 @@ function sFamilySetup(){
       </div>
       <div style="text-align:center;color:#8E8E93;font-size:14px">— or —</div>
       <div style="background:#fff;border-radius:16px;padding:20px;box-shadow:0 1px 4px rgba(0,0,0,0.08)">
-        <div style="font-size:17px;font-weight:700;margin-bottom:4px">🔗 Join existing family</div>
-        <div style="font-size:14px;color:#8E8E93;margin-bottom:14px">Enter the code shared by your partner</div>
-        <input class="input" id="fc" type="text" placeholder="Family code (e.g. HB-ABC123)" style="margin-bottom:10px;font-family:monospace;text-transform:uppercase"/>
+        <div style="font-size:17px;font-weight:700;margin-bottom:4px">🔑 Got an invite?</div>
+        <div style="font-size:14px;color:#8E8E93;margin-bottom:14px;line-height:1.45">Enter the personal invite code your partner or family admin sent you</div>
+        <input class="input" id="fc" type="text" placeholder="Invite code (e.g. HB-A-XXXXX)" style="margin-bottom:10px;font-family:monospace;text-transform:uppercase"/>
         <div id="jerr" class="err" style="margin-bottom:8px"></div>
-        <button class="green-btn" onclick="hJoinFamily()">Join Family</button>
+        <button class="green-btn" onclick="hJoinFamily()">Join with Code</button>
       </div>
     </div>
   </div>`;
@@ -772,8 +772,8 @@ function sAddCaregiver(){
         <input type="hidden" id="ac-color" value="${COLORS[0]}"/>
         <div style="background:#F2F2F7;border-radius:10px;padding:14px;font-size:13px;color:#1C1C1E;line-height:1.5">
           <div style="font-weight:700;margin-bottom:8px">📨 How they'll join</div>
-          <div style="margin-bottom:6px"><strong>Option 1 — Quick add:</strong> Just save below. Then share the family code <strong style="font-family:monospace;background:#fff;padding:2px 6px;border-radius:4px">${S.family?.inviteCode||''}</strong> with them. They sign up at ourhomebase.com.au using the code and link to this profile.</div>
-          <div style="margin-top:10px"><strong>Option 2 — Email invite:</strong> Add their email above, then tap <em>Send Invite Email</em> to email them a join link automatically.</div>
+          <div style="margin-bottom:6px">Save the profile below. Once saved, open it from the Family page — you'll see a <strong>Personal Invite Code</strong> button. Tap to generate a unique code, then Copy / Share / Email it to them.</div>
+          <div style="margin-top:6px;color:#5A5A5C">When they sign up using that code, their account links directly to this profile — no shared family codes, no risk of duplicates.</div>
         </div>
         <div id="acerr" class="err"></div>
         <div style="display:flex;gap:8px">
@@ -2073,7 +2073,7 @@ function sSettings(){
   +'<div style="font-size:13px;color:rgba(255,255,255,0.7);margin-bottom:4px">Signed in as</div>'
   +'<div style="font-size:20px;font-weight:800;color:#fff">'+(S.user&&S.user.displayName||'User')+'</div>'
   +'<div style="font-size:13px;color:rgba(255,255,255,0.7);margin-top:2px">'+(S.user&&S.user.email||'')+'</div>'
-  +'<div style="font-size:11px;color:rgba(255,255,255,0.5);margin-top:6px;font-family:monospace">Family: '+(S.family&&S.family.inviteCode||'')+'</div>'
+  +'<div style="font-size:11px;color:rgba(255,255,255,0.5);margin-top:6px">Family: '+(S.family&&S.family.name||'')+'</div>'
   +'</div>'
   // Weather location
   +'<div class="sh" style="margin-bottom:6px">🌤 Weather Location</div>'
@@ -2382,7 +2382,7 @@ function sPersonProfile(){
               <button onclick="emailPersonalCode('${code}','${name.replace(/'/g,"\\\\'")}','${person.email||''}')" style="background:#fff;border:none;border-radius:8px;padding:8px 14px;color:${color};font-size:12px;font-weight:700;cursor:pointer;font-family:inherit">📧 Email</button>
             </div>
           `:`
-            <div style="font-size:13px;color:rgba(255,255,255,0.92);margin-bottom:10px;line-height:1.5">Generate a personal invite code for ${name.split(' ')[0]}. Sharing this code (instead of the family code) ensures their sign-up links directly to this profile.</div>
+            <div style="font-size:13px;color:rgba(255,255,255,0.92);margin-bottom:10px;line-height:1.5">Generate a personal invite code for ${name.split(' ')[0]}. Sharing this code ensures their sign-up links directly to this profile.</div>
             <button onclick="generatePersonalCode('${person.id}','${person.isAdult?'adult':'child'}')" style="background:#fff;border:none;border-radius:10px;padding:10px 18px;color:${color};font-size:13px;font-weight:700;cursor:pointer;font-family:inherit">🔑 Generate Invite Code</button>
           `}
         </div>`;
@@ -2411,7 +2411,7 @@ function sHelp(){
         {icon:'📅',title:'Calendar',desc:'Weekly view of all family events. Tap any day to see what’s on. Tap the + button to add a new event with drop-off, pick-up, location, and packing items.'},
         {icon:'📋',title:'Events tab',desc:'Manage everything that happens away from home. Sub-tabs for Events, 🎁 Gifts, 📚 Assessments, and 🎉 Play Dates. Birthday party invites can be scanned with the camera and details auto-filled.'},
         {icon:'🍴',title:'Kitchen',desc:'Shopping list and dinner planner. Tick off groceries as you shop. The "Save as frequent" checkbox builds a quick-add bank for items you buy often. Plan dinners up to a week ahead and assign who’s cooking.'},
-        {icon:'👨‍👩‍👧',title:'Family',desc:'Manage children and adult profiles. Tap any tile to view or edit. Use the family code to invite other adults — share via Copy, Share, or Email Invite.'},
+        {icon:'👨‍👩‍👧',title:'Family',desc:'Manage children and adult profiles. Tap any tile to view, edit, or get their personal invite code. Share their code so they can sign up — their account links directly to that profile.'},
         {icon:'⚙️',title:'Settings',desc:'Configure weather location (so the topbar shows your local conditions), school term dates (so school only appears on real school days), daily reminder time, and switch between light and night mode.'},
         {icon:'📸',title:'Smart scan (OCR)',desc:'When adding an assessment or birthday invite, tap the "Scan" button to take a photo. HomeBase reads the text and auto-fills the date, title, and details. Edit anything that’s wrong, then save.'},
         {icon:'🌙',title:'Night mode',desc:'Tap the moon icon in the top right of any screen to switch to dark theme — easier on the eyes in the evening.'},
@@ -2452,9 +2452,9 @@ function sPrivacy(){
       </div>
 
       ${[
-        {title:'What we store',body:'• Your name and email (for sign in)<br>• Family name and a unique family code<br>• Children’s names, ages, year level, school, and optional photo<br>• Other adults’ names, contact info, and photos (when you add them)<br>• Events, packing lists, dinners, shopping lists, assessments, gifts, play dates<br>• Your weather location and notification preferences'},
+        {title:'What we store',body:'• Your name and email (for sign in)<br>• Family name<br>• Children\u2019s names, ages, year level, school, and optional photo<br>• Other adults\u2019 names, contact info, and photos (when you add them)<br>• Each profile has a unique invite code used once to onboard the right person<br>• Events, packing lists, dinners, shopping lists, assessments, gifts, play dates<br>• Your weather location and notification preferences'},
         {title:'Where it’s stored',body:'All data lives in <strong>Google Firebase</strong> — the same secure platform used by thousands of apps including major brands. Your family’s data is stored in a database hosted in <strong>Sydney, Australia</strong> for fast access and Australian data residency.'},
-        {title:'Who can see your data',body:'<strong>Only people in your family</strong> who have signed in with your family code. We use Firebase’s authentication rules to make this technically enforced — no one else, including search engines or other HomeBase users, can see your information.'},
+        {title:'Who can see your data',body:'<strong>Only people in your family</strong> who have signed in using a personal invite code linked to a profile. We use Firebase\u2019s authentication rules to make this technically enforced \u2014 no one else, including search engines or other HomeBase users, can see your information.'},
         {title:'What we DON’T do',body:'• We don’t sell your data<br>• We don’t share it with advertisers<br>• We don’t track you across other websites<br>• We don’t read your emails or messages outside the app<br>• We don’t use your data to train AI'},
         {title:'Photos',body:'Photos you upload (children, caregivers) are stored securely in Firebase Storage. Only your family can view them. Delete a profile and the photo goes with it.'},
         {title:'OCR scanning (assessment / invite photos)',body:'Photos taken with the Scan button are processed <strong>directly on your device</strong> using a free open-source library (Tesseract.js). The image never leaves your phone or browser. Only the extracted text is saved.'},
@@ -2848,8 +2848,8 @@ window.hCreateFamily=async()=>{
 };
 window.hJoinFamily=async()=>{
   const c=$('fc')?.value?.trim(),err=$('jerr');
-  if(!c){if(err)err.textContent='Enter a family code';return;}
-  try{S.familyId=await joinFamily(c);subscribe();render();}catch(ex){if(err)err.textContent='Family not found. Check code and try again.';}
+  if(!c){if(err)err.textContent='Enter an invite code';return;}
+  try{S.familyId=await joinFamily(c);subscribe();render();}catch(ex){if(err)err.textContent=ex.message||'Code not recognised. Check and try again.';}
 };
 window.onPhoto=async(input)=>{
   if(!input||!input.files||!input.files[0])return;
