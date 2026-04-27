@@ -517,6 +517,25 @@ function eventsForChildOnDate(child, dateStr){
     return false;
   }).sort((a,b)=>(a.time||'').localeCompare(b.time||''));
 }
+
+// Compute packing items for a child on a given date, derived from that day's events
+// Returns array of packing items (from master packing list) that match labels in today's events' packItems
+function packingForChildOnDate(child, dateStr){
+  const dayEvents=eventsForChildOnDate(child, dateStr);
+  // Collect all unique pack item labels needed today
+  const neededLabels=new Set();
+  dayEvents.forEach(ev=>{
+    (ev.packItems||[]).forEach(label=>neededLabels.add(label.toLowerCase().trim()));
+  });
+  // Filter master packing list to only those labels
+  const masterPk=S.packing[child.id]||[];
+  // Match by label (case-insensitive). Also add any pinned items always.
+  return masterPk.filter(item=>{
+    if(item.pinned)return true;
+    return neededLabels.has((item.label||'').toLowerCase().trim());
+  });
+}
+
 function todayEventsForChild(child){
   return S.events.filter(ev=>{
     if(!ev.childId||ev.childId===child.id){
@@ -747,7 +766,7 @@ function sToday(){
       </div>
       <div style="display:flex;gap:10px;overflow-x:auto;padding:14px 0 4px;-ms-overflow-style:none;scrollbar-width:none">
         ${S.children.map(c=>{
-          const cpk=S.packing[c.id]||[];
+          const cpk=packingForChildOnDate(c, getViewDateStr());
           const cpacked=cpk.filter(p=>p.checked).length;
           const cpct=cpk.length?cpacked/cpk.length:0;
           const cEvs=eventsForChildOnDate(c, getViewDateStr());
@@ -755,15 +774,15 @@ function sToday(){
             <div style="display:flex;align-items:center;gap:8px;margin-bottom:8px">
               ${av(c.name,c.color||NAVY,32,c.photoURL)}
               <div>
-                <div style="font-size:14px;font-weight:700;color:#1C1C1E">${c.name}</div>
-                <div style="font-size:11px;color:#8E8E93">${c.year||''}</div>
+                <div style="font-size:14px;font-weight:700;color:var(--text)">${c.name}</div>
+                <div style="font-size:11px;color:var(--text-secondary)">${c.year||''}</div>
               </div>
             </div>
-            <div style="height:4px;background:#F2F2F7;border-radius:2px;overflow:hidden;margin-bottom:4px">
+            ${cpk.length>0?`<div style="height:4px;background:#F2F2F7;border-radius:2px;overflow:hidden;margin-bottom:4px">
               <div style="height:100%;width:${cpct*100}%;background:${cpct===1?'#34C759':c.color||NAVY};border-radius:2px;transition:width 0.3s"></div>
             </div>
-            <div style="font-size:11px;color:${cpct===1?'#34C759':c.color||NAVY};font-weight:600">${cpacked}/${cpk.length} packed</div>
-            ${cEvs.length?`<div style="font-size:11px;color:#8E8E93;margin-top:3px">📅 ${cEvs.length} event${cEvs.length>1?'s':''}</div>`:''}
+            <div style="font-size:11px;color:${cpct===1?'#34C759':c.color||NAVY};font-weight:600">${cpacked}/${cpk.length} packed</div>`:`<div style="font-size:11px;color:var(--text-secondary);font-weight:500">Nothing to pack</div>`}
+            ${cEvs.length?`<div style="font-size:11px;color:var(--text-secondary);margin-top:3px">📅 ${cEvs.length} event${cEvs.length>1?'s':''}</div>`:''}
           </div>`;
         }).join('')}
         ${members().filter(m=>['Mum','Dad','Stepmum','Stepdad'].includes(m.relationship||'')).map(m=>{
@@ -827,16 +846,19 @@ function sToday(){
       <!-- COMBINED PACKING LIST -->
       ${(()=>{
         const allKids=S.children;
-        const totalItems=allKids.reduce((sum,c)=>sum+(S.packing[c.id]||[]).length,0);
-        const packed=allKids.reduce((sum,c)=>sum+(S.packing[c.id]||[]).filter(p=>p.checked).length,0);
+        // Use the date the user is currently viewing (respects day arrows)
+        const dStr=getViewDateStr();
+        // For each child, get only items needed for events on this date
+        const perChildPacking=allKids.map(c=>({child:c,pk:packingForChildOnDate(c,dStr)}));
+        const totalItems=perChildPacking.reduce((sum,x)=>sum+x.pk.length,0);
+        const packed=perChildPacking.reduce((sum,x)=>sum+x.pk.filter(p=>p.checked).length,0);
         if(totalItems===0)return '';
+        const dayLabel=(S.dayOffset||0)===0?"Today":(S.dayOffset||0)===1?"Tomorrow":(S.dayOffset||0)===-1?"Yesterday":DAYNAMES[viewDateObj.getDay()];
         return `<div class="sh" style="margin-bottom:6px;display:flex;justify-content:space-between;align-items:center;padding-right:16px">
-          <span>🎒 Family Packing List · ${packed}/${totalItems}</span>
+          <span>🎒 ${dayLabel}'s Packing · ${packed}/${totalItems}</span>
         </div>
         <div class="card" style="margin-bottom:14px">
-          ${allKids.map(c=>{
-            const pk=S.packing[c.id]||[];
-            if(pk.length===0)return '';
+          ${perChildPacking.filter(x=>x.pk.length>0).map(({child:c,pk})=>{
             const cpacked=pk.filter(p=>p.checked).length;
             const allDone=cpacked===pk.length;
             return `<div style="padding:10px 16px;border-bottom:1px solid var(--row-border)">
@@ -855,7 +877,7 @@ function sToday(){
                 ${pk.length>4?`<div style="font-size:11px;color:var(--text-secondary);padding-top:2px">+${pk.length-4} more — tap to view all</div>`:''}
               </div>
             </div>`;
-          }).filter(Boolean).join('')}
+          }).join('')}
         </div>`;
       })()}
 
@@ -1869,8 +1891,8 @@ function sPersonProfile(){
   }
   dayEvents.sort((a,b)=>(a.time||'').localeCompare(b.time||''));
 
-  // Packing for child / events for adult
-  const pk=person.isAdult?[]:(S.packing[person.id]||[]);
+  // Packing for child / events for adult — only items needed for this date's events (+ pinned)
+  const pk=person.isAdult?[]:packingForChildOnDate(person,viewDateStr);
 
   return `<div style="flex:1;display:flex;flex-direction:column">
     <div style="background:${color}18;padding:14px 16px;display:flex;align-items:center;border-bottom:2px solid ${color}25;position:sticky;top:0;z-index:10">
@@ -1912,9 +1934,9 @@ function sPersonProfile(){
 
       ${!person.isAdult?`
       <!-- Packing list (children only) -->
-      <div class="sh" style="padding:0 16px;margin-bottom:6px">🎒 Packing List (${pk.filter(p=>p.checked).length}/${pk.length})</div>
+      <div class="sh" style="padding:0 16px;margin-bottom:6px">🎒 ${dayLabel}'s Packing (${pk.filter(p=>p.checked).length}/${pk.length})</div>
       <div class="card" style="margin-bottom:14px">
-        ${pk.length===0?`<div style="padding:20px;text-align:center;color:var(--text-secondary);font-size:14px">No items in packing list yet</div>`:''}
+        ${pk.length===0?`<div style="padding:20px;text-align:center;color:var(--text-secondary);font-size:14px;line-height:1.5">Nothing to pack ${dayLabel.toLowerCase()} 🎉<br><span style="font-size:12px">Pack items appear here based on ${name.split(' ')[0]}'s events for this day</span></div>`:''}
         ${pk.map((item,i)=>`<div class="row" style="border-bottom:${i<pk.length-1?'1px solid var(--row-border)':'none'}">
           <div class="cb ${item.checked?'on':''}" style="${item.checked?'background:'+color+';border:none':'border-color:'+color}" onclick="tPack('${person.id}','${item.id}',${!item.checked})">${item.checked?ck():''}</div>
           <span style="flex:1;font-size:15px;color:${item.checked?'var(--text-secondary)':'var(--text)'};text-decoration:${item.checked?'line-through':'none'}">${item.label}</span>
