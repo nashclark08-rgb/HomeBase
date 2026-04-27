@@ -538,6 +538,15 @@ function eventsForChildOnDate(child, dateStr){
 
 // Compute packing items for a child on a given date, derived from that day's events
 // Returns array of packing items (from master packing list) that match labels in today's events' packItems
+// Extract year number from a child's year field (e.g. "Year 7" -> 7, "K" -> 0, "Year 2" -> 2)
+function childYearNum(child){
+  if(!child||!child.year)return null;
+  const s=String(child.year).toLowerCase();
+  if(s.includes('k')||s.includes('kindy')||s.includes('prep'))return 0;
+  const m=s.match(/(\d+)/);
+  return m?parseInt(m[1],10):null;
+}
+
 function packingForChildOnDate(child, dateStr){
   const dayEvents=eventsForChildOnDate(child, dateStr);
   // Collect all unique pack item labels needed today
@@ -1163,30 +1172,68 @@ function sCalendar(){
 
   const dayEvs=eventsOnDate(sel);
 
-  // Render an event as a colour-strip card with photo on RHS
-  function evCard(ev){
-    const ec=S.children.find(c=>c.id===ev.childId);
-    const col=ec?.color||NAVY;
-    return `<div style="width:calc(100% - 32px);margin:0 16px 10px;background:var(--card);border-radius:14px;box-shadow:var(--shadow-md);border-left:6px solid ${col};overflow:hidden;display:flex;align-items:stretch">
-      <div style="flex:1;padding:14px 14px 14px 16px;min-width:0">
-        <div style="display:flex;align-items:center;gap:8px;margin-bottom:6px;flex-wrap:wrap">
-          <span style="font-size:22px">${ev.emoji||'📅'}</span>
-          <span style="font-size:16px;font-weight:700;color:var(--text)">${ev.title}</span>
-          ${ev.category==='school'?'<span style="font-size:10px;font-weight:700;padding:2px 7px;border-radius:8px;background:#1C3A6B18;color:#1C3A6B">🏫 SCHOOL</span>':ev.category==='sport'?'<span style="font-size:10px;font-weight:700;padding:2px 7px;border-radius:8px;background:#34C75920;color:#1F8E3F">⚽ SPORT</span>':ev.category==='music'?'<span style="font-size:10px;font-weight:700;padding:2px 7px;border-radius:8px;background:#AF52DE20;color:#7B2CBF">🎵 MUSIC</span>':ev.category==='medical'?'<span style="font-size:10px;font-weight:700;padding:2px 7px;border-radius:8px;background:#FF3B3020;color:#C0392B">🏥 MEDICAL</span>':ev.category==='social'?'<span style="font-size:10px;font-weight:700;padding:2px 7px;border-radius:8px;background:#FF6B9D20;color:#D6336C">🎉 SOCIAL</span>':''}
+  // Render a child's events for this day as a single colour-block card
+  function childEventsBlock(child, events){
+    const col=child?.color||NAVY;
+    const childName=child?child.name:'Family';
+    const childFirst=child?child.name.split(' ')[0]:'Family';
+    // For dark mode keep the colour saturation; pick text color based on contrast
+    return `<div style="width:calc(100% - 32px);margin:0 16px 12px;background:${col};border-radius:16px;box-shadow:var(--shadow-md);overflow:hidden;display:flex;align-items:stretch;color:#fff">
+      <div style="flex:1;padding:14px 14px 14px 18px;min-width:0">
+        <!-- Child name header -->
+        ${child?`<div onclick="go('personProfile',{kind:'child',childId:'${child.id}'})" style="display:flex;align-items:center;gap:8px;margin-bottom:10px;cursor:pointer;padding-bottom:8px;border-bottom:1px solid rgba(255,255,255,0.25)">
+          <div style="font-size:13px;font-weight:800;color:#fff;letter-spacing:0.3px">${childFirst.toUpperCase()}</div>
+          <div style="font-size:11px;color:rgba(255,255,255,0.8);font-weight:500">· ${events.length} ${events.length===1?'event':'events'}</div>
+        </div>`:''}
+        <!-- Events list -->
+        <div style="display:flex;flex-direction:column;gap:10px">
+          ${events.map((ev,i)=>`<div style="${i>0?'padding-top:10px;border-top:1px solid rgba(255,255,255,0.18)':''}">
+            <div style="display:flex;align-items:center;gap:8px;margin-bottom:4px;flex-wrap:wrap">
+              <span style="font-size:20px">${ev.emoji||'📅'}</span>
+              <span style="font-size:15px;font-weight:700;color:#fff;flex:1;min-width:0">${ev.title}</span>
+              ${ev.category==='school'?'<span style="font-size:10px;font-weight:700;padding:2px 7px;border-radius:8px;background:rgba(255,255,255,0.25);color:#fff">🏫 SCHOOL</span>':ev.category==='sport'?'<span style="font-size:10px;font-weight:700;padding:2px 7px;border-radius:8px;background:rgba(255,255,255,0.25);color:#fff">⚽ SPORT</span>':ev.category==='music'?'<span style="font-size:10px;font-weight:700;padding:2px 7px;border-radius:8px;background:rgba(255,255,255,0.25);color:#fff">🎵 MUSIC</span>':ev.category==='medical'?'<span style="font-size:10px;font-weight:700;padding:2px 7px;border-radius:8px;background:rgba(255,255,255,0.25);color:#fff">🏥 MEDICAL</span>':ev.category==='social'?'<span style="font-size:10px;font-weight:700;padding:2px 7px;border-radius:8px;background:rgba(255,255,255,0.25);color:#fff">🎉 SOCIAL</span>':''}
+              <button onclick="event.stopPropagation();dEvent('${ev.id}')" style="color:#fff;font-size:18px;opacity:0.6;border:none;background:none;cursor:pointer;padding:0 4px">×</button>
+            </div>
+            <div style="font-size:12px;color:rgba(255,255,255,0.92);line-height:1.5">
+              ${ev.freq&&ev.freq!=='once'?`<span style="margin-right:10px">🔄 ${ev.freq}</span>`:''}
+              ${ev.time?`<span style="margin-right:10px">⏰ ${ev.time}</span>`:''}
+              ${ev.location?`<span style="margin-right:10px">📍 ${ev.location}</span>`:''}
+            </div>
+            ${ev.dropoff||ev.pickup?`<div style="font-size:11px;color:rgba(255,255,255,0.92);margin-top:3px">${ev.dropoff?'🚗 Drop-off: <strong>'+ev.dropoff+'</strong>':''}${ev.dropoff&&ev.pickup?' · ':''}${ev.pickup?'🏠 Pick-up: <strong>'+ev.pickup+'</strong>':''}</div>`:''}
+            ${ev.packItems?.length?`<div style="font-size:11px;color:rgba(255,255,255,0.85);margin-top:3px">🎒 ${ev.packItems.join(', ')}</div>`:''}
+          </div>`).join('')}
         </div>
-        ${ev.freq&&ev.freq!=='once'?`<div style="font-size:11px;color:${col};font-weight:600;text-transform:capitalize;margin-bottom:2px">🔄 ${ev.freq}</div>`:''}
-        ${ev.time?`<div style="font-size:13px;color:var(--text-secondary)">⏰ ${ev.time}</div>`:''}
-        ${ev.location?`<div style="font-size:13px;color:var(--text-secondary)">📍 ${ev.location}</div>`:''}
-        ${ev.dropoff?`<div style="font-size:12px;color:var(--text-secondary)">🚗 Drop-off: <strong style="color:var(--text)">${ev.dropoff}</strong></div>`:''}
-        ${ev.pickup?`<div style="font-size:12px;color:var(--text-secondary)">🏠 Pick-up: <strong style="color:var(--text)">${ev.pickup}</strong></div>`:''}
-        ${ev.packItems?.length?`<div style="font-size:12px;color:var(--text-secondary);margin-top:4px">🎒 ${ev.packItems.join(', ')}</div>`:''}
       </div>
-      ${ec?`<div onclick="go('personProfile',{kind:'child',childId:'${ec.id}'})" style="width:80px;background:${col}15;display:flex;flex-direction:column;align-items:center;justify-content:center;cursor:pointer;border-left:1px solid ${col}30;padding:10px 6px">
-        ${ec.photoURL?`<div style="width:52px;height:52px;border-radius:26px;border:3px solid ${col};background-image:url('${ec.photoURL}');background-size:cover;background-position:center;margin-bottom:5px"></div>`:`<div style="width:52px;height:52px;border-radius:26px;background:${col};display:flex;align-items:center;justify-content:center;color:#fff;font-size:18px;font-weight:800;margin-bottom:5px">${ec.name.split(' ').map(n=>n[0]).slice(0,2).join('').toUpperCase()}</div>`}
-        <div style="font-size:11px;font-weight:700;color:${col};text-align:center;line-height:1.1">${ec.name.split(' ')[0]}</div>
+      ${child?`<div onclick="go('personProfile',{kind:'child',childId:'${child.id}'})" style="width:90px;background:rgba(255,255,255,0.15);display:flex;flex-direction:column;align-items:center;justify-content:center;cursor:pointer;padding:12px 6px">
+        ${child.photoURL?`<div style="width:64px;height:64px;border-radius:32px;border:3px solid #fff;background-image:url('${child.photoURL}');background-size:cover;background-position:center;margin-bottom:6px;box-shadow:0 4px 12px rgba(0,0,0,0.2)"></div>`:`<div style="width:64px;height:64px;border-radius:32px;background:#fff;display:flex;align-items:center;justify-content:center;color:${col};font-size:22px;font-weight:800;margin-bottom:6px;box-shadow:0 4px 12px rgba(0,0,0,0.2)">${child.name.split(' ').map(n=>n[0]).slice(0,2).join('').toUpperCase()}</div>`}
+        <div style="font-size:12px;font-weight:800;color:#fff;text-align:center;line-height:1.1;letter-spacing:0.2px">${childFirst}</div>
       </div>`:''}
-      <button onclick="event.stopPropagation();dEvent('${ev.id}')" style="color:#FF3B30;font-size:18px;opacity:0.4;border:none;background:none;cursor:pointer;padding:8px 10px;align-self:flex-start">×</button>
     </div>`;
+  }
+
+  // Group day events by child
+  function groupEventsByChild(events){
+    const groups=new Map();
+    const familyGroup=[];
+    events.forEach(ev=>{
+      const cid=ev.childId||'';
+      if(!cid){familyGroup.push(ev);return;}
+      if(!groups.has(cid))groups.set(cid,[]);
+      groups.get(cid).push(ev);
+    });
+    // Order: by earliest event time per child
+    const arr=[];
+    groups.forEach((evs,cid)=>{
+      const child=S.children.find(c=>c.id===cid);
+      const earliest=Math.min(...evs.map(e=>parseTimeToMinutes(e.time)));
+      arr.push({child,events:evs,earliest});
+    });
+    if(familyGroup.length){
+      const earliest=Math.min(...familyGroup.map(e=>parseTimeToMinutes(e.time)));
+      arr.push({child:null,events:familyGroup,earliest});
+    }
+    arr.sort((a,b)=>a.earliest-b.earliest);
+    return arr;
   }
 
   return `
@@ -1221,7 +1268,7 @@ function sCalendar(){
       ${view==='day'?`
         ${dayEvs.length===0?`<div style="text-align:center;padding:60px 20px"><div style="font-size:56px;margin-bottom:14px">🎉</div><div style="font-size:18px;font-weight:700;margin-bottom:6px;color:var(--text)">Nothing on!</div><div style="font-size:15px;color:var(--text-secondary)">Tap + to add an event</div></div>`:
           `<div class="sh" style="margin-bottom:10px">${new Date(sel+'T12:00').toLocaleDateString('en-AU',{weekday:'long',day:'numeric',month:'long'})}</div>
-          ${dayEvs.map(evCard).join('')}`
+          ${groupEventsByChild(dayEvs).map(g=>childEventsBlock(g.child,g.events)).join('')}`
         }
       `:`
         ${wDates.map(d=>{
@@ -1268,15 +1315,13 @@ function sCalendar(){
 // ── EVENTS TAB ────────────────────────────────────
 function sEvents(){
   const sub=S.evTab;
+  // Auto-switch off invalid tabs (gifts/assessments removed - now in profiles)
+  if(sub==='gifts'||sub==='assessments')S.evTab='events';
   const tabBar=`<div style="background:var(--card);padding:0 16px;border-bottom:1px solid var(--row-border);display:flex;position:sticky;top:57px;z-index:9;overflow-x:auto">
-    <button class="sub-tab ${sub==='events'?'on':'off'}" onclick="S.evTab='events';render()">Events</button>
-    <button class="sub-tab ${sub==='gifts'?'on':'off'}" onclick="S.evTab='gifts';render()">🎁 Gifts</button>
-    <button class="sub-tab ${sub==='assessments'?'on':'off'}" onclick="S.evTab='assessments';render()">📚 Assessments</button>
-    <button class="sub-tab ${sub==='playdates'?'on':'off'}" onclick="S.evTab='playdates';render()">🎉 Play Dates</button>
+    <button class="sub-tab ${S.evTab==='events'?'on':'off'}" onclick="S.evTab='events';render()">Events</button>
+    <button class="sub-tab ${S.evTab==='playdates'?'on':'off'}" onclick="S.evTab='playdates';render()">🎉 Play Dates</button>
   </div>`;
-  if(sub==='gifts')return sGifts(tabBar);
-  if(sub==='assessments')return sAssessmentsInEvents(tabBar);
-  if(sub==='playdates')return sPlayDates(tabBar);
+  if(S.evTab==='playdates')return sPlayDates(tabBar);
   const allEvs=[...S.events].sort((a,b)=>a.title.localeCompare(b.title));
   return `
     <div style="background:#fff;padding:14px 16px 0;border-bottom:1px solid #F2F2F7;position:sticky;top:0;z-index:10">
@@ -1529,8 +1574,6 @@ function sAddPlayDate(){
         <input class="input" id="pd-host-parent" type="text" placeholder="Host parent name" value="${data.hostParent||''}"/>
 
         <input class="input" id="pd-host-phone" type="tel" placeholder="Host parent phone" value="${data.hostPhone||''}"/>
-
-        <input class="input" id="pd-host-email" type="email" placeholder="Host parent email (optional)" value="${data.hostEmail||''}"/>
 
         <input class="input" id="pd-location" type="text" placeholder="Address / Location" value="${data.location||''}"/>
         <button onclick="openMapsForLocation()" type="button" style="margin-top:-8px;padding:8px;border-radius:10px;background:var(--navy-soft);border:none;color:var(--navy);font-size:13px;font-weight:600;cursor:pointer;font-family:inherit">📍 Open in Maps to drop pin</button>
@@ -2076,6 +2119,48 @@ function sPersonProfile(){
         </div>`).join('')}
         <button onclick="go('addPackItem',{childId:'${person.id}'})" style="width:100%;padding:13px 16px;border-top:1px solid var(--row-border);background:none;border-left:none;border-right:none;border-bottom:none;color:${color};font-size:14px;font-weight:600;cursor:pointer;font-family:inherit;text-align:center">+ Add Packing Item</button>
       </div>
+
+      <!-- ASSESSMENTS (Year 7+ only) -->
+      ${(()=>{
+        const yr=childYearNum(person);
+        if(yr===null||yr<7)return '';
+        const childAssess=S.assessments.filter(a=>a.childId===person.id).sort((a,b)=>(a.daysLeft||999)-(b.daysLeft||999));
+        return `<div class="sh" style="padding:0 16px;margin-bottom:6px;display:flex;justify-content:space-between;align-items:center;padding-right:16px">
+          <span>📚 Assessments (${childAssess.length})</span>
+        </div>
+        <div class="card" style="margin-bottom:14px">
+          ${childAssess.length===0?`<div style="padding:20px;text-align:center;color:var(--text-secondary);font-size:14px">No assessments yet</div>`:childAssess.map((a,i,arr)=>{
+            const urg=(a.daysLeft||99)<=7;
+            return `<div class="row" style="border-bottom:${i<arr.length-1?'1px solid var(--row-border)':'none'}">
+              <div style="flex:1">
+                <div style="font-size:14px;font-weight:600;color:var(--text)">${a.title}</div>
+                <div style="font-size:12px;color:var(--text-secondary)">${a.subject||''}${a.due?' · Due '+a.due:''}</div>
+                ${a.notes?`<div style="font-size:11px;color:var(--text-secondary);font-style:italic;margin-top:2px">${a.notes.substring(0,90)}${a.notes.length>90?'...':''}</div>`:''}
+              </div>
+              ${a.daysLeft!==undefined?`<div style="font-size:11px;font-weight:700;color:${urg?'#FF3B30':'#34C759'};background:${urg?'#FFF0EE':'#EAFAF0'};padding:3px 8px;border-radius:12px;white-space:nowrap;margin-right:6px">${a.daysLeft}d</div>`:''}
+              <button onclick="dAssessment('${a.id}')" style="color:#FF3B30;font-size:18px;opacity:0.5;border:none;background:none;cursor:pointer">×</button>
+            </div>`;
+          }).join('')}
+          <button onclick="S.preselectChild='${person.id}';go('addAssessment')" style="width:100%;padding:13px 16px;border-top:1px solid var(--row-border);background:none;border-left:none;border-right:none;border-bottom:none;color:${color};font-size:14px;font-weight:600;cursor:pointer;font-family:inherit;text-align:center">+ Add Assessment for ${name.split(' ')[0]}</button>
+        </div>`;
+      })()}
+
+      <!-- GIFTS -->
+      ${(()=>{
+        const uid=S.user?.uid;
+        const childGifts=(S.gifts||[]).filter(g=>g.recipientId===person.id&&(!g.isPrivate||g.createdBy===uid));
+        return `<div class="sh" style="padding:0 16px;margin-bottom:6px">🎁 Gift Ideas (${childGifts.length})</div>
+        <div class="card" style="margin-bottom:14px">
+          ${childGifts.length===0?`<div style="padding:20px;text-align:center;color:var(--text-secondary);font-size:14px">No gift ideas yet</div>`:childGifts.map((g,i,arr)=>`<div class="row" style="border-bottom:${i<arr.length-1?'1px solid var(--row-border)':'none'}">
+            <div style="flex:1">
+              <div style="font-size:14px;font-weight:600;color:var(--text)">${g.label}</div>
+              <div style="font-size:12px;color:var(--text-secondary)">${g.occasion||''}${g.price?' · $'+g.price:''}${g.isPrivate?' · 🔒 Private':''}</div>
+            </div>
+            <button onclick="dGift('${g.id}')" style="color:#FF3B30;font-size:18px;opacity:0.5;border:none;background:none;cursor:pointer">×</button>
+          </div>`).join('')}
+          <button onclick="go('addGift',{id:'${person.id}',name:'${name.replace(/'/g,'&#39;')}'})" style="width:100%;padding:13px 16px;border-top:1px solid var(--row-border);background:none;border-left:none;border-right:none;border-bottom:none;color:${color};font-size:14px;font-weight:600;cursor:pointer;font-family:inherit;text-align:center">+ Add Gift Idea for ${name.split(' ')[0]}</button>
+        </div>`;
+      })()}
       `:''}
 
       ${person.isAdult?`
@@ -2279,8 +2364,27 @@ function sAddNote(){
 }
 
 function sAddAssessment(){
-  return `<div style="min-height:100%;display:flex;flex-direction:column;background:#F2F2F7">
-    <div style="background:#fff;padding:14px 16px;display:flex;align-items:center;border-bottom:1px solid #F2F2F7;position:sticky;top:0;z-index:10">
+  // Only show children Year 7+ (assessments primarily for high school)
+  const eligibleKids=S.children.filter(c=>{const yr=childYearNum(c);return yr!==null&&yr>=7;});
+  const preselected=S.preselectChild||'';
+  if(eligibleKids.length===0){
+    // No eligible kids - show explainer
+    return `<div style="min-height:100%;display:flex;flex-direction:column;background:var(--bg)">
+      <div style="background:var(--card);padding:14px 16px;display:flex;align-items:center;border-bottom:1px solid var(--row-border);position:sticky;top:0;z-index:10">
+        <button class="back-btn" onclick="back()">${bk()} Back</button>
+        <div style="flex:1;text-align:center;font-size:17px;font-weight:600">Add Assessment</div>
+        <div style="width:60px"></div>
+      </div>
+      <div style="padding:60px 30px;text-align:center;max-width:480px;margin:auto">
+        <div style="font-size:56px;margin-bottom:14px">📚</div>
+        <div style="font-size:18px;font-weight:700;margin-bottom:8px;color:var(--text)">No high school children yet</div>
+        <div style="font-size:14px;color:var(--text-secondary);line-height:1.6;margin-bottom:20px">Assessment tracking is designed for high school students (Year 7 and above). Edit a child's profile and set their year to Year 7 or higher to enable this feature.</div>
+        <button onclick="setTab('family')" style="padding:12px 24px;border-radius:12px;background:var(--navy);border:none;color:#fff;font-size:15px;font-weight:600;cursor:pointer;font-family:inherit">Go to Family</button>
+      </div>
+    </div>`;
+  }
+  return `<div style="min-height:100%;display:flex;flex-direction:column;background:var(--bg)">
+    <div style="background:var(--card);padding:14px 16px;display:flex;align-items:center;border-bottom:1px solid var(--row-border);position:sticky;top:0;z-index:10">
       <button class="back-btn" onclick="back()">${bk()} Back</button>
       <div style="flex:1;text-align:center;font-size:17px;font-weight:600">Add Assessment</div>
       <div style="width:60px"></div>
@@ -2296,7 +2400,7 @@ function sAddAssessment(){
         </div>
         <select class="input" id="achild">
           <option value="">Select child</option>
-          ${S.children.map(c=>`<option value="${c.id}">${c.name}</option>`).join('')}
+          ${eligibleKids.map(c=>`<option value="${c.id}" ${c.id===preselected?'selected':''}>${c.name}${c.year?' ('+c.year+')':''}</option>`).join('')}
         </select>
         <input class="input" id="asubj" type="text" placeholder="Subject (e.g. English, Science)"/>
         <input class="input" id="atitle" type="text" placeholder="Task title (e.g. Book Report)"/>
@@ -2430,7 +2534,7 @@ function render(){
       const icons={
         today:'<svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="'+c+'" stroke-width="'+sw+'" stroke-linecap="round" stroke-linejoin="round"><path d="M3 9l9-7 9 7v11a2 2 0 01-2 2H5a2 2 0 01-2-2V9z"/><polyline points="9 22 9 12 15 12 15 22"/></svg>',
         calendar:'<svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="'+c+'" stroke-width="'+sw+'" stroke-linecap="round" stroke-linejoin="round"><rect x="3" y="4" width="18" height="18" rx="2" ry="2"/><line x1="16" y1="2" x2="16" y2="6"/><line x1="8" y1="2" x2="8" y2="6"/><line x1="3" y1="10" x2="21" y2="10"/></svg>',
-        events:'<svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="'+c+'" stroke-width="'+sw+'" stroke-linecap="round" stroke-linejoin="round"><path d="M9 11H5a2 2 0 00-2 2v7a2 2 0 002 2h14a2 2 0 002-2v-7a2 2 0 00-2-2h-4"/><path d="M9 11V7a3 3 0 016 0v4"/><circle cx="12" cy="16" r="1"/></svg>',
+        events:'<svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="'+c+'" stroke-width="'+sw+'" stroke-linecap="round" stroke-linejoin="round"><rect x="5" y="4" width="14" height="17" rx="2"/><path d="M9 4h6a1 1 0 011 1v1a1 1 0 01-1 1H9a1 1 0 01-1-1V5a1 1 0 011-1z"/><path d="M9 12l2 2 4-4"/></svg>',
         lists:'<svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="'+c+'" stroke-width="'+sw+'" stroke-linecap="round" stroke-linejoin="round"><path d="M3 2v7c0 1.1.9 2 2 2h4a2 2 0 002-2V2M7 2v20M21 15V2v0a5 5 0 00-5 5v6c0 1.1.9 2 2 2h3zm0 0v7"/></svg>',
         family:'<svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="'+c+'" stroke-width="'+sw+'" stroke-linecap="round" stroke-linejoin="round"><path d="M17 21v-2a4 4 0 00-4-4H5a4 4 0 00-4 4v2"/><circle cx="9" cy="7" r="4"/><path d="M23 21v-2a4 4 0 00-3-3.87M16 3.13a4 4 0 010 7.75"/></svg>',
         settings:'<svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="'+c+'" stroke-width="'+sw+'" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="3"/><path d="M19.4 15a1.65 1.65 0 00.33 1.82l.06.06a2 2 0 010 2.83 2 2 0 01-2.83 0l-.06-.06a1.65 1.65 0 00-1.82-.33 1.65 1.65 0 00-1 1.51V21a2 2 0 01-2 2 2 2 0 01-2-2v-.09A1.65 1.65 0 009 19.4a1.65 1.65 0 00-1.82.33l-.06.06a2 2 0 01-2.83 0 2 2 0 010-2.83l.06-.06a1.65 1.65 0 00.33-1.82 1.65 1.65 0 00-1.51-1H3a2 2 0 01-2-2 2 2 0 012-2h.09A1.65 1.65 0 004.6 9a1.65 1.65 0 00-.33-1.82l-.06-.06a2 2 0 010-2.83 2 2 0 012.83 0l.06.06a1.65 1.65 0 001.82.33H9a1.65 1.65 0 001-1.51V3a2 2 0 012-2 2 2 0 012 2v.09a1.65 1.65 0 001 1.51 1.65 1.65 0 001.82-.33l.06-.06a2 2 0 012.83 0 2 2 0 010 2.83l-.06.06a1.65 1.65 0 00-.33 1.82V9a1.65 1.65 0 001.51 1H21a2 2 0 012 2 2 2 0 01-2 2h-.09a1.65 1.65 0 00-1.51 1z"/></svg>'
@@ -3105,18 +3209,31 @@ window.runPlayDateOCR=async function(input){
       logger:m=>{if(m.status==='recognizing text'&&status)status.innerHTML='📖 Reading... '+Math.round(m.progress*100)+'%';}
     });
     const text=r.data.text;
-    if(status)status.innerHTML='✅ Done! Review & edit fields below.';
-    // Try to find name (usually largest line, often "X's Birthday")
-    const lines=text.split(/\\n+/).map(l=>l.trim()).filter(l=>l.length>2);
-    const nameMatch=text.match(/(\\w+)['\u2019]s\\s+(\\d+(?:st|nd|rd|th)?\\s+)?birthday/i);
-    if(nameMatch){
-      document.getElementById('pd-title').value=nameMatch[0];
-      if(nameMatch[1])document.getElementById('pd-host').value=nameMatch[1];
-    }else if(lines[0]&&lines[0].length<60){
-      document.getElementById('pd-title').value=lines[0];
+    const lines=text.split(/\n+/).map(l=>l.trim()).filter(l=>l.length>1);
+    let filledCount=0;
+    const setVal=(id,val)=>{
+      const el=document.getElementById(id);
+      if(el&&val){el.value=val;filledCount++;}
+    };
+
+    // ── TITLE: Look for "X's Birthday" / "X turns Y" / largest top line ──
+    let title='';
+    const birthdayMatch=text.match(/(\w+)['\u2019]s\s+(?:(\d+)(?:st|nd|rd|th)?\s+)?birthday/i);
+    const turnsMatch=text.match(/(\w+)\s+turns\s+(\d+)/i);
+    if(birthdayMatch){
+      title=birthdayMatch[0].trim();
+      setVal('pd-host',birthdayMatch[1]);
+    }else if(turnsMatch){
+      title=turnsMatch[1]+"'s "+turnsMatch[2]+(turnsMatch[2].endsWith('1')?'st':turnsMatch[2].endsWith('2')?'nd':turnsMatch[2].endsWith('3')?'rd':'th')+' Birthday';
+      setVal('pd-host',turnsMatch[1]);
+    }else{
+      // Use first short line as title
+      title=lines.slice(0,3).find(l=>l.length>3&&l.length<60)||lines[0]||'';
     }
-    // Date
-    const dateMatch=text.match(/(\\d{1,2})[\\/\\-\\s]+(\\d{1,2}|Jan|Feb|Mar|Apr|May|Jun|Jul|Aug|Sep|Oct|Nov|Dec|January|February|March|April|May|June|July|August|September|October|November|December)[\\/\\-\\s]+(\\d{2,4})/i);
+    if(title)setVal('pd-title',title);
+
+    // ── DATE ──
+    const dateMatch=text.match(/(\d{1,2})(?:st|nd|rd|th)?[\s\/\-]+(\d{1,2}|Jan|Feb|Mar|Apr|May|Jun|Jul|Aug|Sep|Oct|Nov|Dec|January|February|March|April|May|June|July|August|September|October|November|December)[\s\/\-]+(\d{2,4})/i);
     if(dateMatch){
       const day=dateMatch[1].padStart(2,'0');
       let month=dateMatch[2];
@@ -3125,20 +3242,53 @@ window.runPlayDateOCR=async function(input){
       const mLower=month.toLowerCase().slice(0,3);
       if(monthMap[mLower])month=monthMap[mLower];
       else month=String(month).padStart(2,'0');
-      document.getElementById('pd-date').value=year+'-'+month+'-'+day;
+      setVal('pd-date',year+'-'+month+'-'+day);
     }
-    // Time
-    const timeMatch=text.match(/(\\d{1,2})[:\\.]?(\\d{0,2})\\s*(am|pm|AM|PM)\\s*[-–to]+\\s*(\\d{1,2})[:\\.]?(\\d{0,2})\\s*(am|pm|AM|PM)?/);
-    if(timeMatch)document.getElementById('pd-time').value=timeMatch[0];
-    // Phone (Australian format)
-    const phoneMatch=text.match(/(\\+?61|0)\\d[\\s\\-]?\\d{3,4}[\\s\\-]?\\d{3,4}/);
-    if(phoneMatch)document.getElementById('pd-host-phone').value=phoneMatch[0];
-    // Address - look for words after "at" or street keywords
-    const addrMatch=text.match(/(?:at|address:)\\s*([^\\n]{10,80})/i);
-    if(addrMatch)document.getElementById('pd-location').value=addrMatch[1].trim();
-    document.getElementById('pd-notes').value=text.substring(0,500);
+
+    // ── TIME (start–end or start only) ──
+    const timeRangeMatch=text.match(/(\d{1,2})(?:[:\.](\d{2}))?\s*(am|pm)?\s*(?:-|–|—|to|until|till)\s*(\d{1,2})(?:[:\.](\d{2}))?\s*(am|pm)?/i);
+    const timeOneMatch=text.match(/(\d{1,2})[:\.](\d{2})\s*(am|pm)/i);
+    if(timeRangeMatch){
+      setVal('pd-time',timeRangeMatch[0].replace(/\s+/g,' ').trim());
+    }else if(timeOneMatch){
+      setVal('pd-time',timeOneMatch[0].replace(/\s+/g,' ').trim());
+    }
+
+    // ── PHONE (Australian) ──
+    const phoneMatch=text.match(/(?:\+?61|0)\s?\d(?:[\s\-]?\d){7,9}/);
+    if(phoneMatch)setVal('pd-host-phone',phoneMatch[0].trim());
+
+    // ── HOST PARENT NAME (after "RSVP", "From", "Contact", "love") ──
+    const rsvpNameMatch=text.match(/(?:rsvp(?:\sto)?|from|contact|love(?:\sfrom)?)[\s,:]+([A-Z][a-z]+(?:\s+[A-Z][a-z]+)?)/i);
+    if(rsvpNameMatch&&!document.getElementById('pd-host-parent').value){
+      setVal('pd-host-parent',rsvpNameMatch[1].trim());
+    }
+
+    // ── ADDRESS (lines containing street suffixes or after "at"/"venue:"/"address:") ──
+    const addrPatternMatch=text.match(/(?:at|venue:?|address:?|location:?)\s+([^\n]{8,100})/i);
+    let address='';
+    if(addrPatternMatch){
+      address=addrPatternMatch[1].trim();
+    }else{
+      // Look for lines with street suffixes
+      const streetSuffix=/\b(street|st\.?|road|rd\.?|avenue|ave\.?|drive|dr\.?|lane|ln\.?|crescent|cres\.?|place|pl\.?|way|terrace|tce\.?|close|cl\.?|court|ct\.?|highway|hwy\.?|park|parade|pde\.?)\b/i;
+      const streetLine=lines.find(l=>streetSuffix.test(l)&&l.length<100);
+      if(streetLine)address=streetLine;
+    }
+    if(address)setVal('pd-location',address);
+
+    // ── NOTES (raw text for reference) ──
+    setVal('pd-notes',text.trim().substring(0,500));
+
+    if(status){
+      if(filledCount>0){
+        status.innerHTML='✅ Filled '+filledCount+' field'+(filledCount===1?'':'s')+'! Review & edit below.';
+      }else{
+        status.innerHTML='⚠️ Could not detect details. Please enter manually below.';
+      }
+    }
   }catch(ex){
-    if(status)status.innerHTML='❌ OCR failed — '+ex.message+' — please enter manually';
+    if(status)status.innerHTML='❌ OCR failed: '+ex.message+'. Please enter manually.';
   }
 };
 window.hSavePlayDate=async function(editId){
@@ -3150,7 +3300,7 @@ window.hSavePlayDate=async function(editId){
   const host=document.getElementById('pd-host')?.value?.trim();
   const hostParent=document.getElementById('pd-host-parent')?.value?.trim();
   const hostPhone=document.getElementById('pd-host-phone')?.value?.trim();
-  const hostEmail=document.getElementById('pd-host-email')?.value?.trim();
+  const hostEmail='';
   const location=document.getElementById('pd-location')?.value?.trim();
   const dropoff=document.getElementById('pd-dropoff')?.value;
   const pickup=document.getElementById('pd-pickup')?.value;
