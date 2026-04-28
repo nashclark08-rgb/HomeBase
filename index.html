@@ -1110,7 +1110,13 @@ function sToday(){
 
       <!-- REMINDERS for the day being viewed -->
       ${(()=>{
-        const dueReminders=(S.reminders||[]).filter(r=>r.date===viewDateStr);
+        const dueReminders=(S.reminders||[]).filter(r=>{
+          if(r.done)return r.date===viewDateStr; // completed ones still show on the date if you want to see them
+          // Ongoing mode: show every day from when created until the date (inclusive)
+          if(r.mode==='ongoing')return viewDateStr<=r.date;
+          // Default: only show on the date itself
+          return r.date===viewDateStr;
+        });
         if(dueReminders.length===0)return '';
         return `<div class="sh" style="margin-bottom:6px">⏰ Reminders</div>
         <div class="card" style="margin-bottom:14px">
@@ -1123,10 +1129,19 @@ function sToday(){
               return null;
             }).filter(Boolean).map(p=>({name:p.name,color:p.color||NAVY,photo:p.photoURL}));
             const tcol=targets[0]?.color||NAVY;
+            // Build "Due X" label for ongoing reminders so the user knows the deadline
+            let dueLabel='';
+            if(r.mode==='ongoing'&&r.date){
+              const dDate=new Date(r.date+'T12:00');
+              const isDueToday=r.date===viewDateStr;
+              const dStr=DAYSH[dDate.getDay()]+' '+dDate.getDate()+' '+MONTHS[dDate.getMonth()];
+              dueLabel=`<div style="font-size:11px;font-weight:700;color:${isDueToday?'#FF3B30':tcol};margin-top:3px">${isDueToday?'🔴 Due today · '+dStr:'📅 Due '+dStr}</div>`;
+            }
             return `<div class="row" style="border-bottom:${i<dueReminders.length-1?'1px solid var(--row-border)':'none'};${r.done?'opacity:0.55':''}">
               <div class="cb ${r.done?'on':''}" onclick="tReminder('${r.id}',${!r.done})" style="${r.done?'background:'+tcol+';border:none':'border-color:'+tcol}">${r.done?ck():''}</div>
               <div style="flex:1;min-width:0">
                 <div style="font-size:15px;color:var(--text);font-weight:500;${r.done?'text-decoration:line-through':''}">${r.text}</div>
+                ${dueLabel}
                 ${targets.length===0?`<div style="font-size:11px;color:var(--text-secondary);font-weight:600;margin-top:3px">👨‍👩‍👧‍👦 Family-wide</div>`:`<div style="display:flex;align-items:center;gap:4px;margin-top:3px;flex-wrap:wrap">${targets.slice(0,4).map(t=>av(t.name,t.color,18,t.photo)).join('')}<span style="font-size:11px;color:${tcol};font-weight:600;margin-left:2px">${targets.map(t=>t.name.split(' ')[0]).join(', ')}${targets.length>4?' +'+(targets.length-4):''}</span></div>`}
                 ${r.notes?`<div style="font-size:11px;color:var(--text-secondary);font-style:italic;margin-top:2px">${r.notes}</div>`:''}
               </div>
@@ -2891,26 +2906,41 @@ function sPersonProfile(){
       ${(()=>{
         const myKey=person.isAdult?'adult:'+person.id:'child:'+person.id;
         const personReminders=(S.reminders||[]).filter(r=>{
-          if(r.date!==viewDateStr)return false;
-          // New format: forKeys array
+          // First: is this reminder relevant to this person?
+          let relevant=false;
           if(Array.isArray(r.forKeys)&&r.forKeys.length){
-            return r.forKeys.includes(myKey);
+            relevant=r.forKeys.includes(myKey);
+          }else{
+            relevant=person.isAdult?r.adultUid===person.id:r.childId===person.id;
           }
-          // Legacy format: single childId/adultUid
-          if(person.isAdult)return r.adultUid===person.id;
-          return r.childId===person.id;
+          if(!relevant)return false;
+          // Then: is it active on the date being viewed?
+          if(r.done)return r.date===viewDateStr;
+          if(r.mode==='ongoing')return viewDateStr<=r.date;
+          return r.date===viewDateStr;
         });
         if(personReminders.length===0)return '';
         return `<div class="sh" style="padding:0 16px;margin-bottom:6px">⏰ ${dayLabel}'s Reminders</div>
         <div class="card" style="margin-bottom:14px">
-          ${personReminders.map((r,i)=>`<div class="row" style="border-bottom:${i<personReminders.length-1?'1px solid var(--row-border)':'none'};${r.done?'opacity:0.55':''}">
+          ${personReminders.map((r,i)=>{
+            // Build "Due X" label for ongoing reminders
+            let dueLabel='';
+            if(r.mode==='ongoing'&&r.date){
+              const dDate=new Date(r.date+'T12:00');
+              const isDueToday=r.date===viewDateStr;
+              const dStr=DAYSH[dDate.getDay()]+' '+dDate.getDate()+' '+MONTHS[dDate.getMonth()];
+              dueLabel=`<div style="font-size:11px;font-weight:700;color:${isDueToday?'#FF3B30':color};margin-top:3px">${isDueToday?'🔴 Due today · '+dStr:'📅 Due '+dStr}</div>`;
+            }
+            return `<div class="row" style="border-bottom:${i<personReminders.length-1?'1px solid var(--row-border)':'none'};${r.done?'opacity:0.55':''}">
             <div class="cb ${r.done?'on':''}" onclick="tReminder('${r.id}',${!r.done})" style="${r.done?'background:'+color+';border:none':'border-color:'+color}">${r.done?ck():''}</div>
             <div style="flex:1">
               <div style="font-size:15px;font-weight:500;color:var(--text);${r.done?'text-decoration:line-through':''}">${r.text}</div>
+              ${dueLabel}
               ${r.notes?`<div style="font-size:11px;color:var(--text-secondary);font-style:italic;margin-top:2px">${r.notes}</div>`:''}
             </div>
             <button onclick="dReminder('${r.id}')" style="color:#FF3B30;font-size:18px;opacity:0.5;border:none;background:none;cursor:pointer">×</button>
-          </div>`).join('')}
+          </div>`;
+          }).join('')}
           <button onclick="go('addReminder')" style="width:100%;padding:13px 16px;border-top:1px solid var(--row-border);background:none;border-left:none;border-right:none;border-bottom:none;color:${color};font-size:14px;font-weight:600;cursor:pointer;font-family:inherit;text-align:center">+ Add Reminder</button>
         </div>`;
       })()}
@@ -3452,6 +3482,7 @@ function sAddReminder(){
   const tom=new Date();tom.setDate(tom.getDate()+1);
   const def=fd(tom);
   if(!Array.isArray(S.rmFor))S.rmFor=[]; // array of "child:ID" or "adult:UID"
+  if(!S.rmMode)S.rmMode='ondate'; // 'ondate' (default) or 'ongoing'
   const all=[
     ...S.children.map(c=>({key:'child:'+c.id,label:c.name,color:c.color||NAVY,photo:c.photoURL,kind:'child'})),
     ...members().map(m=>({key:'adult:'+m.uid,label:m.name,color:m.color||NAVY,photo:m.photoURL,kind:'adult'}))
@@ -3469,6 +3500,26 @@ function sAddReminder(){
       <div>
         <div style="font-size:12px;font-weight:700;color:var(--text-secondary);margin-bottom:6px">REMIND ME</div>
         <input class="input" id="rmDate" type="date" value="${def}"/>
+      </div>
+
+      <div>
+        <div style="font-size:12px;font-weight:700;color:var(--text-secondary);margin-bottom:6px">REMINDER STYLE</div>
+        <div style="display:flex;flex-direction:column;gap:8px">
+          <button type="button" onclick="setRmMode('ondate')" id="rmMode-ondate" style="display:flex;align-items:flex-start;gap:10px;padding:12px 14px;border-radius:12px;border:2px solid ${S.rmMode==='ondate'?'var(--navy)':'var(--border)'};background:${S.rmMode==='ondate'?'var(--navy-soft)':'var(--card)'};cursor:pointer;font-family:inherit;text-align:left;width:100%">
+            <div style="width:20px;height:20px;border-radius:10px;border:2px solid ${S.rmMode==='ondate'?'var(--navy)':'#C7C7CC'};background:${S.rmMode==='ondate'?'var(--navy)':'transparent'};display:flex;align-items:center;justify-content:center;flex-shrink:0;margin-top:1px">${S.rmMode==='ondate'?'<div style="width:8px;height:8px;border-radius:4px;background:#fff"></div>':''}</div>
+            <div style="flex:1">
+              <div style="font-size:14px;font-weight:700;color:var(--text)">Remind me on the date</div>
+              <div style="font-size:12px;color:var(--text-secondary);margin-top:2px;line-height:1.4">Shows up on Today only on the chosen day. Best for "do this then" things — pack mouthguard for Tuesday's match.</div>
+            </div>
+          </button>
+          <button type="button" onclick="setRmMode('ongoing')" id="rmMode-ongoing" style="display:flex;align-items:flex-start;gap:10px;padding:12px 14px;border-radius:12px;border:2px solid ${S.rmMode==='ongoing'?'var(--navy)':'var(--border)'};background:${S.rmMode==='ongoing'?'var(--navy-soft)':'var(--card)'};cursor:pointer;font-family:inherit;text-align:left;width:100%">
+            <div style="width:20px;height:20px;border-radius:10px;border:2px solid ${S.rmMode==='ongoing'?'var(--navy)':'#C7C7CC'};background:${S.rmMode==='ongoing'?'var(--navy)':'transparent'};display:flex;align-items:center;justify-content:center;flex-shrink:0;margin-top:1px">${S.rmMode==='ongoing'?'<div style="width:8px;height:8px;border-radius:4px;background:#fff"></div>':''}</div>
+            <div style="flex:1">
+              <div style="font-size:14px;font-weight:700;color:var(--text)">Remind me every day until the date</div>
+              <div style="font-size:12px;color:var(--text-secondary);margin-top:2px;line-height:1.4">Shows on Today every day from now until you tick it off — or until midnight on the chosen day. Best for "get this done by" things — buy tissues by 4 May.</div>
+            </div>
+          </button>
+        </div>
       </div>
 
       <div>
@@ -3495,7 +3546,7 @@ function sAddReminder(){
       <div id="rmErr" class="err"></div>
       <button class="primary-btn" onclick="hAddReminder()">⏰ Save Reminder</button>
 
-      <div style="font-size:12px;color:var(--text-secondary);line-height:1.5;margin-top:6px;text-align:center">Reminders appear on Today until midnight of the chosen day, or when ticked off — whichever comes first.</div>
+      <div style="font-size:12px;color:var(--text-secondary);line-height:1.5;margin-top:6px;text-align:center">Reminders disappear once you tick the box, or after midnight on the chosen date — whichever comes first.</div>
     </div>
   </div>`;
 }
@@ -4973,15 +5024,21 @@ window.hAddReminder=async function(){
   const firstAdult=forKeys.find(k=>k.startsWith('adult:'));
   if(firstChild)childId=firstChild.replace('child:','');
   if(firstAdult)adultUid=firstAdult.replace('adult:','');
+  const mode=S.rmMode==='ongoing'?'ongoing':'ondate';
   try{
     await fadd(['reminders'],{
-      text,date,forKeys,childId,adultUid,notes,
+      text,date,mode,forKeys,childId,adultUid,notes,
       done:false,createdBy:S.user?.uid||''
     });
     S.rmFor=[]; // reset for next time
+    S.rmMode='ondate'; // reset to default
     back();
     notify('Reminder saved ⏰');
   }catch(ex){if(err)err.textContent='Error: '+ex.message;}
+};
+window.setRmMode=function(m){
+  S.rmMode=m;
+  render();
 };
 window.tReminder=async function(id,val){
   try{await fupd(['reminders',id],{done:val});}catch(ex){}
