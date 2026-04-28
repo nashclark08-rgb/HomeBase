@@ -1374,15 +1374,44 @@ function sAddEvent(){
   if(preChildId&&!ef.participantIds.includes(preChildId))ef.participantIds.push(preChildId);
   if(preAdultUid&&!ef.participantIds.includes(preAdultUid))ef.participantIds.push(preAdultUid);
   const preselectVal=preAdultUid?'adult:'+preAdultUid:preChildId;
+  // Parse saved time ("3:30pm" or "3:30pm – 4:30pm") into start/end h/m/p for the selects
+  const timeParts={sH:3,sM:'30',sP:'pm',eH:4,eM:'30',eP:'pm',hasEnd:false};
+  if(ef.time){
+    const halves=String(ef.time).toLowerCase().split(/\s*(?:to|-|–|—|until|till)\s*/);
+    const parseHalf=(str,defP)=>{
+      const m=String(str||'').match(/(\d{1,2})[:\.]?(\d{2})?\s*(am|pm)?/);
+      if(!m)return null;
+      let h=parseInt(m[1],10);
+      const min=m[2]?m[2]:'00';
+      const p=m[3]||defP||'pm';
+      // Normalise minutes to one of our select options
+      const mNum=parseInt(min,10);
+      const slots=[0,5,10,15,20,25,30,35,40,45,50,55];
+      const closest=slots.reduce((a,b)=>Math.abs(b-mNum)<Math.abs(a-mNum)?b:a,0);
+      const minStr=String(closest).padStart(2,'0');
+      // Convert 24h to 12h if no period given but hour > 12
+      if(!m[3]&&h>12){h-=12;}
+      if(h===0)h=12;
+      if(h>12)h-=12;
+      return {h,m:minStr,p};
+    };
+    const endP=halves[1]?(halves[1].match(/(am|pm)/)||[])[1]:null;
+    const start=parseHalf(halves[0],endP);
+    if(start){timeParts.sH=start.h;timeParts.sM=start.m;timeParts.sP=start.p;}
+    if(halves[1]){
+      const end=parseHalf(halves[1]);
+      if(end){timeParts.eH=end.h;timeParts.eM=end.m;timeParts.eP=end.p;timeParts.hasEnd=true;}
+    }
+  }
   return `<div style="min-height:100%;display:flex;flex-direction:column;background:#F2F2F7">
     <div style="background:#fff;padding:14px 16px;display:flex;align-items:center;border-bottom:1px solid #F2F2F7;position:sticky;top:0;z-index:10">
-      <button class="back-btn" onclick="back()">${bk()} Back</button>
-      <div style="flex:1;text-align:center;font-size:17px;font-weight:600">Add Event</div>
+      <button class="back-btn" onclick="S.ef={freq:'once',days:{Mon:false,Tue:false,Wed:false,Thu:false,Fri:false,Sat:false,Sun:false},packItems:[],emoji:'📅',category:'',participantIds:[]};back()">${bk()} Back</button>
+      <div style="flex:1;text-align:center;font-size:17px;font-weight:600">${ef._editId?'Edit Event':'Add Event'}</div>
       <div style="width:60px"></div>
     </div>
     <div class="scroll-view" style="padding:16px;max-width:560px;margin:auto;width:100%">
       <div style="display:flex;flex-direction:column;gap:14px">
-        <input class="input" id="et" type="text" placeholder="Event title (e.g. Soccer Training)"/>
+        <input class="input" id="et" type="text" placeholder="Event title (e.g. Soccer Training)" value="${(ef.title||'').replace(/"/g,'&quot;')}"/>
         
         <div>
           <div style="font-size:14px;font-weight:600;margin-bottom:8px">Icon</div>
@@ -1423,11 +1452,11 @@ function sAddEvent(){
         </div>
 
         <div id="date-once" style="display:${ef.freq==='once'?'block':'none'}">
-          <input class="input" id="edate" type="date" value="${todayStr}"/>
+          <input class="input" id="edate" type="date" value="${ef.date||todayStr}"/>
         </div>
         <div id="date-recurring" style="display:${ef.freq!=='once'?'flex':'none'};flex-direction:column;gap:10px">
-          <div><input class="input" id="estartdate" type="date" value="${todayStr}"/><div style="font-size:12px;color:#8E8E93;margin-top:4px;padding-left:4px">Start date</div></div>
-          <div><input class="input" id="eenddate" type="date"/><div style="font-size:12px;color:#8E8E93;margin-top:4px;padding-left:4px">End date (optional)</div></div>
+          <div><input class="input" id="estartdate" type="date" value="${ef.startDate||todayStr}"/><div style="font-size:12px;color:#8E8E93;margin-top:4px;padding-left:4px">Start date</div></div>
+          <div><input class="input" id="eenddate" type="date" value="${ef.endDate||''}"/><div style="font-size:12px;color:#8E8E93;margin-top:4px;padding-left:4px">End date (optional)</div></div>
         </div>
 
         <!-- Structured time picker -->
@@ -1435,36 +1464,36 @@ function sAddEvent(){
           <div style="font-size:14px;font-weight:600;margin-bottom:8px">⏰ Time</div>
           <div style="display:flex;gap:6px;align-items:center">
             <select class="input" id="etime-h-start" style="flex:1">
-              ${Array.from({length:12},(_,i)=>{const h=i+1;return `<option value="${h}" ${h===3?'selected':''}>${h}</option>`;}).join('')}
+              ${Array.from({length:12},(_,i)=>{const h=i+1;return `<option value="${h}" ${h===timeParts.sH?'selected':''}>${h}</option>`;}).join('')}
             </select>
             <span style="color:var(--text-secondary);font-weight:600">:</span>
             <select class="input" id="etime-m-start" style="flex:1">
-              ${['00','05','10','15','20','25','30','35','40','45','50','55'].map(m=>`<option value="${m}" ${m==='30'?'selected':''}>${m}</option>`).join('')}
+              ${['00','05','10','15','20','25','30','35','40','45','50','55'].map(m=>`<option value="${m}" ${m===timeParts.sM?'selected':''}>${m}</option>`).join('')}
             </select>
             <select class="input" id="etime-p-start" style="flex:0.8">
-              <option value="am">AM</option><option value="pm" selected>PM</option>
+              <option value="am" ${timeParts.sP==='am'?'selected':''}>AM</option><option value="pm" ${timeParts.sP==='pm'?'selected':''}>PM</option>
             </select>
           </div>
           <div style="display:flex;align-items:center;gap:10px;margin-top:8px">
-            <div class="cb" id="etime-end-cb" onclick="toggleEndTime()" style="border-color:#C7C7CC"></div>
+            <div class="cb ${timeParts.hasEnd?'on':''}" id="etime-end-cb" onclick="toggleEndTime()" style="${timeParts.hasEnd?'background:var(--navy);border:none':'border-color:#C7C7CC'}">${timeParts.hasEnd?ck():''}</div>
             <span style="font-size:14px;color:var(--text-secondary)">Set end time</span>
           </div>
-          <div id="etime-end-row" style="display:none;gap:6px;align-items:center;margin-top:8px">
+          <div id="etime-end-row" style="display:${timeParts.hasEnd?'flex':'none'};gap:6px;align-items:center;margin-top:8px">
             <span style="font-size:13px;color:var(--text-secondary);width:32px">to</span>
             <select class="input" id="etime-h-end" style="flex:1">
-              ${Array.from({length:12},(_,i)=>{const h=i+1;return `<option value="${h}" ${h===4?'selected':''}>${h}</option>`;}).join('')}
+              ${Array.from({length:12},(_,i)=>{const h=i+1;return `<option value="${h}" ${h===timeParts.eH?'selected':''}>${h}</option>`;}).join('')}
             </select>
             <span style="color:var(--text-secondary);font-weight:600">:</span>
             <select class="input" id="etime-m-end" style="flex:1">
-              ${['00','05','10','15','20','25','30','35','40','45','50','55'].map(m=>`<option value="${m}" ${m==='30'?'selected':''}>${m}</option>`).join('')}
+              ${['00','05','10','15','20','25','30','35','40','45','50','55'].map(m=>`<option value="${m}" ${m===timeParts.eM?'selected':''}>${m}</option>`).join('')}
             </select>
             <select class="input" id="etime-p-end" style="flex:0.8">
-              <option value="am">AM</option><option value="pm" selected>PM</option>
+              <option value="am" ${timeParts.eP==='am'?'selected':''}>AM</option><option value="pm" ${timeParts.eP==='pm'?'selected':''}>PM</option>
             </select>
           </div>
         </div>
 
-        <input class="input" id="eloc" type="text" placeholder="Location (optional)"/>
+        <input class="input" id="eloc" type="text" placeholder="Location (optional)" value="${(ef.location||'').replace(/"/g,'&quot;')}"/>
 
         <!-- Category tags -->
         <div>
@@ -1485,8 +1514,8 @@ function sAddEvent(){
         <div>
           <div style="font-size:14px;font-weight:600;margin-bottom:8px">🚗 Drop-off caregiver</div>
           <select class="input" id="edrop" >
-            <option value="">None / Not required</option>
-            ${mems.map(m=>`<option value="${m.name}">${m.name} (${m.role})</option>`).join('')}
+            <option value="" ${!ef.dropoff?'selected':''}>None / Not required</option>
+            ${mems.map(m=>`<option value="${m.name}" ${ef.dropoff===m.name?'selected':''}>${m.name} (${m.role})</option>`).join('')}
             <option value="__other">Other (type name)</option>
           </select>
         </div>
@@ -1494,8 +1523,8 @@ function sAddEvent(){
         <div>
           <div style="font-size:14px;font-weight:600;margin-bottom:8px">🏠 Pick-up caregiver</div>
           <select class="input" id="epick" >
-            <option value="">None / Not required</option>
-            ${mems.map(m=>`<option value="${m.name}">${m.name} (${m.role})</option>`).join('')}
+            <option value="" ${!ef.pickup?'selected':''}>None / Not required</option>
+            ${mems.map(m=>`<option value="${m.name}" ${ef.pickup===m.name?'selected':''}>${m.name} (${m.role})</option>`).join('')}
             <option value="__other">Other (type name)</option>
           </select>
         </div>
@@ -1511,9 +1540,9 @@ function sAddEvent(){
           </div>
         </div>
 
-        <input class="input" id="enotes" type="text" placeholder="Notes (optional)"/>
+        <input class="input" id="enotes" type="text" placeholder="Notes (optional)" value="${(ef.notes||'').replace(/"/g,'&quot;')}"/>
         <div id="everr" class="err"></div>
-        <button class="primary-btn" onclick="hSaveEvent()" style="margin-bottom:24px">Save Event</button>
+        <button class="primary-btn" onclick="hSaveEvent()" style="margin-bottom:24px">${ef._editId?'Save Changes':'Save Event'}</button>
       </div>
     </div>
   </div>`;
@@ -1964,7 +1993,8 @@ function renderEventRow(ev,isLast,isPast){
       ${ev.dropoff||ev.pickup?`<div style="font-size:11px;color:${col};font-weight:500">${ev.dropoff?'🚗 '+ev.dropoff:''}${ev.dropoff&&ev.pickup?' · ':''}${ev.pickup?'🏠 '+ev.pickup:''}</div>`:''}
       ${avatars?`<div style="display:flex;align-items:center;gap:4px;margin-top:3px">${avatars}<span style="font-size:11px;color:var(--text-secondary);margin-left:2px">${names}</span></div>`:''}
     </div>
-    <button onclick="replicateEvent('${ev.id}')" title="Replicate" style="color:var(--navy);font-size:13px;font-weight:700;border:1px solid var(--navy);background:transparent;border-radius:8px;padding:4px 8px;cursor:pointer;font-family:inherit;margin-right:6px">⎘</button>
+    <button onclick="editEvent('${ev.id}')" title="Edit" style="color:var(--navy);font-size:14px;border:1px solid var(--navy);background:transparent;border-radius:8px;padding:4px 8px;cursor:pointer;font-family:inherit;margin-right:6px" aria-label="Edit"><svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.4" stroke-linecap="round" stroke-linejoin="round"><path d="M11 4H4a2 2 0 0 0-2 2v14a2 2 0 0 0 2 2h14a2 2 0 0 0 2-2v-7"/><path d="M18.5 2.5a2.121 2.121 0 0 1 3 3L12 15l-4 1 1-4 9.5-9.5z"/></svg></button>
+    <button onclick="replicateEvent('${ev.id}')" title="Duplicate" style="color:var(--navy);font-size:13px;font-weight:700;border:1px solid var(--navy);background:transparent;border-radius:8px;padding:4px 8px;cursor:pointer;font-family:inherit;margin-right:6px">⎘</button>
     <button onclick="dEvent('${ev.id}')" style="color:#FF3B30;font-size:20px;opacity:0.5;border:none;background:none;cursor:pointer">×</button>
   </div>`;
 }
@@ -4092,7 +4122,7 @@ window.hSaveEvent=async()=>{
       if(c)childId=participantIds[0];
       else if(a)adultUid=participantIds[0];
     }
-    await fadd(['events'],{
+    const eventData={
       title,emoji:ef.emoji||'📅',
       participantIds,
       childId,adultUid,
@@ -4107,16 +4137,24 @@ window.hSaveEvent=async()=>{
       dropoff,pickup,
       packItems:[...ef.packItems],
       notes:$('enotes')?.value?.trim()||''
-    });
-    // Add packing items to all child participants
-    const childParticipants=participantIds.filter(pid=>S.children.find(c=>c.id===pid));
-    for(const cid of childParticipants){
-      if(ef.packItems.length){
-        for(const item of ef.packItems){try{await fadd(['children',cid,'packing'],{label:item,checked:false,pinned:false,section:'afterschool'});}catch(e){}}
+    };
+    const isEdit=!!ef._editId;
+    if(isEdit){
+      // Update existing event
+      await fupd(['events',ef._editId],eventData);
+    }else{
+      // Create new event
+      await fadd(['events'],eventData);
+      // Add packing items to all child participants (only on create — edits don't duplicate pack items)
+      const childParticipants=participantIds.filter(pid=>S.children.find(c=>c.id===pid));
+      for(const cid of childParticipants){
+        if(ef.packItems.length){
+          for(const item of ef.packItems){try{await fadd(['children',cid,'packing'],{label:item,checked:false,pinned:false,section:'afterschool'});}catch(e){}}
+        }
       }
     }
     S.ef={freq:'once',days:{Mon:false,Tue:false,Wed:false,Thu:false,Fri:false,Sat:false,Sun:false},packItems:[],emoji:'📅',category:'',participantIds:[]};
-    back();notify('Event saved! 📅');
+    back();notify(isEdit?'Event updated! ✏️':'Event saved! 📅');
   }catch(ex){if(err)err.textContent=ex.message;}
 };
 window.quickAddEvent=async function(){
@@ -4295,6 +4333,30 @@ window.addFreq=async id=>{try{await fupd(['groceries',id],{addedToList:true});no
 window.unmarkFreq=async id=>{
   if(!confirm('Remove this from frequent items? It will no longer appear in your quick-add bank.'))return;
   try{await fupd(['groceries',id],{isFrequent:false});notify('Removed from frequents');}catch(ex){}
+};
+window.editEvent=function(eventId){
+  const ev=S.events.find(e=>e.id===eventId);
+  if(!ev){notify('Event not found','❌');return;}
+  // Load the event's data into the form state, EXACTLY (no "(copy)" suffix)
+  S.ef={
+    title:ev.title||'',
+    emoji:ev.emoji||'📅',
+    freq:ev.freq||'once',
+    days:Object.assign({Mon:false,Tue:false,Wed:false,Thu:false,Fri:false,Sat:false,Sun:false},ev.days||{}),
+    packItems:Array.isArray(ev.packItems)?[...ev.packItems]:[],
+    category:ev.category||'',
+    participantIds:Array.isArray(ev.participantIds)?[...ev.participantIds]:[ev.childId,ev.adultUid].filter(Boolean),
+    location:ev.location||'',
+    time:ev.time||'',
+    dropoff:ev.dropoff||'',
+    pickup:ev.pickup||'',
+    date:ev.date||'',
+    startDate:ev.startDate||'',
+    endDate:ev.endDate||'',
+    notes:ev.notes||'',
+    _editId:eventId  // marker so hSaveEvent knows to UPDATE not CREATE
+  };
+  go('addEvent');
 };
 window.replicateEvent=function(eventId){
   const ev=S.events.find(e=>e.id===eventId);
