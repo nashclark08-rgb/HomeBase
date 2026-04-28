@@ -156,6 +156,7 @@ import{initializeApp}from'https://www.gstatic.com/firebasejs/10.7.1/firebase-app
 import{getAuth,createUserWithEmailAndPassword,signInWithEmailAndPassword,signOut,onAuthStateChanged,updateProfile,GoogleAuthProvider,signInWithPopup,sendPasswordResetEmail}from'https://www.gstatic.com/firebasejs/10.7.1/firebase-auth.js';
 import{getFirestore,doc,setDoc,getDoc,collection,addDoc,onSnapshot,updateDoc,deleteDoc,query,where,getDocs}from'https://www.gstatic.com/firebasejs/10.7.1/firebase-firestore.js';
 import{getStorage,ref as sref,uploadString,getDownloadURL}from'https://www.gstatic.com/firebasejs/10.7.1/firebase-storage.js';
+import{getMessaging,getToken,onMessage,isSupported as isMessagingSupported}from'https://www.gstatic.com/firebasejs/10.7.1/firebase-messaging.js';
 
 // Lazy load Tesseract for OCR
 let _tesseractLoaded=false;
@@ -175,6 +176,37 @@ const auth=getAuth(fbapp);
 const db=getFirestore(fbapp);
 const storage=getStorage(fbapp);
 const gp=new GoogleAuthProvider();
+
+// ── PUSH NOTIFICATIONS (Firebase Cloud Messaging) ──
+// VAPID public key from Firebase Console → Cloud Messaging → Web Push certificates
+const VAPID_KEY='BAYL7B3EITOi6jUQkUv-A84qyrBQWJ0uQC8v00Kw9t9GOrOKcLlvRWJqTSGGiOwmL-q1HshgAwhRWCFEo9aLjTc';
+let messaging=null;
+// Detect platform — iOS PWA push has special requirements
+const isIOS=/iPad|iPhone|iPod/.test(navigator.userAgent);
+const isStandalonePWA=window.matchMedia('(display-mode: standalone)').matches||window.navigator.standalone===true;
+async function initMessaging(){
+  try{
+    const supported=await isMessagingSupported();
+    if(!supported){console.log('[HomeBase] FCM not supported on this browser');return false;}
+    messaging=getMessaging(fbapp);
+    // Foreground messages (app is open) — show as in-app toast via existing notify()
+    onMessage(messaging,(payload)=>{
+      const title=payload.notification?.title||payload.data?.title||'HomeBase';
+      const body=payload.notification?.body||payload.data?.body||'';
+      try{notify(title+(body?': '+body:''));}catch(e){}
+    });
+    return true;
+  }catch(ex){console.error('[HomeBase] FCM init failed',ex);return false;}
+}
+// Listen for "open this URL" messages from the service worker (when user taps a notification)
+if('serviceWorker' in navigator){
+  navigator.serviceWorker.addEventListener('message',(event)=>{
+    if(event.data?.type==='NOTIFICATION_CLICK'&&event.data?.url){
+      // Could route to a specific screen here based on URL
+      console.log('[HomeBase] Notification tapped:',event.data.url);
+    }
+  });
+}
 
 const NAVY='#1C3A6B';
 const COLORS=['#007AFF','#34C759','#FF9500','#FF6B9D','#AF52DE','#FF3B30','#5856D6','#00C7BE'];
@@ -2786,9 +2818,12 @@ function sSettings(){
   +'<div class="sh" style="margin-bottom:6px">🔔 Notifications</div>'
   +'<div class="card" style="margin-bottom:12px">'
   +'<div style="padding:14px 16px;border-bottom:1px solid #F2F2F7">'
-  +'<div style="font-size:14px;color:#1C1C1E;margin-bottom:8px">Browser push notifications</div>'
-  +'<div style="font-size:12px;color:#8E8E93;line-height:1.5;margin-bottom:10px">⚠️ <strong>Currently: notifications only fire while HomeBase is open in your browser.</strong> Always-on push notifications need Firebase Cloud setup (coming soon). For now, save HomeBase to your iPhone home screen (Share → Add to Home Screen) for the best experience.</div>'
-  +'<button onclick="requestNotifPerm()" style="width:100%;padding:11px;border-radius:10px;background:#1C3A6B;border:none;color:#fff;font-size:14px;font-weight:600;cursor:pointer;font-family:inherit">'+(typeof Notification!=='undefined'&&Notification.permission==='granted'?'✅ Notifications enabled':'Enable Notifications')+'</button>'
+  +'<div style="font-size:14px;color:#1C1C1E;margin-bottom:8px;font-weight:600">Push notifications</div>'
+  +(isIOS&&!isStandalonePWA
+    ?'<div style="font-size:12px;color:#FF9500;line-height:1.5;margin-bottom:10px;background:#FFF3E0;padding:10px;border-radius:8px"><strong>📲 iPhone setup required:</strong><br>1. Tap the <strong>Share</strong> button (square with arrow up) in Safari<br>2. Tap <strong>"Add to Home Screen"</strong><br>3. Open HomeBase from the home screen icon<br>4. Come back here and tap "Enable Notifications"</div>'
+    :'<div style="font-size:12px;color:#8E8E93;line-height:1.5;margin-bottom:10px">Get reminders for events, packing, and daily plans — even when HomeBase is closed.</div>'
+  )
+  +'<button onclick="requestNotifPerm()" style="width:100%;padding:11px;border-radius:10px;background:'+(isIOS&&!isStandalonePWA?'#8E8E93':'#1C3A6B')+';border:none;color:#fff;font-size:14px;font-weight:600;cursor:pointer;font-family:inherit">'+(typeof Notification!=='undefined'&&Notification.permission==='granted'?'✅ Notifications enabled':'Enable Notifications')+'</button>'
   +'</div>'
   +'<div class="row">'
   +'<span style="font-size:20px">📱</span>'
@@ -4762,13 +4797,58 @@ window.useDeviceLocation=()=>{
 };
 window.requestNotifPerm=async function(){
   if(typeof Notification==='undefined'){notify('Notifications not supported on this browser');return;}
-  if(Notification.permission==='granted'){notify('Already enabled! ✅');return;}
-  const perm=await Notification.requestPermission();
-  if(perm==='granted'){
-    new Notification('HomeBase notifications enabled!',{body:'You\'ll get reminders for events and packing.',icon:'data:image/png;base64,iVBORw0KGgo='});
+
+  // ── iOS PWA gate ───────────────────────────────────────────
+  // iOS only allows push for installed PWAs (added to home screen) on iOS 16.4+
+  if(isIOS&&!isStandalonePWA){
+    notify('On iPhone: tap Share → Add to Home Screen, then enable from there 📲','ℹ️');
+    return;
+  }
+
+  // ── Permission request ─────────────────────────────────────
+  let perm=Notification.permission;
+  if(perm!=='granted'&&perm!=='denied'){
+    perm=await Notification.requestPermission();
+  }
+  if(perm!=='granted'){notify('Permission denied. Enable in browser settings.','⚠️');return;}
+
+  // ── Service worker + FCM token ─────────────────────────────
+  try{
+    if(!('serviceWorker' in navigator)){throw new Error('Service workers not supported');}
+    const swReg=await navigator.serviceWorker.register('/firebase-messaging-sw.js');
+    // Wait until SW is active before requesting FCM token
+    if(swReg.installing||swReg.waiting){
+      await new Promise(res=>{
+        const sw=swReg.installing||swReg.waiting;
+        sw?.addEventListener('statechange',()=>{if(sw.state==='activated')res();});
+        // Fallback timeout in case statechange never fires
+        setTimeout(res,3000);
+      });
+    }
+    if(!messaging){await initMessaging();}
+    if(!messaging){throw new Error('Messaging not supported on this browser');}
+    const token=await getToken(messaging,{vapidKey:VAPID_KEY,serviceWorkerRegistration:swReg});
+    if(!token){throw new Error('No FCM token returned');}
+    // Save the token under the user's profile so Cloud Functions know where to push
+    if(S.user?.uid){
+      await setDoc(doc(db,'users',S.user.uid,'fcmTokens',token),{
+        token,
+        platform:isIOS?'ios':(/Android/.test(navigator.userAgent)?'android':'web'),
+        standalone:isStandalonePWA,
+        userAgent:navigator.userAgent.slice(0,200),
+        familyId:S.familyId||'',
+        updatedAt:new Date()
+      });
+    }
     notify('Notifications enabled! 🔔');
+    new Notification('HomeBase notifications enabled!',{body:"You'll get reminders for events, packing, and more.",tag:'enable-confirmation'});
     render();
-  }else{notify('Permission denied. Enable in browser settings.','⚠️');}
+  }catch(ex){
+    console.error('[HomeBase] FCM enable failed',ex);
+    // Fall back to local-only notifications (the original behaviour)
+    notify('Basic notifications on. Push (when app closed) needs more setup.','⚠️');
+    render();
+  }
 };
 
 // Schedule daily check for notification time
