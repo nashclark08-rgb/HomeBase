@@ -157,7 +157,7 @@ const DAYNAMES=['Sunday','Monday','Tuesday','Wednesday','Thursday','Friday','Sat
 const DAYSH=['Sun','Mon','Tue','Wed','Thu','Fri','Sat'];
 const MONTHS=['Jan','Feb','Mar','Apr','May','Jun','Jul','Aug','Sep','Oct','Nov','Dec'];
 const EMOJIS=['📅','⚽','🏊','🎹','🎸','🎭','📚','🏃','🎨','🏋️','🚴','🎯','🏀','🎾','⚾','🧘','🎪','🏈','🎬','🎓','🏫','🎡'];
-const CAT_LABELS={school:'🏫 School',sport:'⚽ Sport',music:'🎵 Music',work:'💼 Work',social:'🎉 Social',medical:'🏥 Medical',other:'📌 Other','':'⭐ Uncategorised'};
+const CAT_LABELS={'school-event':'🏫 School Event','school-subject':'📚 School Subject',sport:'⚽ Sport',music:'🎵 Music',work:'💼 Work',social:'🎉 Social',medical:'🏥 Medical',other:'📌 Other','':'⭐ Uncategorised',school:'🏫 School Event'};
 const today=new Date();
 const todayStr=fd(today);
 const tomorrow=new Date(today);tomorrow.setDate(today.getDate()+1);
@@ -1090,13 +1090,19 @@ function sToday(){
         return `<div class="sh" style="margin-bottom:6px">⏰ Reminders</div>
         <div class="card" style="margin-bottom:14px">
           ${dueReminders.map((r,i)=>{
-            const target=r.childId?S.children.find(c=>c.id===r.childId):r.adultUid?members().find(m=>m.uid===r.adultUid):null;
-            const tcol=target?.color||NAVY;
+            // Resolve who this reminder is for (forKeys array OR legacy fields)
+            const keys=Array.isArray(r.forKeys)&&r.forKeys.length?r.forKeys:(r.childId?['child:'+r.childId]:r.adultUid?['adult:'+r.adultUid]:[]);
+            const targets=keys.map(k=>{
+              if(k.startsWith('child:'))return S.children.find(c=>c.id===k.slice(6));
+              if(k.startsWith('adult:'))return members().find(m=>m.uid===k.slice(6));
+              return null;
+            }).filter(Boolean).map(p=>({name:p.name,color:p.color||NAVY,photo:p.photoURL}));
+            const tcol=targets[0]?.color||NAVY;
             return `<div class="row" style="border-bottom:${i<dueReminders.length-1?'1px solid var(--row-border)':'none'};${r.done?'opacity:0.55':''}">
               <div class="cb ${r.done?'on':''}" onclick="tReminder('${r.id}',${!r.done})" style="${r.done?'background:'+tcol+';border:none':'border-color:'+tcol}">${r.done?ck():''}</div>
-              <div style="flex:1">
+              <div style="flex:1;min-width:0">
                 <div style="font-size:15px;color:var(--text);font-weight:500;${r.done?'text-decoration:line-through':''}">${r.text}</div>
-                ${target?`<div style="font-size:11px;color:${tcol};font-weight:600;margin-top:2px">For ${target.name}</div>`:''}
+                ${targets.length===0?`<div style="font-size:11px;color:var(--text-secondary);font-weight:600;margin-top:3px">👨‍👩‍👧‍👦 Family-wide</div>`:`<div style="display:flex;align-items:center;gap:4px;margin-top:3px;flex-wrap:wrap">${targets.slice(0,4).map(t=>av(t.name,t.color,18,t.photo)).join('')}<span style="font-size:11px;color:${tcol};font-weight:600;margin-left:2px">${targets.map(t=>t.name.split(' ')[0]).join(', ')}${targets.length>4?' +'+(targets.length-4):''}</span></div>`}
                 ${r.notes?`<div style="font-size:11px;color:var(--text-secondary);font-style:italic;margin-top:2px">${r.notes}</div>`:''}
               </div>
               <button onclick="dReminder('${r.id}')" style="color:#FF3B30;font-size:18px;opacity:0.5;border:none;background:none;cursor:pointer">×</button>
@@ -1423,9 +1429,9 @@ function sAddEvent(){
         <!-- Category tags -->
         <div>
           <div style="font-size:14px;font-weight:600;margin-bottom:8px">🏷 Category (optional)</div>
+          ${(S.ef.category==='school-event'||S.ef.category==='school-subject'||S.ef.category==='school')?`<div style="background:var(--navy-soft);border:1px solid var(--navy);border-radius:10px;padding:10px 14px;margin-bottom:10px;display:flex;align-items:center;justify-content:space-between"><span style="font-size:13px;font-weight:600;color:var(--navy)">Filed under: ${CAT_LABELS[S.ef.category]||S.ef.category}</span><button type="button" onclick="S.ef.category='';render()" style="background:none;border:none;color:var(--navy);font-size:12px;font-weight:600;cursor:pointer;font-family:inherit;text-decoration:underline">Change</button></div>`:''}
           <div style="display:flex;gap:8px;flex-wrap:wrap">
             ${[
-              {id:'school',label:'🏫 School Event'},
               {id:'sport',label:'⚽ Sport'},
               {id:'music',label:'🎵 Music'},
               {id:'work',label:'💼 Work'},
@@ -1736,13 +1742,20 @@ function sCalendar(){
 function sEvents(){
   const sub=S.evTab;
   // Auto-switch off invalid tabs (gifts/assessments removed - now in profiles)
-  if(sub==='gifts'||sub==='assessments')S.evTab='events';
-  const tabBar=`<div style="background:var(--card);padding:0 16px;border-bottom:1px solid var(--row-border);display:flex;position:sticky;top:57px;z-index:9;overflow-x:auto">
-    <button class="sub-tab ${S.evTab==='events'?'on':'off'}" onclick="S.evTab='events';render()">Events</button>
-    <button class="sub-tab ${S.evTab==='playdates'?'on':'off'}" onclick="S.evTab='playdates';render()">🎉 Play Dates</button>
+  if(sub==='gifts'||sub==='assessments'||sub==='playdates')S.evTab='events';
+  const tabBar=`<div style="background:var(--card);padding:0 12px;border-bottom:1px solid var(--row-border);display:flex;gap:0;position:sticky;top:57px;z-index:9;overflow-x:auto;scrollbar-width:none">
+    <button class="sub-tab ${S.evTab==='events'?'on':'off'}" onclick="S.evTab='events';render()">All</button>
+    <button class="sub-tab ${S.evTab==='playdate'?'on':'off'}" onclick="S.evTab='playdate';render()">🎈 Play Date</button>
+    <button class="sub-tab ${S.evTab==='sleepover'?'on':'off'}" onclick="S.evTab='sleepover';render()">🛏 Sleep Over</button>
+    <button class="sub-tab ${S.evTab==='birthday'?'on':'off'}" onclick="S.evTab='birthday';render()">🎂 Birthday</button>
+    <button class="sub-tab ${S.evTab==='work'?'on':'off'}" onclick="S.evTab='work';render()">💼 Work</button>
+    <button class="sub-tab ${S.evTab==='school'?'on':'off'}" onclick="S.evTab='school';render()">🏫 School</button>
     <button class="sub-tab ${S.evTab==='past'?'on':'off'}" onclick="S.evTab='past';render()">📜 Past</button>
   </div>`;
-  if(S.evTab==='playdates')return sPlayDates(tabBar);
+  // Route to type-specific views
+  if(['playdate','sleepover','birthday'].includes(S.evTab))return sPlayDateType(tabBar,S.evTab);
+  if(S.evTab==='work')return sCategoryEvents(tabBar,'work','💼 Work');
+  if(S.evTab==='school')return sSchoolEvents(tabBar);
 
   // ── PAST EVENTS (one-off events whose date has passed) ──
   if(S.evTab==='past'){
@@ -1851,7 +1864,8 @@ function sEvents(){
     </select>
     <select onchange="S.evFilterCategory=this.value;render()" style="flex:1;min-width:0;padding:6px 8px;border-radius:8px;border:1px solid ${S.evFilterCategory!=='all'?'var(--navy)':'var(--border)'};background:${S.evFilterCategory!=='all'?'var(--navy-soft)':'var(--bg)'};color:var(--text);font-size:12px;font-family:inherit;cursor:pointer">
       <option value="all" ${S.evFilterCategory==='all'?'selected':''}>Cat: All</option>
-      <option value="school" ${S.evFilterCategory==='school'?'selected':''}>🏫 School</option>
+      <option value="school-event" ${S.evFilterCategory==='school-event'?'selected':''}>🏫 School Event</option>
+      <option value="school-subject" ${S.evFilterCategory==='school-subject'?'selected':''}>📚 School Subject</option>
       <option value="sport" ${S.evFilterCategory==='sport'?'selected':''}>⚽ Sport</option>
       <option value="music" ${S.evFilterCategory==='music'?'selected':''}>🎵 Music</option>
       <option value="work" ${S.evFilterCategory==='work'?'selected':''}>💼 Work</option>
@@ -1910,6 +1924,105 @@ function renderEventRow(ev,isLast,isPast){
     <button onclick="dEvent('${ev.id}')" style="color:#FF3B30;font-size:20px;opacity:0.5;border:none;background:none;cursor:pointer">×</button>
   </div>`;
 }
+
+// Generic category-filtered events view (used for Work)
+function sCategoryEvents(tabBar,catKey,headerLabel){
+  const todayStr=fd(new Date());
+  const evs=S.events.filter(ev=>(ev.category||'')===catKey&&!((!ev.freq||ev.freq==='once')&&ev.date&&ev.date<todayStr))
+    .sort((a,b)=>(a.title||'').localeCompare(b.title||''));
+  return `
+    <div style="background:var(--card);padding:14px 16px 0;border-bottom:1px solid var(--row-border);position:sticky;top:0;z-index:10">
+      <div style="font-size:26px;font-weight:800;color:var(--text)">Events</div>
+    </div>
+    ${tabBar}
+    <div class="scroll-view" style="padding:14px 0 80px">
+      <div class="sh" style="margin-bottom:6px">${headerLabel} (${evs.length})</div>
+      ${evs.length===0?`<div class="card" style="padding:30px 20px;text-align:center;color:var(--text-secondary)"><div style="font-size:42px;margin-bottom:10px">${headerLabel.split(' ')[0]}</div><div style="font-size:14px">No ${headerLabel.toLowerCase()} events yet.</div><div style="font-size:12px;margin-top:6px">Tap + to add one — it'll be tagged ${headerLabel.toLowerCase()}.</div></div>`:
+      `<div class="card">${evs.map((ev,i)=>renderEventRow(ev,i===evs.length-1,false)).join('')}</div>`}
+    </div>
+    <div class="fab"><button class="fab-btn" style="background:#1C3A6B" onclick="quickAddTypedEvent('${catKey}')">+</button></div>`;
+}
+
+// School view: toggle Events / Subjects
+function sSchoolEvents(tabBar){
+  if(!S.schoolView)S.schoolView='events'; // 'events' or 'subjects'
+  const todayStr=fd(new Date());
+  const cat=S.schoolView==='events'?'school-event':'school-subject';
+  // include legacy 'school' as 'school-event' bucket
+  const evs=S.events.filter(ev=>{
+    const c=ev.category||'';
+    if(S.schoolView==='events')return (c==='school-event'||c==='school')&&!((!ev.freq||ev.freq==='once')&&ev.date&&ev.date<todayStr);
+    return c==='school-subject'&&!((!ev.freq||ev.freq==='once')&&ev.date&&ev.date<todayStr);
+  }).sort((a,b)=>(a.title||'').localeCompare(b.title||''));
+  return `
+    <div style="background:var(--card);padding:14px 16px 0;border-bottom:1px solid var(--row-border);position:sticky;top:0;z-index:10">
+      <div style="font-size:26px;font-weight:800;color:var(--text)">Events</div>
+    </div>
+    ${tabBar}
+    <!-- Sub-toggle: Events / Subjects -->
+    <div style="background:var(--card);padding:10px 16px;border-bottom:1px solid var(--row-border);display:flex;gap:6px">
+      <button onclick="S.schoolView='events';render()" style="flex:1;padding:7px 12px;border-radius:10px;border:1.5px solid ${S.schoolView==='events'?'var(--navy)':'var(--border)'};background:${S.schoolView==='events'?'var(--navy-soft)':'transparent'};color:${S.schoolView==='events'?'var(--navy)':'var(--text)'};font-size:13px;font-weight:600;cursor:pointer;font-family:inherit">🏫 School Events</button>
+      <button onclick="S.schoolView='subjects';render()" style="flex:1;padding:7px 12px;border-radius:10px;border:1.5px solid ${S.schoolView==='subjects'?'var(--navy)':'var(--border)'};background:${S.schoolView==='subjects'?'var(--navy-soft)':'transparent'};color:${S.schoolView==='subjects'?'var(--navy)':'var(--text)'};font-size:13px;font-weight:600;cursor:pointer;font-family:inherit">📚 School Subjects</button>
+    </div>
+    <div class="scroll-view" style="padding:14px 0 80px">
+      <div class="sh" style="margin-bottom:6px">${S.schoolView==='events'?'🏫 School Events':'📚 School Subjects'} (${evs.length})</div>
+      ${evs.length===0?`<div class="card" style="padding:30px 20px;text-align:center;color:var(--text-secondary)"><div style="font-size:42px;margin-bottom:10px">${S.schoolView==='events'?'🏫':'📚'}</div><div style="font-size:14px">No ${S.schoolView==='events'?'school events':'school subjects'} yet.</div><div style="font-size:12px;margin-top:6px">${S.schoolView==='events'?'Add events like assemblies, sports days, parent–teacher nights.':'Add recurring class subjects like Maths, English, PE.'}</div></div>`:
+      `<div class="card">${evs.map((ev,i)=>renderEventRow(ev,i===evs.length-1,false)).join('')}</div>`}
+    </div>
+    <div class="fab"><button class="fab-btn" style="background:#1C3A6B" onclick="quickAddTypedEvent('${cat}')">+</button></div>`;
+}
+
+// Play Date / Sleep Over / Birthday view (one type at a time)
+function sPlayDateType(tabBar,type){
+  const all=(S.playdates||[]).filter(p=>p.type===type).sort((a,b)=>(a.date||'').localeCompare(b.date||''));
+  const meta={
+    playdate:{icon:'🎈',label:'Play Dates',single:'Play Date'},
+    sleepover:{icon:'🛏',label:'Sleep Overs',single:'Sleep Over'},
+    birthday:{icon:'🎂',label:'Birthdays',single:'Birthday Party'}
+  }[type]||{icon:'🎉',label:'Events',single:'Event'};
+  return `
+    <div style="background:var(--card);padding:14px 16px 0;border-bottom:1px solid var(--row-border);position:sticky;top:0;z-index:10">
+      <div style="font-size:26px;font-weight:800;color:var(--text)">Events</div>
+    </div>
+    ${tabBar}
+    <div class="scroll-view" style="padding:14px 0 100px">
+      <div class="sh" style="margin-bottom:6px">${meta.icon} ${meta.label} (${all.length})</div>
+      ${all.length===0?`<div class="card" style="padding:30px 20px;text-align:center;color:var(--text-secondary)"><div style="font-size:42px;margin-bottom:10px">${meta.icon}</div><div style="font-size:14px">No ${meta.label.toLowerCase()} yet.</div><div style="font-size:12px;margin-top:6px">Tap + to add a ${meta.single.toLowerCase()}.</div></div>`:
+      all.map(pd=>{
+        const ec=S.children.find(c=>c.id===pd.childId);
+        const col=ec?.color||NAVY;
+        const dt=pd.date?new Date(pd.date+'T12:00'):null;
+        return `<div onclick="go('viewPlayDate',{id:'${pd.id}'})" style="margin:0 16px 10px;background:var(--card);border-radius:14px;padding:14px 16px;box-shadow:var(--shadow-md);border-left:4px solid ${col};cursor:pointer">
+          <div style="display:flex;align-items:flex-start;gap:10px">
+            <div style="font-size:30px">${meta.icon}</div>
+            <div style="flex:1">
+              <div style="display:flex;gap:6px;align-items:center;flex-wrap:wrap">
+                ${pd.rsvpStatus?`<span style="font-size:11px;font-weight:700;padding:2px 8px;border-radius:12px;background:${pd.rsvpStatus==='yes'?'#EAFAF0':pd.rsvpStatus==='no'?'#FFF0EE':'#FFF8E5'};color:${pd.rsvpStatus==='yes'?'#34C759':pd.rsvpStatus==='no'?'#FF3B30':'#806000'}">RSVP: ${pd.rsvpStatus.toUpperCase()}</span>`:''}
+              </div>
+              <div style="font-size:16px;font-weight:700">${pd.title||(meta.single+(pd.host?' at '+pd.host:''))}</div>
+              ${dt?`<div style="font-size:13px;color:var(--text-secondary)">📅 ${DAYNAMES[dt.getDay()]} ${dt.getDate()} ${MONTHS[dt.getMonth()]}${pd.time?' · '+pd.time:''}</div>`:''}
+              ${ec?`<div style="display:flex;align-items:center;gap:5px;margin-top:4px">${av(ec.name,col,18,ec.photoURL)}<span style="font-size:12px;color:${col};font-weight:600">${ec.name}</span></div>`:''}
+              ${pd.location?`<div style="font-size:12px;color:var(--text-secondary);margin-top:2px">${locLink(pd.location)}</div>`:''}
+            </div>
+            <span class="chev"></span>
+          </div>
+        </div>`;
+      }).join('')}
+    </div>
+    <div class="fab"><button class="fab-btn" style="background:var(--navy)" onclick="quickAddPlayDate('${type}')">+</button></div>`;
+}
+
+// Quick-add a typed event (Work / School Event / Subject) — pre-sets category
+window.quickAddTypedEvent=function(cat){
+  S.ef=S.ef||{};
+  S.ef.category=cat;
+  S.ef.freq='once';
+  S.ef.days={Mon:false,Tue:false,Wed:false,Thu:false,Fri:false,Sat:false,Sun:false};
+  S.ef.packItems=[];
+  S.ef.emoji=cat==='work'?'💼':cat==='school-event'?'🏫':cat==='school-subject'?'📚':'📅';
+  S.ef.participantIds=[];
+  go('addEvent');
+};
 
 function sAssessmentsInEvents(tabBar){
   const f=S.listFilter==='all'?S.assessments:S.assessments.filter(a=>a.childId===S.listFilter);
@@ -2728,8 +2841,14 @@ function sPersonProfile(){
 
       <!-- Reminders for this person on this day -->
       ${(()=>{
+        const myKey=person.isAdult?'adult:'+person.id:'child:'+person.id;
         const personReminders=(S.reminders||[]).filter(r=>{
           if(r.date!==viewDateStr)return false;
+          // New format: forKeys array
+          if(Array.isArray(r.forKeys)&&r.forKeys.length){
+            return r.forKeys.includes(myKey);
+          }
+          // Legacy format: single childId/adultUid
           if(person.isAdult)return r.adultUid===person.id;
           return r.childId===person.id;
         });
@@ -3281,18 +3400,21 @@ function sLogHandoff(){
 
 // ── REMINDERS ─────────────────────────────────────
 function sAddReminder(){
-  // Default to tomorrow morning 8am
+  // Default to tomorrow
   const tom=new Date();tom.setDate(tom.getDate()+1);
   const def=fd(tom);
-  const childOpts=S.children.map(c=>`<option value="${c.id}">${c.name}</option>`).join('');
-  const adultOpts=members().map(m=>`<option value="adult:${m.uid}">${m.name}</option>`).join('');
+  if(!Array.isArray(S.rmFor))S.rmFor=[]; // array of "child:ID" or "adult:UID"
+  const all=[
+    ...S.children.map(c=>({key:'child:'+c.id,label:c.name,color:c.color||NAVY,photo:c.photoURL,kind:'child'})),
+    ...members().map(m=>({key:'adult:'+m.uid,label:m.name,color:m.color||NAVY,photo:m.photoURL,kind:'adult'}))
+  ];
   return `<div style="min-height:100%;display:flex;flex-direction:column;background:var(--bg)">
     <div style="background:var(--card);padding:14px 16px;display:flex;align-items:center;border-bottom:1px solid var(--row-border);position:sticky;top:0;z-index:10">
-      <button class="back-btn" onclick="back()">${bk()} Back</button>
+      <button class="back-btn" onclick="S.rmFor=[];back()">${bk()} Back</button>
       <div style="flex:1;text-align:center;font-size:17px;font-weight:600">⏰ Set a reminder</div>
       <div style="width:60px"></div>
     </div>
-    <div style="padding:20px;display:flex;flex-direction:column;gap:12px;max-width:560px;margin:auto;width:100%">
+    <div style="padding:20px;display:flex;flex-direction:column;gap:14px;max-width:560px;margin:auto;width:100%">
 
       <input class="input" id="rmText" type="text" placeholder="What to remember (e.g. Pack mouthguard)" autofocus/>
 
@@ -3303,11 +3425,18 @@ function sAddReminder(){
 
       <div>
         <div style="font-size:12px;font-weight:700;color:var(--text-secondary);margin-bottom:6px">FOR (optional)</div>
-        <select class="input" id="rmFor">
-          <option value="">Family-wide</option>
-          ${childOpts?`<optgroup label="Kids">${childOpts}</optgroup>`:''}
-          ${adultOpts?`<optgroup label="Adults">${adultOpts}</optgroup>`:''}
-        </select>
+        <div style="font-size:11px;color:var(--text-secondary);margin-bottom:8px;line-height:1.4">Tap to select. Leave none = family-wide.</div>
+        <div style="display:flex;flex-wrap:wrap;gap:6px">
+          ${all.map(p=>{
+            const on=S.rmFor.includes(p.key);
+            return `<button type="button" onclick="toggleRmFor('${p.key}')" style="display:flex;align-items:center;gap:6px;padding:6px 12px 6px 6px;border-radius:18px;border:1.5px solid ${on?p.color:'var(--border)'};background:${on?p.color+'18':'var(--card)'};color:${on?p.color:'var(--text)'};font-size:13px;font-weight:600;cursor:pointer;font-family:inherit">
+              <div style="width:22px;height:22px;border-radius:11px;background:${p.color};color:#fff;font-size:10px;font-weight:700;display:inline-flex;align-items:center;justify-content:center;overflow:hidden;flex-shrink:0">
+                ${p.photo?`<img src="${p.photo}" style="width:100%;height:100%;object-fit:cover"/>`:p.label.split(' ').map(n=>n[0]).slice(0,2).join('').toUpperCase()}
+              </div>
+              ${p.label}${on?' ✓':''}
+            </button>`;
+          }).join('')}
+        </div>
       </div>
 
       <div>
@@ -3318,10 +3447,17 @@ function sAddReminder(){
       <div id="rmErr" class="err"></div>
       <button class="primary-btn" onclick="hAddReminder()">⏰ Save Reminder</button>
 
-      <div style="font-size:12px;color:var(--text-secondary);line-height:1.5;margin-top:6px;text-align:center">Reminders appear at the top of your Today screen on the chosen date.</div>
+      <div style="font-size:12px;color:var(--text-secondary);line-height:1.5;margin-top:6px;text-align:center">Reminders appear on Today until midnight of the chosen day, or when ticked off — whichever comes first.</div>
     </div>
   </div>`;
 }
+
+window.toggleRmFor=function(key){
+  if(!Array.isArray(S.rmFor))S.rmFor=[];
+  const i=S.rmFor.indexOf(key);
+  if(i>=0)S.rmFor.splice(i,1);else S.rmFor.push(key);
+  render();
+};
 
 // ── MAIN RENDER ───────────────────────────────────
 function render(){
@@ -4777,20 +4913,24 @@ window.dHandoff=async function(id){
 window.hAddReminder=async function(){
   const text=document.getElementById('rmText')?.value?.trim()||'';
   const date=document.getElementById('rmDate')?.value||'';
-  const forVal=document.getElementById('rmFor')?.value||'';
   const notes=document.getElementById('rmNotes')?.value?.trim()||'';
   const err=document.getElementById('rmErr');
   if(!text){if(err)err.textContent='Enter what to remember';return;}
   if(!date){if(err)err.textContent='Choose a date';return;}
-  // Parse forVal → childId or adultUid
+  // Build forKeys array (e.g. ["child:abc","adult:xyz"]). Empty = family-wide.
+  const forKeys=Array.isArray(S.rmFor)?[...S.rmFor]:[];
+  // Legacy single fields kept for back-compat:
   let childId='',adultUid='';
-  if(forVal.startsWith('adult:'))adultUid=forVal.replace('adult:','');
-  else if(forVal)childId=forVal;
+  const firstChild=forKeys.find(k=>k.startsWith('child:'));
+  const firstAdult=forKeys.find(k=>k.startsWith('adult:'));
+  if(firstChild)childId=firstChild.replace('child:','');
+  if(firstAdult)adultUid=firstAdult.replace('adult:','');
   try{
     await fadd(['reminders'],{
-      text,date,childId,adultUid,notes,
+      text,date,forKeys,childId,adultUid,notes,
       done:false,createdBy:S.user?.uid||''
     });
+    S.rmFor=[]; // reset for next time
     back();
     notify('Reminder saved ⏰');
   }catch(ex){if(err)err.textContent='Error: '+ex.message;}
