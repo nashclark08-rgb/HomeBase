@@ -157,11 +157,18 @@ const DAYNAMES=['Sunday','Monday','Tuesday','Wednesday','Thursday','Friday','Sat
 const DAYSH=['Sun','Mon','Tue','Wed','Thu','Fri','Sat'];
 const MONTHS=['Jan','Feb','Mar','Apr','May','Jun','Jul','Aug','Sep','Oct','Nov','Dec'];
 const EMOJIS=['📅','⚽','🏊','🎹','🎸','🎭','📚','🏃','🎨','🏋️','🚴','🎯','🏀','🎾','⚾','🧘','🎪','🏈','🎬','🎓','🏫','🎡'];
+const CAT_LABELS={school:'🏫 School',sport:'⚽ Sport',music:'🎵 Music',work:'💼 Work',social:'🎉 Social',medical:'🏥 Medical',other:'📌 Other','':'⭐ Uncategorised'};
 const today=new Date();
 const todayStr=fd(today);
 const tomorrow=new Date(today);tomorrow.setDate(today.getDate()+1);
 const tomorrowStr=fd(tomorrow);
 function fd(d){return d.getFullYear()+'-'+String(d.getMonth()+1).padStart(2,'0')+'-'+String(d.getDate()).padStart(2,'0');}
+function mapsUrl(loc){return 'https://www.google.com/maps/search/?api=1&query='+encodeURIComponent(loc||'');}
+function locLink(loc,colorOrSecondary){
+  if(!loc)return '';
+  const c=colorOrSecondary||'var(--text-secondary)';
+  return `<a href="${mapsUrl(loc)}" target="_blank" rel="noopener" onclick="event.stopPropagation()" style="color:${c};text-decoration:none">📍 <span style="text-decoration:underline">${loc}</span></a>`;
+}
 
 // Parse a user-entered time string into minutes-since-midnight for sorting
 // Handles: "9:30am", "5:25 AM", "14:30", "2pm", "9:30 - 11:00am", "5:45 to 7pm", "9.30am"
@@ -1078,17 +1085,17 @@ function sToday(){
 
       <!-- REMINDERS for the day being viewed -->
       ${(()=>{
-        const dueReminders=(S.reminders||[]).filter(r=>r.date===viewDateStr&&!r.done);
+        const dueReminders=(S.reminders||[]).filter(r=>r.date===viewDateStr);
         if(dueReminders.length===0)return '';
         return `<div class="sh" style="margin-bottom:6px">⏰ Reminders</div>
         <div class="card" style="margin-bottom:14px">
           ${dueReminders.map((r,i)=>{
             const target=r.childId?S.children.find(c=>c.id===r.childId):r.adultUid?members().find(m=>m.uid===r.adultUid):null;
             const tcol=target?.color||NAVY;
-            return `<div class="row" style="border-bottom:${i<dueReminders.length-1?'1px solid var(--row-border)':'none'}">
-              <div class="cb" onclick="tReminder('${r.id}',true)" style="border-color:${tcol}"></div>
+            return `<div class="row" style="border-bottom:${i<dueReminders.length-1?'1px solid var(--row-border)':'none'};${r.done?'opacity:0.55':''}">
+              <div class="cb ${r.done?'on':''}" onclick="tReminder('${r.id}',${!r.done})" style="${r.done?'background:'+tcol+';border:none':'border-color:'+tcol}">${r.done?ck():''}</div>
               <div style="flex:1">
-                <div style="font-size:15px;color:var(--text);font-weight:500">${r.text}</div>
+                <div style="font-size:15px;color:var(--text);font-weight:500;${r.done?'text-decoration:line-through':''}">${r.text}</div>
                 ${target?`<div style="font-size:11px;color:${tcol};font-weight:600;margin-top:2px">For ${target.name}</div>`:''}
                 ${r.notes?`<div style="font-size:11px;color:var(--text-secondary);font-style:italic;margin-top:2px">${r.notes}</div>`:''}
               </div>
@@ -1157,7 +1164,7 @@ function sToday(){
               <div style="width:32px;height:32px;border-radius:16px;background:${col}18;border:2px solid ${col};display:flex;align-items:center;justify-content:center;font-size:14px;flex-shrink:0">${ev.emoji||'📅'}</div>
               <div style="flex:1">
                 <div style="font-size:14px;font-weight:600;display:flex;align-items:center;gap:6px;flex-wrap:wrap">${ev.title}${isMine?'<span style="font-size:10px;font-weight:700;padding:2px 7px;border-radius:8px;background:#FF9500;color:#fff">YOU</span>':''}${ev.category==='school'?'<span style="font-size:10px;font-weight:700;padding:2px 7px;border-radius:8px;background:#1C3A6B18;color:#1C3A6B">🏫 SCHOOL</span>':ev.category==='sport'?'<span style="font-size:10px;font-weight:700;padding:2px 7px;border-radius:8px;background:#34C75920;color:#1F8E3F">⚽ SPORT</span>':ev.category==='music'?'<span style="font-size:10px;font-weight:700;padding:2px 7px;border-radius:8px;background:#AF52DE20;color:#7B2CBF">🎵 MUSIC</span>':ev.category==='medical'?'<span style="font-size:10px;font-weight:700;padding:2px 7px;border-radius:8px;background:#FF3B3020;color:#C0392B">🏥 MEDICAL</span>':ev.category==='social'?'<span style="font-size:10px;font-weight:700;padding:2px 7px;border-radius:8px;background:#FF6B9D20;color:#D6336C">🎉 SOCIAL</span>':''}</div>
-                <div style="font-size:12px;color:var(--text-secondary)">${ownerName}${ev.location?' · 📍'+ev.location:''}</div>
+                <div style="font-size:12px;color:var(--text-secondary)">${ownerName}${ev.location?' · '+locLink(ev.location):''}</div>
                 ${ev.dropoff||ev.pickup?`<div style="font-size:11px;color:${NAVY};font-weight:500">${ev.dropoff?(isMyDropoff?'🚗 <strong>'+ev.dropoff+' (you)</strong>':'🚗 '+ev.dropoff):''}${ev.dropoff&&ev.pickup?' · ':''}${ev.pickup?(isMyPickup?'🏠 <strong>'+ev.pickup+' (you)</strong>':'🏠 '+ev.pickup):''}</div>`:''}
               </div>
             </div>`;
@@ -1421,6 +1428,7 @@ function sAddEvent(){
               {id:'school',label:'🏫 School Event'},
               {id:'sport',label:'⚽ Sport'},
               {id:'music',label:'🎵 Music'},
+              {id:'work',label:'💼 Work'},
               {id:'social',label:'🎉 Social'},
               {id:'medical',label:'🏥 Medical'},
               {id:'other',label:'📌 Other'}
@@ -1512,7 +1520,7 @@ function sCalendar(){
             <div style="font-size:12px;color:rgba(255,255,255,0.92);line-height:1.5">
               ${ev.freq&&ev.freq!=='once'?`<span style="margin-right:10px">🔄 ${ev.freq}</span>`:''}
               ${ev.time?`<span style="margin-right:10px">⏰ ${ev.time}</span>`:''}
-              ${ev.location?`<span style="margin-right:10px">📍 ${ev.location}</span>`:''}
+              ${ev.location?`<span style="margin-right:10px">${locLink(ev.location,'#fff')}</span>`:''}
             </div>
             ${ev.dropoff||ev.pickup?`<div style="font-size:11px;color:rgba(255,255,255,0.92);margin-top:3px">${ev.dropoff?'🚗 Drop-off: <strong>'+ev.dropoff+'</strong>':''}${ev.dropoff&&ev.pickup?' · ':''}${ev.pickup?'🏠 Pick-up: <strong>'+ev.pickup+'</strong>':''}</div>`:''}
             ${ev.packItems?.length?`<div style="font-size:11px;color:rgba(255,255,255,0.85);margin-top:3px">🎒 ${ev.packItems.join(', ')}</div>`:''}
@@ -1732,8 +1740,25 @@ function sEvents(){
   const tabBar=`<div style="background:var(--card);padding:0 16px;border-bottom:1px solid var(--row-border);display:flex;position:sticky;top:57px;z-index:9;overflow-x:auto">
     <button class="sub-tab ${S.evTab==='events'?'on':'off'}" onclick="S.evTab='events';render()">Events</button>
     <button class="sub-tab ${S.evTab==='playdates'?'on':'off'}" onclick="S.evTab='playdates';render()">🎉 Play Dates</button>
+    <button class="sub-tab ${S.evTab==='past'?'on':'off'}" onclick="S.evTab='past';render()">📜 Past</button>
   </div>`;
   if(S.evTab==='playdates')return sPlayDates(tabBar);
+
+  // ── PAST EVENTS (one-off events whose date has passed) ──
+  if(S.evTab==='past'){
+    const todayStr=fd(new Date());
+    const past=S.events.filter(ev=>(!ev.freq||ev.freq==='once')&&ev.date&&ev.date<todayStr)
+      .sort((a,b)=>(b.date||'').localeCompare(a.date||''));
+    return `
+      <div style="background:var(--card);padding:14px 16px 0;border-bottom:1px solid var(--row-border);position:sticky;top:0;z-index:10">
+        <div style="font-size:26px;font-weight:800;color:var(--text)">Events</div>
+      </div>
+      ${tabBar}
+      <div class="scroll-view" style="padding:14px 0 80px">
+        ${past.length===0?`<div style="text-align:center;padding:60px 20px;color:var(--text-secondary)"><div style="font-size:48px;margin-bottom:10px">📜</div><div style="font-size:15px">No past one-off events yet.</div><div style="font-size:12px;margin-top:6px">Recurring events stay on the active list.</div></div>`:
+        `<div class="card">${past.map((ev,i)=>renderEventRow(ev,i===past.length-1,true)).join('')}</div>`}
+      </div>`;
+  }
 
   // Sort + filter + group state (with defaults)
   if(!S.evSort)S.evSort='title';
@@ -1741,8 +1766,10 @@ function sEvents(){
   if(!S.evFilterCategory)S.evFilterCategory='all';
   if(!S.evGroupBy)S.evGroupBy='none';
 
-  // Apply filter
-  let filtered=[...S.events];
+  // Active events only (exclude past one-offs)
+  const todayStr=fd(new Date());
+  let filtered=S.events.filter(ev=>!((!ev.freq||ev.freq==='once')&&ev.date&&ev.date<todayStr));
+
   if(S.evFilterPerson!=='all'){
     filtered=filtered.filter(ev=>{
       const ids=Array.isArray(ev.participantIds)&&ev.participantIds.length?ev.participantIds:[ev.childId,ev.adultUid].filter(Boolean);
@@ -1770,8 +1797,7 @@ function sEvents(){
   filtered.sort(sorters[S.evSort]||sorters.title);
 
   // Build groups
-  const CAT_LABELS={school:'🏫 School',sport:'⚽ Sport',music:'🎵 Music',social:'🎉 Social',medical:'🏥 Medical',other:'📌 Other','':'⭐ Uncategorised'};
-  let groups=[]; // [{label, color, events}]
+  let groups=[];
   if(S.evGroupBy==='person'){
     const map=new Map();
     filtered.forEach(ev=>{
@@ -1805,83 +1831,84 @@ function sEvents(){
     groups=[{label:'',color:NAVY,events:filtered}];
   }
 
-  const renderRow=(ev,isLast)=>{
-    const ids=Array.isArray(ev.participantIds)&&ev.participantIds.length?ev.participantIds:[ev.childId,ev.adultUid].filter(Boolean);
-    let avatars='',names='';
-    const personObjs=ids.map(id=>{
-      const c=S.children.find(x=>x.id===id);
-      if(c)return {name:c.name,color:c.color||NAVY,photo:c.photoURL};
-      const m=members().find(x=>x.uid===id);
-      if(m)return {name:m.name,color:m.color||NAVY,photo:m.photoURL};
-      return null;
-    }).filter(Boolean);
-    const col=personObjs[0]?.color||NAVY;
-    if(personObjs.length){
-      avatars=personObjs.slice(0,3).map(p=>av(p.name,p.color,18,p.photo)).join('');
-      names=personObjs.map(p=>p.name).join(', ');
-    }
-    const catChip=ev.category?`<span style="font-size:10px;font-weight:700;padding:2px 6px;border-radius:6px;background:${col}18;color:${col};margin-left:6px">${(CAT_LABELS[ev.category]||ev.category).split(' ')[0]}</span>`:'';
-    return `<div class="row" style="border-bottom:${isLast?'none':'1px solid var(--row-border)'}">
-      <div style="width:40px;height:40px;border-radius:10px;background:${col}15;display:flex;align-items:center;justify-content:center;font-size:22px;flex-shrink:0">${ev.emoji||'📅'}</div>
-      <div style="flex:1;min-width:0">
-        <div style="font-size:15px;font-weight:600;color:var(--text)">${ev.title}${catChip}</div>
-        <div style="font-size:12px;color:var(--text-secondary)">${ev.freq&&ev.freq!=='once'?'🔄 '+ev.freq:ev.date||''}${ev.time?' · '+ev.time:''}</div>
-        ${ev.dropoff||ev.pickup?`<div style="font-size:11px;color:${col};font-weight:500">${ev.dropoff?'🚗 '+ev.dropoff:''}${ev.dropoff&&ev.pickup?' · ':''}${ev.pickup?'🏠 '+ev.pickup:''}</div>`:''}
-        ${avatars?`<div style="display:flex;align-items:center;gap:4px;margin-top:3px">${avatars}<span style="font-size:11px;color:var(--text-secondary);margin-left:2px">${names}</span></div>`:''}
-      </div>
-      <button onclick="dEvent('${ev.id}')" style="color:#FF3B30;font-size:20px;opacity:0.5;border:none;background:none;cursor:pointer">×</button>
-    </div>`;
-  };
-
-  // Build the chip rows for sort/filter/group
-  const sortChip=(id,label)=>`<button onclick="S.evSort='${id}';render()" style="padding:5px 10px;border-radius:14px;border:1px solid ${S.evSort===id?'var(--navy)':'var(--border)'};background:${S.evSort===id?'var(--navy-soft)':'transparent'};color:${S.evSort===id?'var(--navy)':'var(--text-secondary)'};font-size:11px;font-weight:600;cursor:pointer;font-family:inherit;white-space:nowrap">${label}</button>`;
-  const groupChip=(id,label)=>`<button onclick="S.evGroupBy='${id}';render()" style="padding:5px 10px;border-radius:14px;border:1px solid ${S.evGroupBy===id?'var(--navy)':'var(--border)'};background:${S.evGroupBy===id?'var(--navy-soft)':'transparent'};color:${S.evGroupBy===id?'var(--navy)':'var(--text-secondary)'};font-size:11px;font-weight:600;cursor:pointer;font-family:inherit;white-space:nowrap">${label}</button>`;
-  // Filter chips
+  // ── COMPACT RIBBON: 4 dropdown selects in one row ──
   const personOptions=[{id:'all',label:'All people'},...S.children.map(c=>({id:c.id,label:c.name})),...members().map(m=>({id:m.uid,label:m.name}))];
-  const personChip=(o)=>`<button onclick="S.evFilterPerson='${o.id}';render()" style="padding:5px 10px;border-radius:14px;border:1px solid ${S.evFilterPerson===o.id?'var(--navy)':'var(--border)'};background:${S.evFilterPerson===o.id?'var(--navy-soft)':'transparent'};color:${S.evFilterPerson===o.id?'var(--navy)':'var(--text-secondary)'};font-size:11px;font-weight:600;cursor:pointer;font-family:inherit;white-space:nowrap">${o.label}</button>`;
-  const catOptions=[{id:'all',label:'All cats'},{id:'school',label:'🏫'},{id:'sport',label:'⚽'},{id:'music',label:'🎵'},{id:'social',label:'🎉'},{id:'medical',label:'🏥'},{id:'other',label:'📌'},{id:'none',label:'⭐ Uncat.'}];
-  const catChip=(o)=>`<button onclick="S.evFilterCategory='${o.id}';render()" style="padding:5px 10px;border-radius:14px;border:1px solid ${S.evFilterCategory===o.id?'var(--navy)':'var(--border)'};background:${S.evFilterCategory===o.id?'var(--navy-soft)':'transparent'};color:${S.evFilterCategory===o.id?'var(--navy)':'var(--text-secondary)'};font-size:11px;font-weight:600;cursor:pointer;font-family:inherit;white-space:nowrap">${o.label}</button>`;
+  const ribbon=S.events.length>0?`<div style="background:var(--card);padding:8px 12px;border-bottom:1px solid var(--row-border);display:flex;gap:6px;flex-wrap:wrap;position:sticky;top:104px;z-index:8">
+    <select onchange="S.evSort=this.value;render()" style="flex:1;min-width:0;padding:6px 8px;border-radius:8px;border:1px solid var(--border);background:var(--bg);color:var(--text);font-size:12px;font-family:inherit;cursor:pointer">
+      <option value="title" ${S.evSort==='title'?'selected':''}>Sort: A-Z</option>
+      <option value="time" ${S.evSort==='time'?'selected':''}>Sort: Time</option>
+      <option value="person" ${S.evSort==='person'?'selected':''}>Sort: Person</option>
+      <option value="category" ${S.evSort==='category'?'selected':''}>Sort: Category</option>
+      <option value="frequency" ${S.evSort==='frequency'?'selected':''}>Sort: Frequency</option>
+    </select>
+    <select onchange="S.evGroupBy=this.value;render()" style="flex:1;min-width:0;padding:6px 8px;border-radius:8px;border:1px solid var(--border);background:var(--bg);color:var(--text);font-size:12px;font-family:inherit;cursor:pointer">
+      <option value="none" ${S.evGroupBy==='none'?'selected':''}>Group: None</option>
+      <option value="person" ${S.evGroupBy==='person'?'selected':''}>Group: Person</option>
+      <option value="category" ${S.evGroupBy==='category'?'selected':''}>Group: Category</option>
+    </select>
+    <select onchange="S.evFilterPerson=this.value;render()" style="flex:1;min-width:0;padding:6px 8px;border-radius:8px;border:1px solid ${S.evFilterPerson!=='all'?'var(--navy)':'var(--border)'};background:${S.evFilterPerson!=='all'?'var(--navy-soft)':'var(--bg)'};color:var(--text);font-size:12px;font-family:inherit;cursor:pointer">
+      ${personOptions.map(o=>`<option value="${o.id}" ${S.evFilterPerson===o.id?'selected':''}>${o.id==='all'?'Person: '+o.label:o.label}</option>`).join('')}
+    </select>
+    <select onchange="S.evFilterCategory=this.value;render()" style="flex:1;min-width:0;padding:6px 8px;border-radius:8px;border:1px solid ${S.evFilterCategory!=='all'?'var(--navy)':'var(--border)'};background:${S.evFilterCategory!=='all'?'var(--navy-soft)':'var(--bg)'};color:var(--text);font-size:12px;font-family:inherit;cursor:pointer">
+      <option value="all" ${S.evFilterCategory==='all'?'selected':''}>Cat: All</option>
+      <option value="school" ${S.evFilterCategory==='school'?'selected':''}>🏫 School</option>
+      <option value="sport" ${S.evFilterCategory==='sport'?'selected':''}>⚽ Sport</option>
+      <option value="music" ${S.evFilterCategory==='music'?'selected':''}>🎵 Music</option>
+      <option value="work" ${S.evFilterCategory==='work'?'selected':''}>💼 Work</option>
+      <option value="social" ${S.evFilterCategory==='social'?'selected':''}>🎉 Social</option>
+      <option value="medical" ${S.evFilterCategory==='medical'?'selected':''}>🏥 Medical</option>
+      <option value="other" ${S.evFilterCategory==='other'?'selected':''}>📌 Other</option>
+      <option value="none" ${S.evFilterCategory==='none'?'selected':''}>⭐ Uncat.</option>
+    </select>
+  </div>`:'';
 
   return `
     <div style="background:var(--card);padding:14px 16px 0;border-bottom:1px solid var(--row-border);position:sticky;top:0;z-index:10">
       <div style="font-size:26px;font-weight:800;color:var(--text)">Events</div>
     </div>
     ${tabBar}
-    ${S.events.length>0?`<div style="background:var(--card);padding:8px 12px;border-bottom:1px solid var(--row-border);display:flex;flex-direction:column;gap:6px;position:sticky;top:104px;z-index:8">
-      <div style="display:flex;gap:6px;overflow-x:auto;padding:0 4px;align-items:center">
-        <span style="font-size:10px;font-weight:700;color:var(--text-secondary);text-transform:uppercase;letter-spacing:0.4px;flex-shrink:0">Sort</span>
-        ${sortChip('title','A-Z')}
-        ${sortChip('time','Time')}
-        ${sortChip('person','Person')}
-        ${sortChip('category','Category')}
-        ${sortChip('frequency','Frequency')}
-      </div>
-      <div style="display:flex;gap:6px;overflow-x:auto;padding:0 4px;align-items:center">
-        <span style="font-size:10px;font-weight:700;color:var(--text-secondary);text-transform:uppercase;letter-spacing:0.4px;flex-shrink:0">Group</span>
-        ${groupChip('none','None')}
-        ${groupChip('person','Person')}
-        ${groupChip('category','Category')}
-      </div>
-      <div style="display:flex;gap:6px;overflow-x:auto;padding:0 4px;align-items:center">
-        <span style="font-size:10px;font-weight:700;color:var(--text-secondary);text-transform:uppercase;letter-spacing:0.4px;flex-shrink:0">Person</span>
-        ${personOptions.map(o=>personChip(o)).join('')}
-      </div>
-      <div style="display:flex;gap:6px;overflow-x:auto;padding:0 4px;align-items:center">
-        <span style="font-size:10px;font-weight:700;color:var(--text-secondary);text-transform:uppercase;letter-spacing:0.4px;flex-shrink:0">Cat</span>
-        ${catOptions.map(o=>catChip(o)).join('')}
-      </div>
-    </div>`:''}
+    ${ribbon}
     <div class="scroll-view" style="padding:14px 0 80px">
       ${S.events.length===0?`<div style="text-align:center;padding:60px 20px"><div style="font-size:56px;margin-bottom:14px">📅</div><div style="font-size:17px;font-weight:700;margin-bottom:6px;color:var(--text)">No events yet</div><div style="font-size:14px;color:var(--text-secondary);margin-bottom:20px;line-height:1.5">Add soccer practice, swimming lessons, music classes —<br>anything that happens at a regular time.</div><button onclick="go('addEvent')" style="padding:12px 24px;border-radius:12px;background:var(--navy);border:none;color:#fff;font-size:15px;font-weight:600;cursor:pointer;font-family:inherit">+ Add your first event</button></div>`:
       filtered.length===0?`<div style="text-align:center;padding:40px 20px;color:var(--text-secondary)">No events match those filters.<br><button onclick="S.evFilterPerson='all';S.evFilterCategory='all';render()" style="margin-top:10px;padding:8px 16px;border-radius:10px;background:var(--navy);border:none;color:#fff;font-size:13px;font-weight:600;cursor:pointer;font-family:inherit">Clear filters</button></div>`:
       groups.map(g=>`
         ${S.evGroupBy!=='none'&&g.label?`<div class="sh" style="padding:0 16px;margin-bottom:6px;color:${g.color}">${g.label} (${g.events.length})</div>`:''}
         <div class="card" style="margin-bottom:14px">
-          ${g.events.map((ev,i)=>renderRow(ev,i===g.events.length-1)).join('')}
+          ${g.events.map((ev,i)=>renderEventRow(ev,i===g.events.length-1,false)).join('')}
         </div>
       `).join('')}
     </div>
     <div class="fab"><button class="fab-btn" style="background:#1C3A6B" onclick="go('addEvent')">+</button></div>`;
+}
+
+// Shared event-row renderer (used by Events tab + Past Events)
+function renderEventRow(ev,isLast,isPast){
+  const ids=Array.isArray(ev.participantIds)&&ev.participantIds.length?ev.participantIds:[ev.childId,ev.adultUid].filter(Boolean);
+  let avatars='',names='';
+  const personObjs=ids.map(id=>{
+    const c=S.children.find(x=>x.id===id);
+    if(c)return {name:c.name,color:c.color||NAVY,photo:c.photoURL};
+    const m=members().find(x=>x.uid===id);
+    if(m)return {name:m.name,color:m.color||NAVY,photo:m.photoURL};
+    return null;
+  }).filter(Boolean);
+  const col=personObjs[0]?.color||NAVY;
+  if(personObjs.length){
+    avatars=personObjs.slice(0,3).map(p=>av(p.name,p.color,18,p.photo)).join('');
+    names=personObjs.map(p=>p.name).join(', ');
+  }
+  const catChip=ev.category?`<span style="font-size:10px;font-weight:700;padding:2px 6px;border-radius:6px;background:${col}18;color:${col};margin-left:6px">${(CAT_LABELS[ev.category]||ev.category).split(' ')[0]}</span>`:'';
+  return `<div class="row" style="border-bottom:${isLast?'none':'1px solid var(--row-border)'};${isPast?'opacity:0.7':''}">
+    <div style="width:40px;height:40px;border-radius:10px;background:${col}15;display:flex;align-items:center;justify-content:center;font-size:22px;flex-shrink:0">${ev.emoji||'📅'}</div>
+    <div style="flex:1;min-width:0">
+      <div style="font-size:15px;font-weight:600;color:var(--text)">${ev.title}${catChip}</div>
+      <div style="font-size:12px;color:var(--text-secondary)">${ev.freq&&ev.freq!=='once'?'🔄 '+ev.freq:ev.date||''}${ev.time?' · '+ev.time:''}</div>
+      ${ev.dropoff||ev.pickup?`<div style="font-size:11px;color:${col};font-weight:500">${ev.dropoff?'🚗 '+ev.dropoff:''}${ev.dropoff&&ev.pickup?' · ':''}${ev.pickup?'🏠 '+ev.pickup:''}</div>`:''}
+      ${avatars?`<div style="display:flex;align-items:center;gap:4px;margin-top:3px">${avatars}<span style="font-size:11px;color:var(--text-secondary);margin-left:2px">${names}</span></div>`:''}
+    </div>
+    <button onclick="replicateEvent('${ev.id}')" title="Replicate" style="color:var(--navy);font-size:13px;font-weight:700;border:1px solid var(--navy);background:transparent;border-radius:8px;padding:4px 8px;cursor:pointer;font-family:inherit;margin-right:6px">⎘</button>
+    <button onclick="dEvent('${ev.id}')" style="color:#FF3B30;font-size:20px;opacity:0.5;border:none;background:none;cursor:pointer">×</button>
+  </div>`;
 }
 
 function sAssessmentsInEvents(tabBar){
@@ -1910,14 +1937,31 @@ function sAssessmentsInEvents(tabBar){
 }
 
 function sPlayDates(tabBar){
-  const playdates=(S.playdates||[]).sort((a,b)=>(a.date||'').localeCompare(b.date||''));
+  if(!S.pdFilter)S.pdFilter='all';
+  const all=(S.playdates||[]).sort((a,b)=>(a.date||'').localeCompare(b.date||''));
+  const playdates=S.pdFilter==='all'?all:all.filter(p=>p.type===S.pdFilter);
   return `
     <div style="background:var(--card);padding:14px 16px 0;border-bottom:1px solid var(--row-border);position:sticky;top:0;z-index:10">
       <div style="font-size:26px;font-weight:800;color:var(--text)">Events</div>
     </div>
     ${tabBar}
+    <!-- Quick-create chips -->
+    <div style="background:var(--card);padding:10px 12px;border-bottom:1px solid var(--row-border);display:flex;gap:6px;overflow-x:auto">
+      <button onclick="quickAddPlayDate('playdate')" style="padding:7px 12px;border-radius:14px;border:1px dashed var(--border);background:transparent;color:var(--text);font-size:12px;font-weight:600;cursor:pointer;font-family:inherit;white-space:nowrap">🎈 + Play Date</button>
+      <button onclick="quickAddPlayDate('sleepover')" style="padding:7px 12px;border-radius:14px;border:1px dashed var(--border);background:transparent;color:var(--text);font-size:12px;font-weight:600;cursor:pointer;font-family:inherit;white-space:nowrap">🛏 + Sleep Over</button>
+      <button onclick="quickAddPlayDate('birthday')" style="padding:7px 12px;border-radius:14px;border:1px dashed var(--border);background:transparent;color:var(--text);font-size:12px;font-weight:600;cursor:pointer;font-family:inherit;white-space:nowrap">🎂 + Birthday</button>
+    </div>
+    <!-- Filter chips -->
+    ${all.length>0?`<div style="background:var(--card);padding:6px 12px 10px;border-bottom:1px solid var(--row-border);display:flex;gap:6px;overflow-x:auto">
+      <span style="font-size:10px;font-weight:700;color:var(--text-secondary);text-transform:uppercase;letter-spacing:0.4px;align-self:center;flex-shrink:0">Show</span>
+      ${[
+        {id:'all',label:'All'},{id:'playdate',label:'🎈 Play Dates'},
+        {id:'sleepover',label:'🛏 Sleep Overs'},{id:'birthday',label:'🎂 Birthdays'}
+      ].map(o=>`<button onclick="S.pdFilter='${o.id}';render()" style="padding:5px 10px;border-radius:14px;border:1px solid ${S.pdFilter===o.id?'var(--navy)':'var(--border)'};background:${S.pdFilter===o.id?'var(--navy-soft)':'transparent'};color:${S.pdFilter===o.id?'var(--navy)':'var(--text-secondary)'};font-size:11px;font-weight:600;cursor:pointer;font-family:inherit;white-space:nowrap">${o.label}</button>`).join('')}
+    </div>`:''}
     <div style="padding:14px 0 100px">
-      ${playdates.length===0?`<div style="text-align:center;padding:60px 20px"><div style="font-size:56px;margin-bottom:14px">🎉</div><div style="font-size:17px;font-weight:700;margin-bottom:6px">No play dates yet</div><div style="font-size:14px;color:var(--text-secondary)">Tap + to add a play date, sleepover or birthday party</div></div>`:''}
+      ${all.length===0?`<div style="text-align:center;padding:60px 20px"><div style="font-size:56px;margin-bottom:14px">🎉</div><div style="font-size:17px;font-weight:700;margin-bottom:6px">No play dates yet</div><div style="font-size:14px;color:var(--text-secondary)">Tap one of the chips above, or + below, to add</div></div>`:
+      playdates.length===0?`<div style="text-align:center;padding:40px 20px;color:var(--text-secondary)">No ${S.pdFilter==='playdate'?'play dates':S.pdFilter==='sleepover'?'sleep overs':'birthdays'} yet.</div>`:''}
       ${playdates.map(pd=>{
         const ec=S.children.find(c=>c.id===pd.childId);
         const col=ec?.color||NAVY;
@@ -1935,7 +1979,7 @@ function sPlayDates(tabBar){
               <div style="font-size:16px;font-weight:700;margin-top:4px">${pd.title||(typeLabel+(pd.host?' at '+pd.host:''))}</div>
               ${dt?`<div style="font-size:13px;color:var(--text-secondary)">📅 ${DAYNAMES[dt.getDay()]} ${dt.getDate()} ${MONTHS[dt.getMonth()]}${pd.time?' · '+pd.time:''}</div>`:''}
               ${ec?`<div style="display:flex;align-items:center;gap:5px;margin-top:4px">${av(ec.name,col,18,ec.photoURL)}<span style="font-size:12px;color:${col};font-weight:600">${ec.name}</span></div>`:''}
-              ${pd.location?`<div style="font-size:12px;color:var(--text-secondary);margin-top:2px">📍 ${pd.location}</div>`:''}
+              ${pd.location?`<div style="font-size:12px;color:var(--text-secondary);margin-top:2px">${locLink(pd.location)}</div>`:''}
             </div>
             <span class="chev"></span>
           </div>
@@ -2311,11 +2355,13 @@ function sLists(){
 
 function sGroceries(){
   const freq=S.groceries.filter(g=>g.isFrequent&&!g.addedToList).sort((a,b)=>a.label.localeCompare(b.label));
+  // ALL frequent items (whether on list or not), for the manage view
+  const allFreq=S.groceries.filter(g=>g.isFrequent).sort((a,b)=>a.label.localeCompare(b.label));
   const todo=S.groceries.filter(g=>g.addedToList&&!g.checked);
   const done=S.groceries.filter(g=>g.addedToList&&g.checked);
   return `
     <div style="flex:1;display:flex;flex-direction:column">
-      <div style="background:#fff;padding:14px 16px;display:flex;align-items:center;border-bottom:1px solid #F2F2F7;position:sticky;top:0;z-index:10">
+      <div style="background:var(--card);padding:14px 16px;display:flex;align-items:center;border-bottom:1px solid var(--row-border);position:sticky;top:0;z-index:10">
         <button class="back-btn" onclick="S.listTab='menu';render()">${bk()} Back</button>
         <div style="flex:1;text-align:center;font-size:17px;font-weight:600">🛒 Groceries</div>
         <button class="btn" onclick="go('addGrocery')" style="color:#1C3A6B;font-size:15px;font-weight:600">+ Add</button>
@@ -2324,25 +2370,36 @@ function sGroceries(){
         <div class="sh" style="margin-bottom:6px">Shopping List (${todo.length})</div>
         <div class="card" style="margin-bottom:14px">
           ${todo.length+done.length===0?`<div style="padding:40px 20px;text-align:center"><div style="font-size:48px;margin-bottom:10px">🛒</div><div style="font-size:15px;font-weight:600;color:var(--text);margin-bottom:4px">Your shopping list is empty</div><div style="font-size:13px;color:var(--text-secondary);margin-bottom:16px;line-height:1.5">Tap + Add to add items.<br>Mark them as "Frequent" to build a quick-add bank.</div></div>`:''}
-          ${todo.map((g,i)=>`<div class="row" style="border-bottom:${i<todo.length-1||done.length?'1px solid #F2F2F7':'none'}">
+          ${todo.map((g,i)=>`<div class="row" style="border-bottom:${i<todo.length-1||done.length?'1px solid var(--row-border)':'none'}">
             <div class="cb" onclick="tGroc('${g.id}',true)"></div>
             <span style="flex:1;font-size:16px">${g.label}${g.quantity>1?' ×'+g.quantity:''}</span>
             <button onclick="dGroc('${g.id}')" style="color:#FF3B30;font-size:20px;opacity:0.5;border:none;background:none;cursor:pointer">×</button>
           </div>`).join('')}
-          ${done.map((g,i)=>`<div class="row" style="border-bottom:${i<done.length-1?'1px solid #F2F2F7':'none'}">
+          ${done.map((g,i)=>`<div class="row" style="border-bottom:${i<done.length-1?'1px solid var(--row-border)':'none'}">
             <div class="cb" style="background:#34C759;border:none" onclick="tGroc('${g.id}',false)">${ck()}</div>
             <span style="flex:1;font-size:16px;color:#8E8E93;text-decoration:line-through">${g.label}</span>
             <button onclick="dGroc('${g.id}')" style="color:#FF3B30;font-size:20px;opacity:0.5;border:none;background:none;cursor:pointer">×</button>
           </div>`).join('')}
-          ${done.length?`<button class="btn" onclick="clearDone()" style="width:100%;padding:12px;color:#FF3B30;font-size:14px;font-weight:600;border-top:1px solid #F2F2F7;text-align:center">Clear completed (${done.length})</button>`:''}
+          ${done.length?`<button class="btn" onclick="clearDone()" style="width:100%;padding:12px;color:#FF3B30;font-size:14px;font-weight:600;border-top:1px solid var(--row-border);text-align:center">Clear completed (${done.length})</button>`:''}
         </div>
-        ${freq.length?`<div class="sh" style="margin-bottom:6px">Frequent Items</div>
+
+        <!-- FREQUENT ITEMS LIBRARY (always shown) -->
+        <div class="sh" style="margin-bottom:6px;display:flex;justify-content:space-between;align-items:center;padding-right:16px">
+          <span>⭐ Frequent Items ${allFreq.length?'· '+allFreq.length:''}</span>
+          ${allFreq.length>0?`<button onclick="S.editFreq=!S.editFreq;render()" style="background:none;border:none;color:var(--navy);font-size:13px;font-weight:600;cursor:pointer;font-family:inherit">${S.editFreq?'Done':'Manage'}</button>`:''}
+        </div>
         <div class="card" style="margin-bottom:16px">
-          ${freq.map((g,i)=>`<div class="row" style="border-bottom:${i<freq.length-1?'1px solid #F2F2F7':'none'}">
-            <span style="flex:1;font-size:15px">${g.label}</span>
-            <button onclick="addFreq('${g.id}')" style="width:30px;height:30px;border-radius:15px;background:#1C3A6B;border:none;cursor:pointer;color:#fff;font-size:20px;font-family:inherit;display:flex;align-items:center;justify-content:center">+</button>
-          </div>`).join('')}
-        </div>`:''}
+          ${allFreq.length===0?`<div style="padding:24px 20px;text-align:center;color:var(--text-secondary);font-size:13px;line-height:1.55">Items you mark as <strong>frequent</strong> will appear here for one-tap re-adding.<br><span style="font-size:12px">Try it next time you tap + Add — tick "⭐ Save as frequent".</span></div>`:
+          allFreq.map((g,i)=>{
+            const onList=g.addedToList;
+            return `<div class="row" style="border-bottom:${i<allFreq.length-1?'1px solid var(--row-border)':'none'};${onList?'opacity:0.5':''}">
+              <span style="flex:1;font-size:15px">${g.label}${onList?' <span style="font-size:11px;color:var(--text-secondary);margin-left:6px">· already on list</span>':''}</span>
+              ${S.editFreq?`<button onclick="unmarkFreq('${g.id}')" style="color:#FF3B30;font-size:12px;font-weight:600;border:1px solid #FF3B3030;background:none;border-radius:6px;padding:4px 8px;cursor:pointer;font-family:inherit">Remove</button>`:
+              onList?`<span style="color:var(--text-secondary);font-size:11px;font-style:italic">on list</span>`:
+              `<button onclick="addFreq('${g.id}')" style="width:30px;height:30px;border-radius:15px;background:var(--navy);border:none;cursor:pointer;color:#fff;font-size:20px;font-family:inherit;display:flex;align-items:center;justify-content:center">+</button>`}
+            </div>`;
+          }).join('')}
+        </div>
       </div>
     </div>`;
 }
@@ -2662,12 +2719,34 @@ function sPersonProfile(){
           <div style="width:32px;height:32px;border-radius:16px;background:${color}18;border:2px solid ${color};display:flex;align-items:center;justify-content:center;font-size:14px;flex-shrink:0">${ev.emoji||'📅'}</div>
           <div style="flex:1">
             <div style="font-size:14px;font-weight:600;color:var(--text)">${ev.title}</div>
-            ${ev.location?`<div style="font-size:12px;color:var(--text-secondary)">📍 ${ev.location}</div>`:''}
+            ${ev.location?`<div style="font-size:12px;color:var(--text-secondary)">${locLink(ev.location)}</div>`:''}
             ${ev.dropoff||ev.pickup?`<div style="font-size:11px;color:${color};font-weight:500">${ev.dropoff?'🚗 '+ev.dropoff:''}${ev.dropoff&&ev.pickup?' · ':''}${ev.pickup?'🏠 '+ev.pickup:''}</div>`:''}
           </div>
         </div>`).join('')}
         <button onclick="go('addEvent',{${person.isAdult?`adultUid:'${person.id}'`:`childId:'${person.id}'`}})" style="width:100%;padding:13px 16px;border-top:1px solid var(--row-border);background:none;border-left:none;border-right:none;border-bottom:none;color:${color};font-size:14px;font-weight:600;cursor:pointer;font-family:inherit;text-align:center">+ Add Event for ${name.split(' ')[0]}</button>
       </div>
+
+      <!-- Reminders for this person on this day -->
+      ${(()=>{
+        const personReminders=(S.reminders||[]).filter(r=>{
+          if(r.date!==viewDateStr)return false;
+          if(person.isAdult)return r.adultUid===person.id;
+          return r.childId===person.id;
+        });
+        if(personReminders.length===0)return '';
+        return `<div class="sh" style="padding:0 16px;margin-bottom:6px">⏰ ${dayLabel}'s Reminders</div>
+        <div class="card" style="margin-bottom:14px">
+          ${personReminders.map((r,i)=>`<div class="row" style="border-bottom:${i<personReminders.length-1?'1px solid var(--row-border)':'none'};${r.done?'opacity:0.55':''}">
+            <div class="cb ${r.done?'on':''}" onclick="tReminder('${r.id}',${!r.done})" style="${r.done?'background:'+color+';border:none':'border-color:'+color}">${r.done?ck():''}</div>
+            <div style="flex:1">
+              <div style="font-size:15px;font-weight:500;color:var(--text);${r.done?'text-decoration:line-through':''}">${r.text}</div>
+              ${r.notes?`<div style="font-size:11px;color:var(--text-secondary);font-style:italic;margin-top:2px">${r.notes}</div>`:''}
+            </div>
+            <button onclick="dReminder('${r.id}')" style="color:#FF3B30;font-size:18px;opacity:0.5;border:none;background:none;cursor:pointer">×</button>
+          </div>`).join('')}
+          <button onclick="go('addReminder')" style="width:100%;padding:13px 16px;border-top:1px solid var(--row-border);background:none;border-left:none;border-right:none;border-bottom:none;color:${color};font-size:14px;font-weight:600;cursor:pointer;font-family:inherit;text-align:center">+ Add Reminder</button>
+        </div>`;
+      })()}
 
       ${person.isAdult?`
       <!-- Today's Logistics (drop-off/pick-up duties) -->
@@ -2694,7 +2773,7 @@ function sPersonProfile(){
             <div style="flex:1">
               <div style="font-size:14px;font-weight:600;color:var(--text)">${ev.title}</div>
               ${participantNames?`<div style="font-size:12px;color:var(--text-secondary)">For ${participantNames}</div>`:''}
-              ${ev.location?`<div style="font-size:12px;color:var(--text-secondary)">📍 ${ev.location}</div>`:''}
+              ${ev.location?`<div style="font-size:12px;color:var(--text-secondary)">${locLink(ev.location)}</div>`:''}
               <div style="font-size:11px;color:${color};font-weight:600">${isMyDropoff?'🚗 Drop-off':''}${isMyDropoff&&isMyPickup?' · ':''}${isMyPickup?'🏠 Pick-up':''}</div>
             </div>
           </div>`;
@@ -3976,7 +4055,37 @@ window.undoLastDelete=async function(){
 };
 window.clearDone=async()=>{const done=S.groceries.filter(g=>g.addedToList&&g.checked);for(const g of done)try{await fdel(['groceries',g.id]);}catch(e){}notify('List cleared ✅');};
 window.addFreq=async id=>{try{await fupd(['groceries',id],{addedToList:true});notify('Added to list ✅');}catch(ex){}};
+window.unmarkFreq=async id=>{
+  if(!confirm('Remove this from frequent items? It will no longer appear in your quick-add bank.'))return;
+  try{await fupd(['groceries',id],{isFrequent:false});notify('Removed from frequents');}catch(ex){}
+};
+window.replicateEvent=function(eventId){
+  const ev=S.events.find(e=>e.id===eventId);
+  if(!ev){notify('Event not found','❌');return;}
+  // Pre-load the Add Event form with this event's data
+  S.ef={
+    title:ev.title+' (copy)',
+    emoji:ev.emoji||'📅',
+    freq:ev.freq||'once',
+    days:Object.assign({Mon:false,Tue:false,Wed:false,Thu:false,Fri:false,Sat:false,Sun:false},ev.days||{}),
+    packItems:Array.isArray(ev.packItems)?[...ev.packItems]:[],
+    category:ev.category||'',
+    participantIds:Array.isArray(ev.participantIds)?[...ev.participantIds]:[ev.childId,ev.adultUid].filter(Boolean),
+    location:ev.location||'',
+    time:ev.time||'',
+    dropoff:ev.dropoff||'',
+    pickup:ev.pickup||'',
+    date:ev.date||'',
+    startDate:ev.startDate||'',
+    endDate:ev.endDate||''
+  };
+  go('addEvent');
+  notify('Event copied — edit and save 📋');
+};
 window.quickAddFreq=async id=>{try{await fupd(['groceries',id],{addedToList:true,checked:false});notify('Added to list ✅');}catch(ex){}};
+window.quickAddPlayDate=function(type){
+  go('addPlayDate',{type});
+};
 let gIsFreq=false,gIsPriv=false;
 window.toggleFreq=()=>{gIsFreq=!gIsFreq;const el=$('gfcb');if(el){el.style.background=gIsFreq?'#1C3A6B':'transparent';el.innerHTML=gIsFreq?ck():'';el.style.borderColor=gIsFreq?'#1C3A6B':'#C7C7CC';}};
 window.togglePriv=()=>{gIsPriv=!gIsPriv;const el=$('gfpriv');if(el){el.style.background=gIsPriv?'#1C3A6B':'transparent';el.innerHTML=gIsPriv?ck():'';el.style.borderColor=gIsPriv?'#1C3A6B':'#C7C7CC';}};
