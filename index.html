@@ -4796,41 +4796,76 @@ window.useDeviceLocation=()=>{
   },()=>{notify('Could not get location. Please enter manually.','⚠️');});
 };
 window.requestNotifPerm=async function(){
-  if(typeof Notification==='undefined'){notify('Notifications not supported on this browser');return;}
+  // DIAGNOSTIC VERSION - shows alert popups at every step so we can see where it fails
+  const diag=(msg)=>{try{alert('🔔 '+msg);}catch(e){}};
 
-  // ── iOS PWA gate ───────────────────────────────────────────
-  // iOS only allows push for installed PWAs (added to home screen) on iOS 16.4+
+  diag('Step 1: Function called');
+
+  if(typeof Notification==='undefined'){
+    diag('FAIL: Notification API undefined');
+    notify('Notifications not supported on this browser');
+    return;
+  }
+  diag('Step 2: Notification API available');
+
+  // iOS PWA gate
   if(isIOS&&!isStandalonePWA){
+    diag('FAIL: On iOS but not in PWA mode. Add to Home Screen first.');
     notify('On iPhone: tap Share → Add to Home Screen, then enable from there 📲','ℹ️');
     return;
   }
+  diag('Step 3: PWA mode OK (or non-iOS)');
 
-  // ── Permission request ─────────────────────────────────────
+  // Permission request
   let perm=Notification.permission;
+  diag('Step 4: Current permission = '+perm);
   if(perm!=='granted'&&perm!=='denied'){
+    diag('Step 5: Requesting permission...');
     perm=await Notification.requestPermission();
+    diag('Step 5b: Permission result = '+perm);
   }
-  if(perm!=='granted'){notify('Permission denied. Enable in browser settings.','⚠️');return;}
+  if(perm!=='granted'){
+    diag('FAIL: Permission not granted (was '+perm+')');
+    notify('Permission denied. Enable in browser settings.','⚠️');
+    return;
+  }
+  diag('Step 6: Permission granted!');
 
-  // ── Service worker + FCM token ─────────────────────────────
   try{
-    if(!('serviceWorker' in navigator)){throw new Error('Service workers not supported');}
+    if(!('serviceWorker' in navigator)){
+      throw new Error('serviceWorker not in navigator');
+    }
+    diag('Step 7: Registering service worker...');
     const swReg=await navigator.serviceWorker.register('/firebase-messaging-sw.js');
-    // Wait until SW is active before requesting FCM token
+    diag('Step 8: SW registered. State: '+(swReg.active?'active':swReg.waiting?'waiting':swReg.installing?'installing':'unknown'));
+
     if(swReg.installing||swReg.waiting){
+      diag('Step 8b: Waiting for SW to activate...');
       await new Promise(res=>{
         const sw=swReg.installing||swReg.waiting;
         sw?.addEventListener('statechange',()=>{if(sw.state==='activated')res();});
-        // Fallback timeout in case statechange never fires
-        setTimeout(res,3000);
+        setTimeout(res,5000);
       });
+      diag('Step 8c: SW wait done');
     }
-    if(!messaging){await initMessaging();}
-    if(!messaging){throw new Error('Messaging not supported on this browser');}
+
+    if(!messaging){
+      diag('Step 9: Initialising messaging...');
+      const ok=await initMessaging();
+      diag('Step 9b: initMessaging returned '+ok);
+    }
+    if(!messaging){
+      throw new Error('messaging is still null after init');
+    }
+    diag('Step 10: Messaging ready, requesting token...');
+
     const token=await getToken(messaging,{vapidKey:VAPID_KEY,serviceWorkerRegistration:swReg});
-    if(!token){throw new Error('No FCM token returned');}
-    // Save the token under the user's profile so Cloud Functions know where to push
+    diag('Step 11: getToken returned '+(token?'token of length '+token.length:'NULL'));
+
+    if(!token){throw new Error('getToken returned null/empty');}
+
     if(S.user?.uid){
+      diag('Step 12: Saving token to Firestore for uid '+S.user.uid.slice(0,8)+'...');
       await setDoc(doc(db,'users',S.user.uid,'fcmTokens',token),{
         token,
         platform:isIOS?'ios':(/Android/.test(navigator.userAgent)?'android':'web'),
@@ -4839,14 +4874,20 @@ window.requestNotifPerm=async function(){
         familyId:S.familyId||'',
         updatedAt:new Date()
       });
+      diag('Step 13: Token saved to Firestore SUCCESS!');
+    }else{
+      diag('FAIL: S.user.uid is missing, cannot save token');
     }
+
     notify('Notifications enabled! 🔔');
-    new Notification('HomeBase notifications enabled!',{body:"You'll get reminders for events, packing, and more.",tag:'enable-confirmation'});
+    try{
+      new Notification('HomeBase notifications enabled!',{body:"You'll get reminders for events, packing, and more.",tag:'enable-confirmation'});
+    }catch(e){diag('Local Notification show failed: '+e.message);}
     render();
   }catch(ex){
     console.error('[HomeBase] FCM enable failed',ex);
-    // Fall back to local-only notifications (the original behaviour)
-    notify('Basic notifications on. Push (when app closed) needs more setup.','⚠️');
+    diag('ERROR at registration: '+(ex.message||ex)+'\n\nName: '+(ex.name||'')+'\nCode: '+(ex.code||''));
+    notify('Push setup failed - see alert above','⚠️');
     render();
   }
 };
