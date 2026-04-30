@@ -4859,7 +4859,21 @@ window.requestNotifPerm=async function(){
     }
     diag('Step 10: Messaging ready, requesting token...');
 
-    const token=await getToken(messaging,{vapidKey:VAPID_KEY,serviceWorkerRegistration:swReg});
+    // Wrap getToken in its own try/catch with a 15s timeout to surface errors
+    let token=null;
+    try{
+      const tokenPromise=getToken(messaging,{vapidKey:VAPID_KEY,serviceWorkerRegistration:swReg});
+      const timeoutPromise=new Promise((_,rej)=>setTimeout(()=>rej(new Error('TIMEOUT after 15 seconds')),15000));
+      token=await Promise.race([tokenPromise,timeoutPromise]);
+    }catch(getErr){
+      diag('STEP 10 FAILED:\n\nName: '+(getErr.name||'?')+
+           '\nCode: '+(getErr.code||'?')+
+           '\nMessage: '+(getErr.message||String(getErr))+
+           '\n\nNotification.permission: '+Notification.permission+
+           '\nVAPID len: '+(VAPID_KEY?VAPID_KEY.length:0)+
+           '\nSW scope: '+(swReg.scope||'?'));
+      throw getErr;
+    }
     diag('Step 11: getToken returned '+(token?'token of length '+token.length:'NULL'));
 
     if(!token){throw new Error('getToken returned null/empty');}
