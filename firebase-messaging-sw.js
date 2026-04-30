@@ -11,7 +11,7 @@ firebase.initializeApp({
   projectId: "homebase-56151",
   storageBucket: "homebase-56151.firebasestorage.app",
   messagingSenderId: "647157335008",
-  appId: "1:747157335008:web:a15452fabd943bf5a8a185"
+  appId: "1:647157335008:web:a15452fabd943bf5a8a185"
 });
 
 const messaging = firebase.messaging();
