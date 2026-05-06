@@ -107,6 +107,12 @@ body{font-family:-apple-system,BlinkMacSystemFont,system-ui,sans-serif;backgroun
 @keyframes packed{from{transform:scale(0.95);opacity:0}to{transform:scale(1);opacity:1}}
 @keyframes spin{to{transform:rotate(360deg)}}
 @keyframes hbDot{0%,80%,100%{opacity:0.25;transform:translateY(0)}40%{opacity:1;transform:translateY(-4px)}}
+/* Collapsible card content - uses grid-template-rows trick for smooth height transition */
+.collapsible{display:grid;grid-template-rows:0fr;transition:grid-template-rows 200ms ease-out}
+.collapsible.open{grid-template-rows:1fr}
+.collapsible>.collapsible-inner{overflow:hidden;min-height:0}
+.collapse-chev{transition:transform 200ms ease-out;display:inline-block}
+.collapse-chev.open{transform:rotate(180deg)}
 @keyframes hbSplashIn{from{opacity:0;transform:translateY(8px)}to{opacity:1;transform:translateY(0)}}
 @keyframes fin{from{opacity:0;transform:translateY(6px)}to{opacity:1;transform:translateY(0)}}
 </style>
@@ -1066,30 +1072,26 @@ function sToday(){
         <button onclick="changeDayOffset(1)" style="width:34px;height:34px;border-radius:17px;background:var(--bg);border:none;color:var(--text);font-size:20px;font-weight:300;cursor:pointer;font-family:inherit;display:flex;align-items:center;justify-content:center;flex-shrink:0">›</button>
         <button onclick="S.dayOffset=0;render()" title="Back to today" style="padding:8px 14px;border-radius:14px;background:${(S.dayOffset||0)===0?'#FF9500':'#1C3A6B'};border:none;color:#fff;font-size:12px;font-weight:700;cursor:pointer;font-family:inherit;flex-shrink:0;letter-spacing:0.3px">Today</button>
       </div>
-      <div style="display:flex;gap:10px;overflow-x:auto;padding:14px 0 4px;-ms-overflow-style:none;scrollbar-width:none">
+      <div style="display:flex;gap:14px;overflow-x:auto;padding:16px 4px 8px;-ms-overflow-style:none;scrollbar-width:none">
         ${S.children.map(c=>{
           const cpk=packingForChildOnDate(c, getViewDateStr());
           const cpacked=cpk.filter(p=>p.checked).length;
-          const cpct=cpk.length?cpacked/cpk.length:0;
-          const cEvs=eventsForChildOnDate(c, getViewDateStr());
-          return `<div onclick="go('personProfile',{kind:'child',childId:'${c.id}'})" style="min-width:130px;flex-shrink:0;background:var(--card);border-radius:14px;padding:12px;box-shadow:var(--shadow-md);border-top:3px solid ${c.color||NAVY};cursor:pointer">
-            <div style="display:flex;align-items:center;gap:8px;margin-bottom:8px">
-              ${av(c.name,c.color||NAVY,32,c.photoURL)}
-              <div>
-                <div style="font-size:14px;font-weight:700;color:var(--text)">${c.name}</div>
-                <div style="font-size:11px;color:var(--text-secondary)">${c.year||''}</div>
-              </div>
-            </div>
-            ${cpk.length>0?`<div style="height:4px;background:#F2F2F7;border-radius:2px;overflow:hidden;margin-bottom:4px">
-              <div style="height:100%;width:${cpct*100}%;background:${cpct===1?'#34C759':c.color||NAVY};border-radius:2px;transition:width 0.3s"></div>
-            </div>
-            <div style="font-size:11px;color:${cpct===1?'#34C759':c.color||NAVY};font-weight:600">${cpacked}/${cpk.length} packed</div>`:`<div style="font-size:11px;color:var(--text-secondary);font-weight:500">Nothing to pack</div>`}
-            ${cEvs.length?`<div style="font-size:11px;color:var(--text-secondary);margin-top:3px">📅 ${cEvs.length} event${cEvs.length>1?'s':''}</div>`:''}
+          const allDone=cpk.length>0&&cpacked===cpk.length;
+          const col=c.color||NAVY;
+          return `<div onclick="go('personProfile',{kind:'child',childId:'${c.id}'})" style="flex-shrink:0;display:flex;flex-direction:column;align-items:center;gap:6px;cursor:pointer;width:90px">
+            ${c.photoURL
+              ?`<div style="width:80px;height:80px;border-radius:40px;border:3px solid ${col};background-image:url('${c.photoURL}');background-size:cover;background-position:center;box-shadow:0 4px 12px ${col}30"></div>`
+              :`<div style="width:80px;height:80px;border-radius:40px;background:${col};display:flex;align-items:center;justify-content:center;color:#fff;font-size:26px;font-weight:800;box-shadow:0 4px 12px ${col}30">${c.name.split(' ').map(n=>n[0]).slice(0,2).join('').toUpperCase()}</div>`}
+            <div style="font-size:13px;font-weight:700;color:var(--text);text-align:center;line-height:1.15;max-width:90px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap">${c.name.split(' ')[0]}</div>
+            ${cpk.length>0
+              ?`<div style="font-size:11px;font-weight:600;color:${allDone?'#34C759':col};line-height:1">🎒 ${cpacked}/${cpk.length}${allDone?' ✓':''}</div>`
+              :`<div style="font-size:11px;font-weight:500;color:var(--text-secondary);line-height:1">·</div>`}
           </div>`;
         }).join('')}
         ${members().filter(m=>['Mum','Dad','Stepmum','Stepdad'].includes(m.relationship||'')).map(m=>{
           const photoURL=m.photoURL||'';
-          const ev=S.events.filter(e=>e.dropoff===m.name||e.pickup===m.name).filter(ev=>{
+          const col=m.color||NAVY;
+          const evCount=S.events.filter(e=>e.dropoff===m.name||e.pickup===m.name).filter(ev=>{
             if(!ev.freq||ev.freq==='once')return ev.date===getViewDateStr();
             const start=new Date((ev.startDate||ev.date||getViewDateStr())+'T12:00');
             const end=ev.endDate?new Date(ev.endDate+'T12:00'):null;
@@ -1097,22 +1099,20 @@ function sToday(){
             if(now<start||(end&&now>end))return false;
             return ev.days&&ev.days[DAYSH[now.getDay()]];
           }).length;
-          const relIcon={Mum:'👩',Dad:'👨',Stepmum:'👩',Stepdad:'👨'}[m.relationship]||'';
-          return `<div onclick="go('personProfile',{kind:'adult',uid:'${m.uid}'})" style="min-width:130px;flex-shrink:0;background:var(--card);border-radius:14px;padding:12px;box-shadow:var(--shadow-md);border-top:3px solid ${m.color};cursor:pointer;position:relative">
-            <div style="position:absolute;top:6px;right:8px;font-size:14px">${relIcon}</div>
-            <div style="display:flex;align-items:center;gap:8px;margin-bottom:8px">
-              ${av(m.name,m.color,32,photoURL)}
-              <div>
-                <div style="font-size:14px;font-weight:700;color:var(--text)">${m.name.split(' ')[0]}</div>
-                <div style="font-size:11px;color:var(--text-secondary)">${m.relationship||m.role}</div>
-              </div>
-            </div>
-            ${ev>0?`<div style="font-size:11px;color:${m.color};font-weight:600">🚗 ${ev} run${ev>1?'s':''}</div>`:`<div style="font-size:11px;color:var(--text-secondary)">No runs today</div>`}
+          return `<div onclick="go('personProfile',{kind:'adult',uid:'${m.uid}'})" style="flex-shrink:0;display:flex;flex-direction:column;align-items:center;gap:6px;cursor:pointer;width:90px">
+            ${photoURL
+              ?`<div style="width:80px;height:80px;border-radius:40px;border:3px solid ${col};background-image:url('${photoURL}');background-size:cover;background-position:center;box-shadow:0 4px 12px ${col}30"></div>`
+              :`<div style="width:80px;height:80px;border-radius:40px;background:${col};display:flex;align-items:center;justify-content:center;color:#fff;font-size:26px;font-weight:800;box-shadow:0 4px 12px ${col}30">${m.name.split(' ').map(n=>n[0]).slice(0,2).join('').toUpperCase()}</div>`}
+            <div style="font-size:13px;font-weight:700;color:var(--text);text-align:center;line-height:1.15;max-width:90px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap">${m.name.split(' ')[0]}</div>
+            ${evCount>0
+              ?`<div style="font-size:11px;font-weight:600;color:${col};line-height:1">🚗 ${evCount} run${evCount>1?'s':''}</div>`
+              :`<div style="font-size:11px;font-weight:500;color:var(--text-secondary);line-height:1">·</div>`}
           </div>`;
         }).join('')}
-        <div onclick="go('addChild')" style="min-width:96px;flex-shrink:0;background:var(--card);border-radius:14px;padding:12px;box-shadow:var(--shadow-sm);border:2px dashed var(--border);cursor:pointer;display:flex;flex-direction:column;align-items:center;justify-content:center;gap:6px">
-          <div style="font-size:24px;color:var(--navy)">＋</div>
-          <div style="font-size:12px;font-weight:600;color:var(--navy)">Add Child</div>
+        <div onclick="go('addChild')" style="flex-shrink:0;display:flex;flex-direction:column;align-items:center;gap:6px;cursor:pointer;width:90px">
+          <div style="width:80px;height:80px;border-radius:40px;border:2px dashed var(--border);display:flex;align-items:center;justify-content:center;color:var(--navy);font-size:32px;font-weight:300">＋</div>
+          <div style="font-size:13px;font-weight:600;color:var(--navy);text-align:center;line-height:1.15">Add Child</div>
+          <div style="font-size:11px;color:var(--text-secondary);line-height:1">·</div>
         </div>
       </div>
     </div>
@@ -1221,136 +1221,130 @@ function sToday(){
         </div>`;
       })()}
 
-      <!-- FAMILY ACTIVITIES TODAY -->
-      <div class="sh" style="margin-bottom:6px;display:flex;align-items:center;justify-content:space-between;padding-right:16px">
-        <span>📅 ${(()=>{const o=S.dayOffset||0;return o===0?"Today's Activities":o===1?"Tomorrow's Activities":o===-1?"Yesterday's Activities":DAYNAMES[viewDateObj.getDay()]+"'s Activities";})()}</span>
-        ${(()=>{
-          // Count events where YOU are responsible
-          const myName=S.user?.displayName||'';
-          const myFirstName=myName.split(' ')[0];
-          const myCount=todayFamilyEvs.filter(ev=>(ev.dropoff===myName||ev.dropoff===myFirstName||ev.pickup===myName||ev.pickup===myFirstName)).length;
-          return myCount>0?`<span style="font-size:10px;font-weight:600;background:#FF9500;color:#fff;padding:3px 8px;border-radius:8px;text-transform:none;letter-spacing:0">${myCount} for ${myFirstName||'you'}</span>`:'';
-        })()}
-      </div>
-      <div class="card" style="margin-bottom:14px">
-        ${todayFamilyEvs.length===0?'<div class="row" style="color:#8E8E93;font-size:14px;justify-content:center">Nothing scheduled '+(S.dayOffset===0||!S.dayOffset?'today':S.dayOffset===1?'tomorrow':'this day')+' 🎉</div>':
-          todayFamilyEvs.map((ev,i)=>{
-            const ec=S.children.find(c=>c.id===ev.childId);
-            const adultMember=ev.adultUid?members().find(x=>x.uid===ev.adultUid):null;
-            const col=ec?.color||adultMember?.color||NAVY;
-            const ownerName=ec?ec.name:adultMember?adultMember.name:'Family';
-            // Check if logged-in user is responsible
-          const myName=S.user?.displayName||'';
-          const myFirstName=myName.split(' ')[0];
+      <!-- SCHOOL + ACTIVITIES (split by category) -->
+      ${(()=>{
+        const schoolCats=['school','school-event','school-subject'];
+        const isSchool=ev=>schoolCats.includes(ev.category||'');
+        const schoolEvs=todayFamilyEvs.filter(isSchool);
+        const otherEvs=todayFamilyEvs.filter(ev=>!isSchool(ev));
+        const myName=S.user?.displayName||'';
+        const myFirstName=myName.split(' ')[0];
+
+        // Renderer for one event row (matches existing styling)
+        const renderRow=(ev,i,arr)=>{
+          const ec=S.children.find(c=>c.id===ev.childId);
+          const adultMember=ev.adultUid?members().find(x=>x.uid===ev.adultUid):null;
+          const col=ec?.color||adultMember?.color||NAVY;
+          const ownerName=ec?ec.name:adultMember?adultMember.name:'Family';
           const isMyDropoff=ev.dropoff&&(ev.dropoff===myName||ev.dropoff===myFirstName);
           const isMyPickup=ev.pickup&&(ev.pickup===myName||ev.pickup===myFirstName);
           const isMine=isMyDropoff||isMyPickup;
-          return `<div class="row" style="border-bottom:${i<todayFamilyEvs.length-1?'1px solid var(--row-border)':'none'};${isMine?'background:#FFF8E5':''}">
-              <div style="width:44px;text-align:right;font-size:12px;font-weight:600;color:var(--text-secondary);flex-shrink:0">${ev.time||''}</div>
-              <div style="width:32px;height:32px;border-radius:16px;background:${col}18;border:2px solid ${col};display:flex;align-items:center;justify-content:center;font-size:14px;flex-shrink:0">${ev.emoji||'📅'}</div>
-              <div style="flex:1">
-                <div style="font-size:14px;font-weight:600;display:flex;align-items:center;gap:6px;flex-wrap:wrap">${ev.title}${isMine?'<span style="font-size:10px;font-weight:700;padding:2px 7px;border-radius:8px;background:#FF9500;color:#fff">YOU</span>':''}${ev.category==='school'?'<span style="font-size:10px;font-weight:700;padding:2px 7px;border-radius:8px;background:#1C3A6B18;color:#1C3A6B">🏫 SCHOOL</span>':ev.category==='sport'?'<span style="font-size:10px;font-weight:700;padding:2px 7px;border-radius:8px;background:#34C75920;color:#1F8E3F">⚽ SPORT</span>':ev.category==='music'?'<span style="font-size:10px;font-weight:700;padding:2px 7px;border-radius:8px;background:#AF52DE20;color:#7B2CBF">🎵 MUSIC</span>':ev.category==='medical'?'<span style="font-size:10px;font-weight:700;padding:2px 7px;border-radius:8px;background:#FF3B3020;color:#C0392B">🏥 MEDICAL</span>':ev.category==='social'?'<span style="font-size:10px;font-weight:700;padding:2px 7px;border-radius:8px;background:#FF6B9D20;color:#D6336C">🎉 SOCIAL</span>':''}</div>
-                <div style="font-size:12px;color:var(--text-secondary)">${ownerName}${ev.location?' · '+locLink(ev.location):''}</div>
-                ${ev.dropoff||ev.pickup?`<div style="font-size:11px;color:${NAVY};font-weight:500">${ev.dropoff?(isMyDropoff?'🚗 <strong>'+ev.dropoff+' (you)</strong>':'🚗 '+ev.dropoff):''}${ev.dropoff&&ev.pickup?' · ':''}${ev.pickup?(isMyPickup?'🏠 <strong>'+ev.pickup+' (you)</strong>':'🏠 '+ev.pickup):''}</div>`:''}
-              </div>
-            </div>`;
-          }).join('')}
-      </div>
+          const catChip=ev.category==='sport'?'<span style="font-size:10px;font-weight:700;padding:2px 7px;border-radius:8px;background:#34C75920;color:#1F8E3F">⚽ SPORT</span>':ev.category==='music'?'<span style="font-size:10px;font-weight:700;padding:2px 7px;border-radius:8px;background:#AF52DE20;color:#7B2CBF">🎵 MUSIC</span>':ev.category==='medical'?'<span style="font-size:10px;font-weight:700;padding:2px 7px;border-radius:8px;background:#FF3B3020;color:#C0392B">🏥 MEDICAL</span>':ev.category==='social'?'<span style="font-size:10px;font-weight:700;padding:2px 7px;border-radius:8px;background:#FF6B9D20;color:#D6336C">🎉 SOCIAL</span>':ev.category==='work'?'<span style="font-size:10px;font-weight:700;padding:2px 7px;border-radius:8px;background:#80808020;color:#5A5A5C">💼 WORK</span>':'';
+          return `<div class="row" style="border-bottom:${i<arr.length-1?'1px solid var(--row-border)':'none'};${isMine?'background:#FFF8E5':''}">
+            <div style="width:44px;text-align:right;font-size:12px;font-weight:600;color:var(--text-secondary);flex-shrink:0">${ev.time||''}</div>
+            <div style="width:32px;height:32px;border-radius:16px;background:${col}18;border:2px solid ${col};display:flex;align-items:center;justify-content:center;font-size:14px;flex-shrink:0">${ev.emoji||'📅'}</div>
+            <div style="flex:1">
+              <div style="font-size:14px;font-weight:600;display:flex;align-items:center;gap:6px;flex-wrap:wrap">${ev.title}${isMine?'<span style="font-size:10px;font-weight:700;padding:2px 7px;border-radius:8px;background:#FF9500;color:#fff">YOU</span>':''}${catChip}</div>
+              <div style="font-size:12px;color:var(--text-secondary)">${ownerName}${ev.location?' · '+locLink(ev.location):''}</div>
+              ${ev.dropoff||ev.pickup?`<div style="font-size:11px;color:${NAVY};font-weight:500">${ev.dropoff?(isMyDropoff?'🚗 <strong>'+ev.dropoff+' (you)</strong>':'🚗 '+ev.dropoff):''}${ev.dropoff&&ev.pickup?' · ':''}${ev.pickup?(isMyPickup?'🏠 <strong>'+ev.pickup+' (you)</strong>':'🏠 '+ev.pickup):''}</div>`:''}
+            </div>
+          </div>`;
+        };
 
-      <!-- COMBINED PACKING LIST -->
-      ${(()=>{
-        const allKids=S.children;
-        // Use the date the user is currently viewing (respects day arrows)
-        const dStr=getViewDateStr();
-        // For each child, get only items needed for events on this date
-        const perChildPacking=allKids.map(c=>({child:c,pk:packingForChildOnDate(c,dStr)}));
-        const totalItems=perChildPacking.reduce((sum,x)=>sum+x.pk.length,0);
-        const packed=perChildPacking.reduce((sum,x)=>sum+x.pk.filter(p=>p.checked).length,0);
-        if(totalItems===0)return '';
-        const dayLabel=(S.dayOffset||0)===0?"Today":(S.dayOffset||0)===1?"Tomorrow":(S.dayOffset||0)===-1?"Yesterday":DAYNAMES[viewDateObj.getDay()];
-        return `<div class="sh" style="margin-bottom:6px;display:flex;justify-content:space-between;align-items:center;padding-right:16px">
-          <span>🎒 ${dayLabel}'s Packing · ${packed}/${totalItems}</span>
-        </div>
-        <div class="card" style="margin-bottom:14px">
-          ${perChildPacking.filter(x=>x.pk.length>0).map(({child:c,pk})=>{
-            const cpacked=pk.filter(p=>p.checked).length;
-            const allDone=cpacked===pk.length;
-            return `<div style="padding:10px 16px;border-bottom:1px solid var(--row-border)">
-              <div onclick="go('personProfile',{kind:'child',childId:'${c.id}'})" style="display:flex;align-items:center;gap:8px;margin-bottom:6px;cursor:pointer">
-                ${av(c.name,c.color||NAVY,28,c.photoURL)}
-                <div style="flex:1">
-                  <div style="font-size:14px;font-weight:700;color:var(--text)">${c.name}</div>
-                </div>
-                <div style="font-size:12px;font-weight:700;padding:3px 10px;border-radius:12px;background:${allDone?'#34C75920':(c.color||NAVY)+'18'};color:${allDone?'#34C759':(c.color||NAVY)}">${cpacked}/${pk.length}${allDone?' ✓':''}</div>
-              </div>
-              <div style="display:flex;flex-direction:column;gap:4px">
-                ${pk.slice(0,4).map(item=>`<div style="display:flex;align-items:center;gap:8px;padding:4px 0;font-size:13px">
-                  <div class="cb ${item.checked?'on':''}" style="${item.checked?'background:'+(c.color||NAVY)+';border:none':'border-color:'+(c.color||NAVY)};width:18px;height:18px" onclick="tPack('${c.id}','${item.id}',${!item.checked})">${item.checked?ck():''}</div>
-                  <span style="flex:1;color:${item.checked?'var(--text-secondary)':'var(--text)'};text-decoration:${item.checked?'line-through':'none'}">${item.label}</span>
-                </div>`).join('')}
-                ${pk.length>4?`<div style="font-size:11px;color:var(--text-secondary);padding-top:2px">+${pk.length-4} more — tap to view all</div>`:''}
-              </div>
-            </div>`;
-          }).join('')}
-        </div>`;
+        const myCount=todayFamilyEvs.filter(ev=>(ev.dropoff===myName||ev.dropoff===myFirstName||ev.pickup===myName||ev.pickup===myFirstName)).length;
+        const youChip=myCount>0?`<span style="font-size:10px;font-weight:600;background:#FF9500;color:#fff;padding:3px 8px;border-radius:8px;text-transform:none;letter-spacing:0">${myCount} for ${myFirstName||'you'}</span>`:'';
+
+        let html='';
+        // School section (only if events exist)
+        if(schoolEvs.length>0){
+          html+=`<div class="sh" style="margin-bottom:6px;display:flex;align-items:center;justify-content:space-between;padding-right:16px">
+            <span>🏫 School</span>
+            <span style="font-size:10px;font-weight:600;background:#1C3A6B18;color:#1C3A6B;padding:3px 8px;border-radius:8px;text-transform:none;letter-spacing:0">${schoolEvs.length}</span>
+          </div>
+          <div class="card" style="margin-bottom:14px">
+            ${schoolEvs.map((ev,i)=>renderRow(ev,i,schoolEvs)).join('')}
+          </div>`;
+        }
+        // Activities section (only if events exist)
+        if(otherEvs.length>0){
+          html+=`<div class="sh" style="margin-bottom:6px;display:flex;align-items:center;justify-content:space-between;padding-right:16px">
+            <span>📅 Activities</span>
+            ${youChip||`<span style="font-size:10px;font-weight:600;background:var(--bg);color:var(--text-secondary);padding:3px 8px;border-radius:8px;text-transform:none;letter-spacing:0">${otherEvs.length}</span>`}
+          </div>
+          <div class="card" style="margin-bottom:14px">
+            ${otherEvs.map((ev,i)=>renderRow(ev,i,otherEvs)).join('')}
+          </div>`;
+        }
+        // If both empty - show single "nothing scheduled" message
+        if(schoolEvs.length===0&&otherEvs.length===0){
+          const dayWord=(S.dayOffset===0||!S.dayOffset)?'today':(S.dayOffset===1?'tomorrow':'this day');
+          html+=`<div class="sh" style="margin-bottom:6px">📅 ${(()=>{const o=S.dayOffset||0;return o===0?"Today's Activities":o===1?"Tomorrow's Activities":o===-1?"Yesterday's Activities":DAYNAMES[viewDateObj.getDay()]+"'s Activities";})()}</div>
+          <div class="card" style="margin-bottom:14px">
+            <div class="row" style="color:#8E8E93;font-size:14px;justify-content:center">Nothing scheduled ${dayWord} 🎉</div>
+          </div>`;
+        }
+        return html;
       })()}
 
-      <!-- DINNERS THIS WEEK -->
-      ${upcomingDinners.length>0?`<div class="sh" style="margin-bottom:6px;display:flex;justify-content:space-between;align-items:center;padding-right:16px">
-        <span>🍽 This Week's Dinners</span>
-        <button onclick="setTab('lists');S.listTab='dinners';render()" style="background:none;border:none;color:#1C3A6B;font-size:13px;font-weight:600;cursor:pointer;font-family:inherit">View all ›</button>
-      </div>
-      <div class="card" style="margin-bottom:14px">
-        ${upcomingDinners.map((d,i,arr)=>{
-          const dt=new Date(d.date+'T12:00');
-          const isToday=d.date===todayStr;
-          return `<div class="row" style="border-bottom:${i<arr.length-1?'1px solid #F2F2F7':'none'}">
-            <div style="width:50px;flex-shrink:0;font-size:11px;font-weight:700;color:${isToday?'#FF3B30':'#8E8E93'}">${isToday?'TODAY':DAYSH[dt.getDay()].toUpperCase()}</div>
-            <div style="flex:1">
-              <div style="font-size:14px;font-weight:600">${d.meal}</div>
-              ${d.cook?`<div style="font-size:12px;color:#8E8E93">👨‍🍳 ${d.cook}</div>`:''}
+      <!-- DINNERS THIS WEEK (collapsible) -->
+      ${upcomingDinners.length>0?`<div class="card" style="margin-bottom:14px;overflow:hidden">
+        <div onclick="toggleSection('dinners')" style="display:flex;align-items:center;gap:10px;padding:13px 16px;cursor:pointer;user-select:none">
+          <span style="font-size:18px">🍽</span>
+          <span style="flex:1;font-size:14px;font-weight:700;color:var(--text)">This Week's Dinners</span>
+          <span style="font-size:12px;font-weight:600;color:var(--text-secondary);background:var(--bg);padding:3px 10px;border-radius:10px">${upcomingDinners.length}</span>
+          <span class="collapse-chev ${S.openSections?.dinners?'open':''}" style="font-size:13px;color:var(--text-secondary)">▾</span>
+        </div>
+        <div class="collapsible ${S.openSections?.dinners?'open':''}">
+          <div class="collapsible-inner">
+            <div style="border-top:1px solid var(--row-border)">
+              ${upcomingDinners.map((d,i,arr)=>{
+                const dt=new Date(d.date+'T12:00');
+                const isToday=d.date===todayStr;
+                return `<div class="row" style="border-bottom:${i<arr.length-1?'1px solid var(--row-border)':'none'}">
+                  <div style="width:50px;flex-shrink:0;font-size:11px;font-weight:700;color:${isToday?'#FF3B30':'var(--text-secondary)'}">${isToday?'TODAY':DAYSH[dt.getDay()].toUpperCase()}</div>
+                  <div style="flex:1">
+                    <div style="font-size:14px;font-weight:600">${d.meal}</div>
+                    ${d.cook?`<div style="font-size:12px;color:var(--text-secondary)">👨‍🍳 ${d.cook}</div>`:''}
+                  </div>
+                </div>`;
+              }).join('')}
+              <div style="padding:10px 16px;text-align:center;border-top:1px solid var(--row-border)">
+                <button onclick="event.stopPropagation();setTab('lists');S.listTab='dinners';render()" style="background:none;border:none;color:var(--navy);font-size:13px;font-weight:600;cursor:pointer;font-family:inherit">View all dinners ›</button>
+              </div>
             </div>
-          </div>`;
-        }).join('')}
+          </div>
+        </div>
       </div>`:''}
 
-      <!-- SHOPPING LIST PREVIEW -->
-      <div class="sh" style="margin-bottom:6px;display:flex;justify-content:space-between;align-items:center;padding-right:16px">
-        <span>🛒 Shopping List · ${shoppingTodo.length} ${shoppingTodo.length===1?'item':'items'}</span>
-        <button onclick="setTab('lists');S.listTab='groceries';render()" style="background:none;border:none;color:#1C3A6B;font-size:13px;font-weight:600;cursor:pointer;font-family:inherit">View all ›</button>
-      </div>
-      <div class="card" style="margin-bottom:14px">
-        ${shoppingTodo.length===0?`<div style="padding:14px;text-align:center;color:var(--text-secondary);font-size:14px">List is empty</div>`:
-          shoppingTodo.slice(0,5).map((g,i,arr)=>`<div class="row" style="border-bottom:1px solid var(--row-border)">
-            <div class="cb" onclick="tGroc('${g.id}',true)" style="border-color:#C7C7CC"></div>
-            <span style="flex:1;font-size:15px">${g.label}${g.quantity>1?' ×'+g.quantity:''}</span>
-          </div>`).join('')}
-        ${shoppingTodo.length>5?`<div class="row" style="justify-content:center;color:var(--text-secondary);font-size:13px;border-bottom:1px solid var(--row-border)">+${shoppingTodo.length-5} more items</div>`:''}
-        <!-- Inline quick-add row -->
-        <div style="display:flex;align-items:center;gap:8px;padding:10px 12px">
-          <input id="todayGrocInput" type="text" placeholder="Add an item..." onkeydown="if(event.key==='Enter')quickAddGroc()" style="flex:1;border:none;background:transparent;font-size:15px;font-family:inherit;color:var(--text);outline:none;padding:4px 0"/>
-          <button onclick="quickAddGroc()" style="padding:6px 14px;border-radius:10px;background:var(--navy);border:none;color:#fff;font-size:13px;font-weight:600;cursor:pointer;font-family:inherit;flex-shrink:0">+ Add</button>
+      <!-- SHOPPING LIST (collapsible) -->
+      <div class="card" style="margin-bottom:14px;overflow:hidden">
+        <div onclick="toggleSection('shopping')" style="display:flex;align-items:center;gap:10px;padding:13px 16px;cursor:pointer;user-select:none">
+          <span style="font-size:18px">🛒</span>
+          <span style="flex:1;font-size:14px;font-weight:700;color:var(--text)">Shopping List</span>
+          <span style="font-size:12px;font-weight:600;color:${shoppingTodo.length>0?'var(--text)':'var(--text-secondary)'};background:${shoppingTodo.length>0?'var(--navy-soft)':'var(--bg)'};padding:3px 10px;border-radius:10px">${shoppingTodo.length} ${shoppingTodo.length===1?'item':'items'}</span>
+          <span class="collapse-chev ${S.openSections?.shopping?'open':''}" style="font-size:13px;color:var(--text-secondary)">▾</span>
+        </div>
+        <div class="collapsible ${S.openSections?.shopping?'open':''}">
+          <div class="collapsible-inner">
+            <div style="border-top:1px solid var(--row-border)">
+              ${shoppingTodo.length===0?`<div style="padding:14px;text-align:center;color:var(--text-secondary);font-size:14px">List is empty</div>`:
+                shoppingTodo.slice(0,5).map(g=>`<div class="row" style="border-bottom:1px solid var(--row-border)">
+                  <div class="cb" onclick="event.stopPropagation();tGroc('${g.id}',true)" style="border-color:#C7C7CC"></div>
+                  <span style="flex:1;font-size:15px">${g.label}${g.quantity>1?' ×'+g.quantity:''}</span>
+                </div>`).join('')}
+              ${shoppingTodo.length>5?`<div class="row" style="justify-content:center;color:var(--text-secondary);font-size:13px;border-bottom:1px solid var(--row-border)">+${shoppingTodo.length-5} more items</div>`:''}
+              <!-- Inline quick-add row -->
+              <div style="display:flex;align-items:center;gap:8px;padding:10px 12px" onclick="event.stopPropagation()">
+                <input id="todayGrocInput" type="text" placeholder="Add an item..." onkeydown="if(event.key==='Enter')quickAddGroc()" onclick="event.stopPropagation()" style="flex:1;border:none;background:transparent;font-size:15px;font-family:inherit;color:var(--text);outline:none;padding:4px 0"/>
+                <button onclick="event.stopPropagation();quickAddGroc()" style="padding:6px 14px;border-radius:10px;background:var(--navy);border:none;color:#fff;font-size:13px;font-weight:600;cursor:pointer;font-family:inherit;flex-shrink:0">+ Add</button>
+              </div>
+              <div style="padding:8px 16px 12px;text-align:center;border-top:1px solid var(--row-border)">
+                <button onclick="event.stopPropagation();setTab('lists');S.listTab='groceries';render()" style="background:none;border:none;color:var(--navy);font-size:13px;font-weight:600;cursor:pointer;font-family:inherit">View full list ›</button>
+              </div>
+            </div>
+          </div>
         </div>
       </div>
-
-      <!-- URGENT ASSESSMENTS -->
-      ${urgentAssess.length>0?`<div class="sh" style="margin-bottom:6px;display:flex;justify-content:space-between;align-items:center;padding-right:16px">
-        <span>📚 Upcoming Assessments</span>
-        <button onclick="setTab('lists');S.listTab='assessments';render()" style="background:none;border:none;color:#1C3A6B;font-size:13px;font-weight:600;cursor:pointer;font-family:inherit">View all ›</button>
-      </div>
-      <div class="card" style="margin-bottom:14px">
-        ${urgentAssess.slice(0,3).map((a,i,arr)=>{
-          const ec=S.children.find(c=>c.id===a.childId);
-          return `<div class="row" style="border-bottom:${i<arr.length-1?'1px solid #F2F2F7':'none'}">
-            ${ec?av(ec.name,ec.color||NAVY,32,ec.photoURL):'<div style="width:32px"></div>'}
-            <div style="flex:1">
-              <div style="font-size:14px;font-weight:600">${a.title}</div>
-              <div style="font-size:12px;color:#8E8E93">${a.subject||''} · Due ${a.due||''}</div>
-            </div>
-            <div style="font-size:11px;font-weight:700;color:#FF3B30;background:#FFF0EE;padding:3px 8px;border-radius:14px;white-space:nowrap">${a.daysLeft}d</div>
-          </div>`;
-        }).join('')}
-      </div>`:''}
     </div>
 
     <div class="fab">
@@ -5290,6 +5284,11 @@ window.tReminder=async function(id,val){
 };
 window.dReminder=async function(id){
   try{await fdel(['reminders',id]);notify('Reminder removed');}catch(ex){notify('Delete failed: '+(ex.message||ex),'⚠️');}
+};
+window.toggleSection=function(key){
+  if(!S.openSections)S.openSections={};
+  S.openSections[key]=!S.openSections[key];
+  render();
 };
 window.changeDayOffset=function(delta){
   S.dayOffset=(S.dayOffset||0)+delta;
