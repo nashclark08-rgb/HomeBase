@@ -3778,7 +3778,24 @@ window.hForgotPassword=async()=>{
     if(err){err.style.color='#FF3B30';err.textContent=authErrMsg(ex.code,ex.message);}
   }
 };
-window.hGoogle=async()=>{try{await signInWithPopup(auth,gp);}catch(ex){}};
+window.hGoogle=async()=>{
+  try{
+    await signInWithPopup(auth,gp);
+  }catch(ex){
+    const code=ex.code||'';
+    // User cancelled or closed the popup - no error needed
+    if(code==='auth/popup-closed-by-user'||code==='auth/cancelled-popup-request')return;
+    // Real error - tell the user
+    let msg='Google sign-in failed';
+    if(code==='auth/popup-blocked')msg='Popup blocked. Please allow popups and try again.';
+    else if(code==='auth/operation-not-allowed')msg='Google sign-in not enabled in Firebase';
+    else if(code==='auth/unauthorized-domain')msg='This domain is not authorised in Firebase';
+    else if(code==='auth/network-request-failed')msg='Network error. Check your connection.';
+    else if(ex.message)msg='Google sign-in failed: '+ex.message;
+    notify(msg,'⚠️');
+    console.error('[HomeBase] Google sign-in error',ex);
+  }
+};
 window.hSignup=async()=>{
   const n=$('sn')?.value?.trim(),e=$('se')?.value?.trim(),p=$('sp')?.value,err=$('serr');
   if(!n||!e||!p){if(err)err.textContent='Please fill in all fields';return;}
