@@ -668,12 +668,12 @@ async function runDailyPackingReset(){
 }
 
 // One-time event categorisation migration.
-// Runs when family loads with `eventsCategorized != true`. Auto-guesses category + sport
+// Runs when family loads with `eventsCategorizedV2 != true`. Auto-guesses category + sport
 // for every event based on title keywords + legacy category. Also seeds family.sports.
 const COMMON_SPORTS_FOR_MIGRATION=['Water Polo','Swimming','Soccer','Basketball','Hockey','Netball','Volleyball','Tennis','Golf','Rugby','AFL','Cricket','Baseball','Football','Athletics','Cross Country','Lacrosse','Badminton','Squash','Karate','Taekwondo','Boxing','Gymnastics','Dance','Ballet','Cycling','Running','Surfing','Sailing','Rowing','Skating','Skiing','Climbing','Equestrian','Triathlon','Archery','Fencing','Wrestling','Bowling','Table Tennis'];
 async function runEventCategoryMigration(){
   if(!S.family||!S.familyId)return;
-  if(S.family.eventsCategorized===true)return;
+  if(S.family.eventsCategorizedV2===true)return;
   if(!Array.isArray(S.events))return;
   if(S._migrationRunning)return;
   S._migrationRunning=true;
@@ -698,8 +698,8 @@ async function runEventCategoryMigration(){
         // Legacy generic sport tag, no detected name → default to games
         newCat='sport-games';
       }else if(ev.category==='school'||ev.category==='school-event'||ev.category==='school-subject'){
-        // School category dropped → fold to other
-        newCat='other';
+        // Legacy school categories → fold into the new School category
+        newCat='school';
       }else if(!ev.category){
         // No category at all → other
         newCat='other';
@@ -717,8 +717,8 @@ async function runEventCategoryMigration(){
     // Update family with detected sports + mark migrated
     const sortedSports=[...detectedSports].sort();
     try{
-      await updateDoc(doc(db,'families',S.familyId),{sports:sortedSports,eventsCategorized:true});
-      if(S.family){S.family.sports=sortedSports;S.family.eventsCategorized=true;}
+      await updateDoc(doc(db,'families',S.familyId),{sports:sortedSports,eventsCategorizedV2:true});
+      if(S.family){S.family.sports=sortedSports;S.family.eventsCategorizedV2=true;}
     }catch(e){console.warn('Migration finalize failed',e);}
   }finally{
     S._migrationRunning=false;
@@ -772,7 +772,7 @@ function subscribe(){
         }
       }
       // EVENT CATEGORY MIGRATION: run once per family if not yet done
-      if(S.family.eventsCategorized!==true&&!S._migrationRunning){
+      if(S.family.eventsCategorizedV2!==true&&!S._migrationRunning){
         setTimeout(()=>runEventCategoryMigration(),2000);
       }
     }
@@ -807,7 +807,7 @@ function subscribe(){
   }));
   S.unsubs.push(onSnapshot(fcol(['events']),s=>{S.events=s.docs.map(d=>({id:d.id,...d.data()}));
     // Trigger one-time category migration if family is loaded and not yet categorised
-    if(S.family&&S.family.eventsCategorized!==true&&!S._migrationRunning){
+    if(S.family&&S.family.eventsCategorizedV2!==true&&!S._migrationRunning){
       setTimeout(()=>runEventCategoryMigration(),1500);
     }
     queueRender();
@@ -1729,6 +1729,7 @@ function sAddEvent(){
             ${[
               {id:'sport-games',label:'🏆 Sport Games'},
               {id:'sport-training',label:'🏃 Sport Training'},
+              {id:'school',label:'🏫 School'},
               {id:'music',label:'🎵 Music'},
               {id:'work',label:'💼 Work'},
               {id:'social',label:'🎉 Social'},
@@ -2048,6 +2049,7 @@ function sCalendar(){
 const EV_CATEGORIES=[
   {id:'sport-games',emoji:'🏆',label:'Sport Games',color:'#FF6B35'},
   {id:'sport-training',emoji:'🏃',label:'Sport Training',color:'#5856D6'},
+  {id:'school',emoji:'🏫',label:'School',color:'#1C3A6B'},
   {id:'music',emoji:'🎵',label:'Music',color:'#AF52DE'},
   {id:'work',emoji:'💼',label:'Work',color:'#5A5A5C'},
   {id:'social',emoji:'🎉',label:'Social',color:'#FF6B9D'},
@@ -2351,6 +2353,7 @@ async function downloadEventTemplate(){
     const samples=[
       ['Water Polo Training','Training','Water Polo','Weekly','','Mon,Wed','2026-05-06','2026-09-26','5:30pm – 6:30pm','GT Aquatics','Nash Clark','Olivia Clark','Alby','Bring goggles + cap'],
       ['Water Polo · Round 1','Game','Water Polo','Once','2026-05-10','','','','9:00am – 10:00am','Albury Pool','Olivia Clark','Olivia Clark','Alby',''],
+      ['Cross Country Carnival','School','','Once','2026-05-15','','','','9:30am','School oval','Nash Clark','Nash Clark','Alby, Hattie','Wear sports uniform'],
       ['Piano Lesson','Music','','Weekly','','Thu','2026-05-06','','4:00pm – 4:45pm','Mrs Smith\'s','Nash Clark','Nash Clark','Hattie','Bring sheet music'],
       ['Dentist','Medical','','Once','2026-05-20','','','','3:30pm','Albury Dental','Olivia Clark','','Alby','Cleaning + check'],
       ['','','','','','','','','','','','','','']
@@ -2390,7 +2393,7 @@ async function downloadEventTemplate(){
       [],
       ['── Column rules ──'],
       ['Title — required. The event name (e.g. "Water Polo Training").'],
-      ['Type — required. One of: Game, Training, Music, Work, Social, Medical, Other.'],
+      ['Type — required. One of: Game, Training, School, Music, Work, Social, Medical, Other.'],
       ['Sport — required if Type is Game or Training (e.g. "Water Polo").'],
       ['Frequency — required. One of: Once, Weekly, Fortnightly.'],
       ['Date — required if Frequency is Once. Format: YYYY-MM-DD (e.g. 2026-05-10).'],
@@ -2434,6 +2437,7 @@ function typeToCategory(typeStr){
   const map={
     'game':'sport-games','games':'sport-games','match':'sport-games','fixture':'sport-games',
     'training':'sport-training','practice':'sport-training','drill':'sport-training','drills':'sport-training','squad':'sport-training','lesson':'sport-training','class':'sport-training',
+    'school':'school','schoolevent':'school','school event':'school','assembly':'school','excursion':'school','incursion':'school',
     'music':'music','work':'work','social':'social','medical':'medical','other':'other'
   };
   return map[t]||'';
@@ -2524,7 +2528,7 @@ async function parseSpreadsheetFile(file){
     const typeRaw=String(get(['Type','Category'])||'').trim();
     const category=typeToCategory(typeRaw);
     if(!typeRaw)errors.push('Type is required');
-    else if(!category)errors.push('Type "'+typeRaw+'" not recognised — use Game, Training, Music, Work, Social, Medical, or Other');
+    else if(!category)errors.push('Type "'+typeRaw+'" not recognised — use Game, Training, School, Music, Work, Social, Medical, or Other');
 
     const sport=String(get(['Sport'])||'').trim();
     if((category==='sport-games'||category==='sport-training')&&!sport){
