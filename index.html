@@ -335,9 +335,31 @@ const S={
   termDates:{t1s:'',t1e:'',t2s:'',t2e:'',t3s:'',t3e:'',t4s:'',t4e:''},
   dayOffset:0,
   toggles:{notifs:true,loc:false},unsubs:[],
+  pendingInvite:null,
   // event form
   ef:{freq:'once',days:{Mon:false,Tue:false,Wed:false,Thu:false,Fri:false,Sat:false,Sun:false},packItems:[],emoji:'📅',category:'',participantIds:[]}
 };
+
+// Parse ?invite=HB-A-XXXXX from the URL so a recipient can land directly into signup
+// with their invite code already filled in. Strip from URL after grabbing so refresh doesn't loop.
+(function parseInviteUrl(){
+  try{
+    const params=new URLSearchParams(window.location.search);
+    const inv=params.get('invite');
+    if(inv){
+      const clean=inv.trim().toUpperCase();
+      // Sanity check format
+      if(/^HB-[A-Z]-?[A-Z0-9-]+$/.test(clean)||clean.startsWith('HB-')){
+        S.pendingInvite=clean;
+      }
+      // Remove the invite param so the URL is clean (avoids re-applying on refresh after consume)
+      params.delete('invite');
+      const newSearch=params.toString();
+      const newUrl=window.location.pathname+(newSearch?'?'+newSearch:'')+window.location.hash;
+      window.history.replaceState({},'',newUrl);
+    }
+  }catch(e){}
+})();
 
 // ── HELPERS ──────────────────────────────────────
 const $=id=>document.getElementById(id);
@@ -527,7 +549,7 @@ async function createFamily(name){
 }
 async function joinFamily(code){
   const c=code.trim().toUpperCase();
-  // First try family invite code (HB-XXXXXX format)
+  // First try family invite code (HB-XXXXXX format) — uses an indexed where() query, works fine
   let q=query(collection(db,'families'),where('inviteCode','==',c));
   let s=await getDocs(q);
   if(!s.empty){
@@ -536,61 +558,72 @@ async function joinFamily(code){
     await setDoc(doc(db,'users',S.user.uid),{familyId:fid,name:S.user.displayName});
     return fid;
   }
-  // Try ADULT personal code: HB-A-XXXXX → search family.members for matching personalCode
-  if(c.startsWith('HB-A-')){
-    const fams=await getDocs(collection(db,'families'));
-    for(const fdoc of fams.docs){
-      const data=fdoc.data();
-      const members=data.members||{};
-      // Find the placeholder member whose personalCode matches
-      const placeholderUid=Object.keys(members).find(uid=>members[uid].personalCode===c);
-      if(placeholderUid){
-        const fid=fdoc.id;
-        const placeholder=members[placeholderUid];
-        const{deleteField}=await import('https://www.gstatic.com/firebasejs/10.7.1/firebase-firestore.js');
-        // Move placeholder data onto the real Firebase Auth uid
-        const updates={};
-        updates['members.'+S.user.uid]={
-          name:S.user.displayName||placeholder.name,
-          role:placeholder.role||'Member',
-          relationship:placeholder.relationship||'',
-          color:placeholder.color||COLORS[Math.floor(Math.random()*COLORS.length)],
-          photoURL:placeholder.photoURL||'',
-          email:placeholder.email||'',
-          phone:placeholder.phone||''
-        };
-        // If the placeholder was a temporary one (uid != real auth uid), remove it
-        if(placeholderUid!==S.user.uid){
-          updates['members.'+placeholderUid]=deleteField();
+  // Personal codes (HB-A-* / HB-C-*) — use the invitations collection (single-doc lookup, no enumeration)
+  if(c.startsWith('HB-A-')||c.startsWith('HB-C-')){
+    let inviteSnap;
+    try{
+      inviteSnap=await getDoc(doc(db,'invitations',c));
+    }catch(ex){
+      throw new Error('Could not look up invite code. Check your connection and try again.');
+    }
+    if(!inviteSnap.exists()){
+      throw new Error('Invite code not recognised. Ask the person who invited you to generate a fresh code from the family page.');
+    }
+    const inv=inviteSnap.data();
+    const fid=inv.familyId;
+    if(!fid)throw new Error('Invite code is invalid (missing family link). Please ask for a new one.');
+
+    if(inv.kind==='adult'){
+      // Move placeholder data onto the real Firebase Auth uid
+      const{deleteField}=await import('https://www.gstatic.com/firebasejs/10.7.1/firebase-firestore.js');
+      const placeholderUid=inv.targetId;
+      // Read the family doc to get the placeholder member info (read scope: family I'm joining → readable since I'm now joining)
+      let placeholder={};
+      try{
+        const famSnap=await getDoc(doc(db,'families',fid));
+        if(famSnap.exists()){
+          const famData=famSnap.data();
+          placeholder=(famData.members||{})[placeholderUid]||{};
         }
-        await updateDoc(doc(db,'families',fid),updates);
-        await setDoc(doc(db,'users',S.user.uid),{familyId:fid,name:S.user.displayName||placeholder.name});
-        return fid;
+      }catch(ex){
+        // If we can't read the family (rules), continue with minimal info
       }
-    }
-    throw new Error('Personal code not recognised');
-  }
-  // Try CHILD personal code: HB-C-XXXXX → just join the family as a member, link to that child
-  if(c.startsWith('HB-C-')){
-    const fams=await getDocs(collection(db,'families'));
-    for(const fdoc of fams.docs){
-      const childrenSnap=await getDocs(collection(db,'families',fdoc.id,'children'));
-      const matched=childrenSnap.docs.find(cd=>(cd.data().personalCode||'')===c);
-      if(matched){
-        const fid=fdoc.id;
-        await updateDoc(doc(db,'families',fid),{['members.'+S.user.uid]:{
-          name:S.user.displayName||'Member',
-          role:'Member',
-          color:COLORS[Math.floor(Math.random()*COLORS.length)],
-          linkedChildId:matched.id
-        }});
-        await setDoc(doc(db,'users',S.user.uid),{familyId:fid,name:S.user.displayName,linkedChildId:matched.id});
-        return fid;
+      const updates={};
+      updates['members.'+S.user.uid]={
+        name:S.user.displayName||placeholder.name||'Member',
+        role:placeholder.role||'Member',
+        relationship:placeholder.relationship||'',
+        color:placeholder.color||COLORS[Math.floor(Math.random()*COLORS.length)],
+        photoURL:placeholder.photoURL||'',
+        email:placeholder.email||'',
+        phone:placeholder.phone||'',
+        personalCode:c
+      };
+      // If the placeholder was a temporary one (uid != real auth uid), remove it
+      if(placeholderUid&&placeholderUid!==S.user.uid){
+        updates['members.'+placeholderUid]=deleteField();
       }
+      await updateDoc(doc(db,'families',fid),updates);
+      await setDoc(doc(db,'users',S.user.uid),{familyId:fid,name:S.user.displayName||placeholder.name||'Member'});
+      // Mark invitation as used (best effort — don't block on failure)
+      try{await updateDoc(doc(db,'invitations',c),{used:true,usedBy:S.user.uid,usedAt:new Date()});}catch(e){}
+      return fid;
     }
-    throw new Error('Personal code not recognised');
+    if(inv.kind==='child'){
+      const childId=inv.targetId;
+      await updateDoc(doc(db,'families',fid),{['members.'+S.user.uid]:{
+        name:S.user.displayName||'Member',
+        role:'Member',
+        color:COLORS[Math.floor(Math.random()*COLORS.length)],
+        linkedChildId:childId
+      }});
+      await setDoc(doc(db,'users',S.user.uid),{familyId:fid,name:S.user.displayName,linkedChildId:childId});
+      try{await updateDoc(doc(db,'invitations',c),{used:true,usedBy:S.user.uid,usedAt:new Date()});}catch(e){}
+      return fid;
+    }
+    throw new Error('Invite code is invalid (unknown type). Please ask for a new one.');
   }
-  throw new Error('Family not found');
+  throw new Error('Family not found. Codes look like HB-XXXXXX (family) or HB-A-XXXXX / HB-C-XXXXX (personal).');
 }
 const fid=()=>S.familyId;
 const fcol=(p)=>collection(db,'families',fid(),...p);
@@ -617,12 +650,43 @@ function subscribe(){
         S.manualCity=S.family.location.city||'';
         if(!S.weather)fw();
       }
+      // MIGRATION: For any adult member with a legacy personalCode, ensure an invitations doc exists.
+      // Idempotent — uses code as doc ID, so re-running is safe. Runs once per app load (silent, best-effort).
+      if(!S._migratedInvites){
+        S._migratedInvites=true;
+        const members=S.family.members||{};
+        Object.entries(members).forEach(([uid,m])=>{
+          if(m.personalCode&&typeof m.personalCode==='string'&&m.personalCode.startsWith('HB-A-')){
+            getDoc(doc(db,'invitations',m.personalCode)).then(snap=>{
+              if(!snap.exists()){
+                setDoc(doc(db,'invitations',m.personalCode),{
+                  familyId:S.familyId,familyName:S.family?.name||'',kind:'adult',targetId:uid,
+                  createdBy:S.user?.uid||'',createdAt:new Date(),used:false,migrated:true
+                }).catch(()=>{});
+              }
+            }).catch(()=>{});
+          }
+        });
+      }
     }
     queueRender();
   }));
   S.unsubs.push(onSnapshot(fcol(['children']),s=>{
     S.children=s.docs.map(d=>({id:d.id,...d.data()}));
     if(!S.activeChild&&S.children.length)S.activeChild=S.children[0].id;
+    // MIGRATION: Same for children — create invitation docs for any legacy child personal codes.
+    S.children.forEach(c=>{
+      if(c.personalCode&&typeof c.personalCode==='string'&&c.personalCode.startsWith('HB-C-')){
+        getDoc(doc(db,'invitations',c.personalCode)).then(snap=>{
+          if(!snap.exists()){
+            setDoc(doc(db,'invitations',c.personalCode),{
+              familyId:S.familyId,familyName:S.family?.name||'',kind:'child',targetId:c.id,
+              createdBy:S.user?.uid||'',createdAt:new Date(),used:false,migrated:true
+            }).catch(()=>{});
+          }
+        }).catch(()=>{});
+      }
+    });
     // Clean up old per-child packing listeners before subscribing new ones (fix 1.3 listener leak)
     S.packingUnsubs.forEach(u=>u());S.packingUnsubs=[];
     S.children.forEach(c=>{
@@ -648,9 +712,15 @@ function subscribe(){
 
 // ── AUTH SCREENS ──────────────────────────────────
 function sLogin(){
+  const inviteBanner=S.pendingInvite?`<div style="width:100%;max-width:400px;background:linear-gradient(135deg,#1C3A6B,#2E5FBF);border-radius:14px;padding:16px;color:#fff;margin-bottom:20px;box-shadow:0 6px 18px rgba(28,58,107,0.28)">
+    <div style="font-size:13px;font-weight:700;color:rgba(255,255,255,0.85);letter-spacing:0.4px;margin-bottom:4px">🔑 YOU'VE BEEN INVITED</div>
+    <div style="font-size:14px;color:#fff;line-height:1.5">Sign in below to join. If you don't have an account yet, tap <strong>Create Account</strong> at the bottom — your invite is saved and will apply automatically.</div>
+    <div style="font-size:11px;color:rgba(255,255,255,0.65);margin-top:6px;font-family:monospace">Invite: ${S.pendingInvite}</div>
+  </div>`:'';
   return `<div style="flex:1;display:flex;flex-direction:column;align-items:center;justify-content:center;background:#fff;padding:40px 28px">
     <img src="data:image/png;base64,iVBORw0KGgoAAAANSUhEUgAAAWgAAAC0CAIAAAA2DCFiAAArFklEQVR4nO2dd3gU1frH31Nmd9NIQkKEhA6hhBppARSQIlhQwYLAFQsXRBELioj9XgF7RUUFFcXeQAVB9IfIxYLoBUFBBKRDhBACabszp/z+OJtlySabrMqNbN7Psw9PmD07c+bMnO+c877veYc07DUREARBIoHWdAUQBDn5QOFAECRiUDgQBIkYFA4EQSIGhQNBkIhB4UAQJGJQOBAEiRgUDgRBIgaFA0GQiEHhQBAkYlA4EASJGBQOBEEiBoUDQZCIQeFAECRiUDgQBIkYFA4EQSIGhQNBkIhB4UAQJGJQOBAEiRgUDgRBIgaFA0GQiEHhQBAkYlA4EASJGBQOBEEiBoUDQZCIQeFAECRiUDgQBIkYFA4EQSIGhQNBkIhB4UAQJGJQOBAEiRgUDgRBIobXdAWQvxGEEEIAAJTSNV0X5G8NjjgQP4QQrbVS2qgGZ3hvIJWCNwcCEDTWaNMivXXzdAAQUnHOarhayN8VnKogYFmMEuqzndsmnDfxsjMB4Kl5S9dt2vnZqg2cMyFkTVcQ+dtBGvaaWNN1QGoSRqlUCgDuuf7Cf444w3YEpdTMU25/+K35C1ehdiCh4IijVmNEYcKogVmZGcPO7CaEdFkcAISQUqmZUy71uF1z3l6O2oGUA4Wj9mJZzHHkNaMH3n7tBQDgONKy/EYNzhnT1HbE3dcP16Dnvv2FKVyT1UX+TqBxtJZihGDsJf2mXXO+40ghjqmGgRBiceY48q7rho8Z3sdx/IMRBAEUjtqJy+KOIy8bdvq9N1wkpeKcVuhAIYRwTpXWM26+ZOTQXrYjUDsQAwpHrcNlcdsRl1/YZ+YtI6RSnDO/J7YiCCGcUanUQ7eN+scFp9mOKDcwQWon+ACpXXBGbUdceVHff990sVSK0Wo9OYzn5f4plxKA+QtXuSwupMTo0toMjjhqEZwzIdX4kQP+fdPFtiOqqRoGRqnPdmZOuXTciP62I5TSYcYpSNSDcRy1AmOtCPhQfLbjsnikPV9rrbTWGr5fv+3l9778ZMU6dNPWWnCqEv1QSpTSjiP/OeIM40P5A6oBAIQQCgAEcrIzO2c19fqc5d/8jG7a2glOVaIczqhSuklG6mXDTr/n+guND+UPzzIIIYQQqZTHbb3yyDV9urcNjv5Aag84VYlmzFRiQK/28x6ecIIOMfqmZ1Z+twnnLLUNHHFELZbFhJBD+naa9/AEIZVZkPIXorUWUr3++MQzT+8YGj+GRDcoHNGJMT2cP6jrnJnjHEcySiLyoVQHQgijxHHknJnjzu2fjXOWWgUKRxTCOXMcObT/qY/ePtpxJGN/3KgRHkIIY1Qp9dgdl53Vt7PjyPDhZEjUgMIRbRhzw6DTOjx252WMMcYopSewJ1NKKKUuF3/y7jFn5GQJIbXGwLDoB4UjqjB2jf492734wHi3i1NCTqhqGCglBEjAz9IgLQnnLFEPelWiB5M09IT6UKqDz3ZannGTqUwNVgM5oeCII0qglGitzzkje97DE/5yB0o10VpLpRwhz+7X+URPkZCaBYUjSqCEAMD0my8RUhGomR5LCCFA4mM9d0y8QAjJME969IKXNqrYf6CgZl9rQAhIpeLjPBMvO1MIzJMetaBwRBWumrZKEkK0hrqJ8d07tdBaU3TNRikoHMhfj9a6qNhb07VATiC4OhapGiGVLkvbY1ytUikl/VsIgXJTEkIIQctoVIPCgVSBVIozCmXKIITknDFK0fRZm0HhQMIhpOKMfv3fX79cvYkQkpgQe83ogQDwxbcbV6/byhiVUqWnJY0Z3qf6iQiRKACFA6kUqRQh8OXqTTf8+5VDBUVmY35B0R0TL1iyYt2bH39ttjRtWG/M8D5aabSY1R7wUtc6zPvoK/yUK6mVZpRu3fn7oYKi+FiPx21xRj//+icAiI/zWBYz/9arW6cmzgOpSXDEUbsIP6Go8FvGCABorbUGrcEydlANWmn/B0PLax8oHLUIrTWjdPvug0eLSkIXv8d4XJlN62sdlL6cEKV0WkpirMdVXOoz29pnNgSA4lKfkEqU+gDg8JHi/905IH8PUDhqC0pppfWPm3ZceetzFXZ1y2LzH53YrWNzzphZZsIZFUKe3a+zz3aWrPgRAFKS4++fcikAdO/UouBosVnC36xRGgCg/7VWgcJRW3CEcLusWa98evhIcazHZR+fIpQz6vU5j724+P1nb7Id4aL+G8MEaAw7s9uwM7uZLT7bcbusC4d0v3BI9+A9oEulVoHCUVswE5C6SfGEEFvIcrmFpVScsz37899dsvrCwd1NsIYxefxnzS+vLVxFKbEdmZIU/9BtowDgvSWrl6780eLMEbJZw7Q7Jl6A7thaBQpH7ULKijN0aa0JgX0HDq/5cdvFZ/VwhOLAjIf11+25n6xYFyhpO+KJu8asWf/bpyvXmy0tGp9yx8QL0B1bq0DhQI5BCImP9UDZ8MTAGSWExMd5pJCOlJu27gWA+DiP22W5Xdxni5Tk+BqrMVJDoHAgx9BaKx2UBIgQpXRKcoLbxQuLSs022xEAUFhU6rMdn+0AQH5ZbBhSe0DhQCrFeFXO7Z+tlFr8xVrL4o4jjA+la4fmRwpLgregV6VWgcKBhINzppQ+b2CX8wZ2Cd5+yTk5l5yTE7wFLaO1ChQOpAooJUIqVZbHlBLCOQvdUnMVRGoAFA6kajijcPwq+tAtSK0Crz2CIBGDwoEgSMSgcCAIEjEoHAiCRAwKB3JiwBwdUQ16VaIKRqk/4U5Iv9Xan3GHmBeuheTjIOZNbGUl/3B6Hq00MPC4rT/2c+SkAIUjqij12YQQVtFrkNwuCwCU1lprx5GhBUwsudZACDGF/xiWxXbsOTh5xnzOmSMqOBASBaBwRAlCKgA4Z+zDn7w0NS7GHVpAaaWUtjhv1qgeozT0xdSMMSml28V37s2zHcHZH4npUlpRQjf/tq/gaAlnFLMKRiukYa+JNV0H5H+Ey+JvPjmpe6cWYco8+9pn98/+8M8fixCCqhHF4Igj2mA05IWthHBGG6enPnDryG4dm/tsh3MW2qlNCPmp7Zo2apCyJzefc6qk/mPvftUaQkc0SDSBXpVoQyol5HEfAPD6nMbpKd06Ni/x2m6XxSjlrPzHZXFKaU525vMzxrZonKak1qDL7aqaH1SNqAeFI8qhlAgh66XUmTJ+qO0IT1irJ2e01Gt3aN04JTlBKkUAV8ojFYPCEeUQIEl1YpfNm5bVMsPi/vTlYfC4LceRz/77yoYNUgAq8NoiCKBwRDecUanUF6/flVo3QSpVHRUghFgWS0tJXPHGnVIphul5kIpA4YhaTB6N9q0axsa6ldIhJtNwaK1dFu/WsbmQCnNtIKGgcEQnjFLOWN8ebd+fPTnW46owVLRKPpg9uW+PtkJIzO6FlANviOjE5eK2Iy6/sE+sxyWEjFQ1CCFagxBy7v3jhw44lVDCMW0PEgTeDVEI56zUa59zRnb7zEa2IxijAP7lK7p6AAClRGntcVv9emQJIdkfCiRFohUUjmiDMyqlGnRah9n3XdUgLcllcRPrZQYdpHqYXZkX0w8dcOql5/a0HYHGDiQARo5GIca0mZdfWDc5vqjYm5gQCwBFJd74WE/uwYLwweDm2/r1ko4UliQmxO7alxfrcVucmVe9IYgB16pEJ6b/33398NcWrLpr0vAdew5+smJdt47Nn33ts+r8fMbNl7z07pdXjxpw6wNvnOiqIicjKBxRC6VEqfIjiyoDwAyBH5ryFWf4QGoxOFWJWpTSnFGpNGMUtFZaU0LM0pUq4ZxJqRijAhNqIBWBwhHNGJkIdH5V7Xx+5ieoGkhloFcFQZCIQeFAECRiUDgQBIkYFA4EQSIGhQNBkIhB4UAQJGJQOBAEiRgUDgRBIgaFA0GQiEHhQBAkYlA4EASJGBQOBEEiBoUDQZCIQeFAECRiUDgQBIkYFA4EQSIGhQNBkIhB4UAQJGJQOBAEiRgUDgRBIgaFA0GQiEHhQBAkYlA4EASJGBQOBEEiJhpeyERC3oZc/fcV/pnf1mZC2y082KpRRjQIR+hNWeFrU6v52/Avc0fgDzURo/6xrdIamzcKOLmFw9zB8XGeuonxWmtCCCFQXOrLyy+s8uY2BVKTE2Jj3ACgtaaUHDx0tMRro3aEwTROrMdVL6WOUro6Qw+l1J7c/MB/OWf4csmTnZNbOMxbkS8c0n365EsCG/fk5l9+y+zfdh9QSoUZd1ic2Y6YOWXEWX07BzZ+9tWGaQ+9lX+kSAiF2hEKIYRzWjcx/v5bLx3Uu0P1fzjqxqeVUpTSHzb8VuK1LYsBgOOgfJysnNzCYbBtIZWybeFycceRDevXvXX80H9Oe8Htsny2E/63xSU+qZQQknPms8Wg3h2+7LvplfdX4lOxQhijjiOH9O00qHeHEq/tdlXr/iFA3njiOvP3ouVrV6/bOu/9LwGHHicz0SAchBBGKWOUUaqZ1lofPloM1TPIUUoZpZpqRilnVCpVUmqf+Cqf3JSU2lIpzmjAclEljiMJAa3h3P7Z5/bP7ti28W87f396/jJGqVTqhNYWORFEg3CUgxDC2B90MzNKKY3MX1ALoZQwSqWMoMNbFjNGKCGVUuris3oAQIzH9fCcRTjuOBmJQuH4X3LinAWUEgJEg67SPUQIoYT8mQpU/1iVobVWYY9OCSGEKKU5o8Co1+e4LN6jc0tT+Yjqaf7+kw0euHB/5qzL7a1WOYxQOCKGUkLLbrvgRyXnLHRjZQQKh/6EUUooEUIC6EBJKSsw1nJGgRAplRntm5LVfHr7x2VaAyl/rMoOVyHGPPThZz/cPPM1l8VtR4QeSGvdrFHagtk3JcTHmHGHx205juzSofm0a86f+ezCCn8YINDggXr6Tz+S84XwF05rIAS0FtUeRpnLBADBv4roHjipQeGIDHOLK+W/Lbp3akEIIYRs2rr3SGFJoIxSKvwtWOGNRQgxvh5Q0KltkxiPKy//6Nadvwe+DXRmY9MJdLac7MyNW/YcLSoFAM5olXe/ZTEpVaAOmU3rpyQnFJd4N2zeHVym+l4PqZTtiDBnvfm3fSOun/X8jLH1U5M4p8aJyxm1jhfQUIIbvEPrRnGxHuOd+WXb3oKjJVBt+TDjncCF65zVxON2AcD23Qd+zzsSKFadeVPwZTLkZGcCwJbt+w8VFFV/Pyc1KBwRwDmzHXFKauKAXu2NdfCBW0ear1Z8u3HJlz9yzgqLShcsWwMALos7Qlb43LYsdvFZOcFbFixbU+q1tda2IzpnNclq2fD+KZdSSg4cOvLQC4vcLuudxd/YjjB3vzEoSqXO7Z9dJz62SUbqtf8Y9H9f//TZqg2MsVc/qMIlFFCE0ef3poRIpadOGFo3MV5Idccjb5sy7y1ZbTsi/EAgGCMElFKoRDhcFt+wedcLby6/b/LFZs9me5hxjWUxrcF2RFpK4uDTO9hCPnDrSF5mvVr53abFX6zjnL36wUqoSi7dLst2RHys5/xBXaRUlNIHp/ov3LqNO9/8+GvOmZTySGHJouVr3S7LEaKy+YuZW9mOaNm0fo9OLYRUdeJj7p40HAC+Wbtl4bLvOWclpb73lqx2WTwwGIw+UDiqhbldhJB3TxreOatpt47NzXYhpLnz++Vk9cvJMhs7tG70/YbfPlmxDioJsvS4XYEb17Di241en9MuM2P44O5D+nZq1CBFCCklpKUkPjJtNACckZN15a3PEUKMKJzerc0ZPbPGjehvfu44ckCv9gN6tQeA9LSkB577qDJvBaPUceSNV57VovEpF5zZNbDdcSTnx7rTwNPab9v5+4xnFv5VXg8NmlKSEO8BgICdIgyEEKNud08a3jmrSbeOLQBAax3wzvTp3rZP97YA0LpZ/V935IbxoHNGfbZDKXlu+ti+PdqajVIpJTUAdM5q0jmrSaBwfOzrby36JkytACAmxjX5qrNP79amTYt0s91UtWd2Zs/sTLMluU7cnLeXV6NhTlaiVjhIGRV+a2ba1d+b1lpq/eaTk07r2hoAzHOYADGBTAAglTJeBgJk3KX9LzknZ8S5PR+Zs2jD5t2hfc+MLMzfSmnjx9FaJyfGj7u0v1LadGMzvpBSKa0G9m7/ztM3XDb5WSllv5ysJ+4ak5IUL6TSSgOAZTHjrdBaT7zsTIuz+55eEPoQNjW5Y+IFE0YNNGdh+jDnNDgiS4Me1LvDoN4dkuvE3XL/63+Zdmio4DFe0UUwR3x42ugmGammK9qOoIRwzgINbs4XAMYM7wMAFmdz3/4idHpl/DhP3DWmSUZq1w7NvT7HGDIty+95My2sQWutOWczbhkxpG+nNz/++tOV68s1oHkGUErefGKS0RpTK7O3wK6UVozSu68f3rtrq09WrHtn8bfVmTyedESncCiptNbho7/M06k6XcJc+LdnXd/r1Fa2IxijnLFyXltGjwU1OI5MTIjt37Ndp7ZNzhv3yN7c/NC1M4GxuhGOw0eLT0lNfOT20ebWpJQFvqKUATAhVc/sTEaJz1ZNM+qlJMU7jrQsBsy/E+OtAADbEeNHDiCETH9mQXBHcllcSGlUw2c7jPrtC8ECeqxbCimVGnFuT0LIzTNfq3LGTojfkx0a2aFBEyAEiNZayON2opSGiiYE5qIM6dMpqU6safBQU0jgfM0J3nXd8FKv/fqHXwVX1Vy4Z/515XkDuwCAkMrjtsrtJ9DaZmAoAQb0av/t2q0AQCiBoPqaAstemda6ebrjSMZo4CIevysGAD7bGdCr/Y49ef7WiTqiUzhiY91pKYkui9kVmfeEkPlHihLiPQVHS+Ji3OHdB6bvvfTQ1b1ObeU40mVxM1opKvaeN/6Rvbn5AMA5c4R84NaRp3VtVSc+1uO2zJgiJSm+SUbqrn15VcaGtG7e4I3Hr0uIj/k978hjL36yYNmaj164pU2L9MDIiFEilfrgucnTn17wrxsvOlJY4vU5IyY9daSw5Mu37q4THyOVMp3WPAPr10tSSlucAkhzFrYjrrq434RRA42JQQhFCJm/cNV9sz4wtgzOmRTyorNzpl1znsvinDOldJsW6YkJsV6fI0k4P4vjSKmU9FWmwloqlZaSmJgQCwCEgJCKMbpm/baZsz8MtqQYX4/b4s/ed5XbxUu9tmVxr8+Ji3Ffe/dLn3/1E2OUECKFvHrUwImXDWKUmgtEKcls2sDtspRWgV0BIXXiY7JaZkiltNJaQ7Htu+vRdxZ/sZaV6Ys56yfuHnNW385mCFZU7L392vM3/7bvi283mrGPmajGx3neffqG1s3ThZCmPUuK7FE3Pr1tZy4hRGltNGvu/eNO69rG4rzUa1827LTtew688dFX0TfoiDbhMDb2of1PHdr/1MrKHCksefLlpYP7dPxu/baz+3U2DsUKSxJCKKHNGtVNT0tWSlNGjCLkHjxy9R1zt+zIDS58w79fAYDdXz1tfuh2WVrrN564buQNs1Z9v7myylBKtNYfz5kCAM/MX/bAcx+Z7YPGzFw0d0q7zIamqxBCGCHtMhu++eSkg4eO3vnYO5+sWGcGMueMfeidWTc0SEsyIxRCiVI6MSEmPS35QP5RoztaQ3JinFGiQNxE3uHCTVv3lnptn+2YARFn9NUPVnZu2/jis3OEkErrjm0aTxl37p2PvVNp/D4hAHBKamLXDs0rHJgYk0STjNQn7hoT2CiE9LittRt3mE4Y2O6yuM92Hr/jsv492wU28hh33uHCPfvzS73+oF5G6eMvfdKmRfrZ/ToLqSyL+Wxn7CX91m3asXDZ96aXGsfHg1NHtWxa35iiLIvNeXv5u0tWM0ql97j44PG3z31h5j/NqiXLYocKio4WlVJKzIjI4kxKNfu+q9q2zChbneC4Xdake+dt2LyrnBlr9E3PrFk4vX69JI/bkkpPn3zJlu2536zdEmUxstEmHIbwkTiJCbF3Xz8cAHp0bmlmtpWVNPfxhFED22U2NFMDc8e89O6Kn7fsKdeXzLDivSWrLzqrR2CjUvrNJyc16n1d+BW3QsjZr3/+0Asfm75nevs/Jj+zYclDQirO/F3d1GHFd5s+WbEuxuMq9dqc0R17Dl4+Zfasey5v0fgUAMootR3Rp3vbKy7qa0IklFJSqoG92o8c2svU33TXX7btm7/gPx635fWVnQUhjNJv/rulb4+2KckJoEEq1bJp/cym9bfvPlDhuMm4Ofr2aBuwO1ZGwJrDOeOcPTVv6cNzFhljbaCMlBIAln/zsyOEVNosYuScvfnRV2s37ggIE2PURFsFmtQ0b6hsBS6QkQBzppbFyg2OCCHjb5/78LTRBIAy+vrCVT/8tD0wTCCESKWM9xeMY4uxn37ds/f3w2aUJ4OqQQjUr5dUdspKU5J7sECbOJEoIjqFo3KrKICxdCptoi155cHpjFIhZLeOzdu3aiSEZIxKpThnazfuWPvzjtCnq9agtb5p+vxhg7vRshpQSvLyCzmjsvLwREKILeRDL3zMGTX7NJYORulbi74ZcU6OmYYopRmju/blLV6+1rKYbQsAEFK5XdamrXs//PyHW8cPtR3hopwAUUoXFpdCWYfRWu/JzTfDCq01pTTvcOFbi76J8biU0v4IKADQ2u3i7y5Zfd7ALv1ysszyv95dWg3p02nWq5+6LF5ZeKixC5rBRSXnCJwzIRVn9Kl5S7fszF247PtQd6/pqAuWrTEu7WCoPyjO32Ja67SUOoSQQEgYISTUXxO4DxijQqr+PdstWLZm5948t8uSUmrtt6dorTmjU+5//bjDSQXGUCLkGTlZ7Vs1kkpRQoSULou/v3T1j5t2xnhcjiMIIcyoKiFSqgef+2jqhPMCSx+uv2LInY++U1zqi6Z0DbUxdSAhhDNKKQmjGgBglCKnc2bHNo2lUpQSrTSj9Pv1v63duKOykWfD+nXLGQhZNea3pMwzErSFHCooevWD/xBCjL/GeDR37s37v69/IkACRzdm/DrxMRDk6QzYKQkQqXTDBim3X3uBBm1xrjVQSnIPHvnws+/NPEUIKaQynxKvbeocaCupVGGxF8o0qEIoJZxTxijnFX8Yo1pr04tbNWvQuW1TKHNOhcIZdVk8+GN0M1DAEYJROvXBN3fvP8Sql7SJUUoIdM5q8vJDE9JS6vhsRxwfZCGVrvBwjDGp1KDTOzZrVE9KFQh754wBQKnXFlJprf0NKKTW+un5ywIH1RouHNI9Ps4TNZJhiM4Rx1+C6SeFxd5y6WpiY9yM0tD7wAwTcg8WTPrXvFn3XGGerkrpOgkxz9531bV3vRTeQhYapkkISU2Oh+MDH1wW54yW68MBZ3Ao5imXXCeuc1YTISTjfkVo3azBF2/cJWUFB9VaN0pPBQBKiCzrclVSHfc2I0RrPaRvJwDo3aXV6nVb73zsnVAJFlKBVJQSM4ircFdSqfMHdklJTlBaM0qhEp8PLTPxgBlCStWyySkfzbml4GgJo+S7H7fd/sjbxlQU8JGXGxeYv48WliilA95rx5FXjxyw6vtfxl06oElG6nX3vDzv4Qlen+NxW1dNfeHhaaMgyOVvXFRVt+BJRbQJh5kSL1z2/bRH3nJb3Fd54KP59qGpo4YOODWMfZQxQo93yymtpVKVLcAVUm3+bT8ABEbtjNK2LTIAInbL6YqWTpiNFq0iUjukVuXvXctiLZucUuWhKSGlXnvqhPO27Mhd9f1mt8sSFfVR2xGFxd7wUxWtITEh1oz8CSVtWqS3aZFuC/HonMWOkOVGHwE1qV8vybbFdZefOfLcXo6Qfr8sAa10QnxMmFO2HcEZnfLA6ynJCad3a+04kjJiMiekpyWnpyUDQOvm6cPO7Ka0poRcNPGJ3IMFPlsUlXg5Z+VW6zBGKSVGZk02o9S6Ce89e1NcjBsAPnv19vg4jyn56bzb4uM8ZRdOa6UJrWAOdbITbcJhsB1RVOwtCTuINd9WmennDxDjdpXbUur1/eVHiQhinrfqWJ8PHwJHCAlYZI2kmgSLofgXuX3+w+Tp86usxrAzuz1y+2jj0jZP+HEj+v+0efcHn64JDjkxQ7PMpvWbZtR76aGrg+scvLeAtbUyzPRh1I2z3nhi0undWsOxYZ0yPZlSEujwS+fdBgAbt+4dfdPTefmF4U/ENF1cWZsEdhL4+9gsmAGUGc6jiegUDrNskTNmq0pHHOZbWu1UNNWnotH13+u+MV2u1Gt/unI941SFX48nFaN0z/5DUPnSEkYpIST82hbO6YJlazhnd153QZ34WGaSeiiVk5258rtfDh8pNnMEoyBdOzR/79kbja3B2Ck5o+WUjpBqRQATQkbdOOvpe69oklEvEF1uQjaUAs79iUK01lKqrJYZc+8f//J7X67buGPXvkNhWm/T1r2bf9vPGFVKBftMyvlPzHCmpLSGnxx/OdEpHEgYTOc/VFA09cE3Pl25PqLfhkm6UeYeDRck5nFb737y7cVn9+iZnWlcVLYjRg7t9fH//fc/a34xC9UdR+ZkZ7784NVa+93P5t9PVqzbuHWvMYVyRh2pxl7cLzkxLhD5FqZilsWuu3deSlL8lRf19dniussHx3r8o0IhJBDCqJmAMK11l/bNurRvNvyax3fuzavQfC6kdFH+1qJvXnp3RXUbrqwmEZX/O4PC8ddT0TPwb3THGK/Kgbwjn65cH+txOVJWZwYupPzzCW/MkuLgTKUEiJDKTBgpI0rqvj3aPnHXmJgYFwBwi5mQk8VfrL3+X6+UG858/PkPrz0+sWH9ulV2SBPye6ig6JG5iwHg23Vb009JllJmZzUdP3KAKVOWJZ8YH9OU8edOvOflvPxCxkJcvEAAIDEh1rhgqrOAuLJ10icvKBxVEGrYJ1V5EBxR/k6yeA23c2iFjeXCdkSFjp7qv5gmUqQqn3GLM0r9wfLUUU7bFhmpyQnGQyGkopQu/fLHydPnK6UCEeUWY1Lp4YO71U2KV0GxsGGwHUGpP7BizfptZuOi5WsXLV9rO+LRO/7RLrOhmYNwzoCQntmZifExBw8dNSVDbwOplCOkBl07c7XXxjiOiLAsVq7XmadHaFc0i1nTUhLfmXWDCUg1Dtr8I0XDr32cEBIa1/g/QGnFGf1l277J0+dz7l/WIaRq3jht1j1XKK2DI76P/UppE+1iPlXa9gip2v5HCOGMaV1Fqr4Sr33M6qm1SUpS4rVNoLfjSMeRUmmf7XRq2yQuxq11OB03OajNhwAxPw9sBIC1G3f8vGXPsAmPZQ+dpo4L6zguKZHbxcsdxbZFZYOIwBH9x42umFEDjjgqxdyRB/KO5uUX1kmIMVHDSum0lDplD8Pyj2XOWcHR4nLRPkkJcYVFpTV795iIaRm0HJVRasJG3a7jlqKbIMimDett3fm7kNUddPhsoZR2xXBVFuUViuPIUq+dWjfBtE9gfiSOd3xSUt7/7XZZJiLGX4ASzmjdtKQyu+axkowf10tDI0QCOZACJ2uKl3ptJ8QfTPzapQkhe/bnHz5SHB/rMUfUWmfUT05OjCsq8ZaL+4j63F8GFI5KEUK6XdaCZWtO69r6knNyyhaVynPOyJZS3XDfq5wxYP7wR0apeSQGL1QBAMeRi774bw2dwXEkxHsYpbYtwAJCQCrVIC2pcXrqrn15ZtkLABBC4mLdRcXeZ/591Uef//DbrgMAoEH//Oue3fsPVTimIJRIpZo1rFe/XlLuwYKwFYg5vWvrCaMHZrXMMF4SABBSxliucuvTy1FU4hNSJcS4bUdYFiNAikt9110++LSurc2MBsrsjvkFxVpr48MyGpHZtH6rZg2ElJyxXfvyNmzeHeNxCSnNC7eMMZczyi1WPvi9LEWT7Qi3y5rz9vL+vdqd1rV1YJHbFRf2Xf71zytWb4pxW/5w27J8jgN6tTcrpE1I++p1W48UlkRTvDmgcITHWOaWrVp/9hmd42M9ZlmH48jzBnYhhFx790tQluFOCCltdem5PR+eNjowkZFKWxa7/l+vQI1a1M2SnA2bd2/YvKtD68am0wqpOrZpPOf+cWOnPr8nNz+QErmo2JuTnel28dsmnBfYw9Pzlz343EecsVCvignH7NG55fMzxn6+6ifOmQiJRqWUKqXat2p0dr/OULYwBAAcR8Z4XN+s3bJ9z0FGqbFfqKC5DKFESNWtY/OWTetv3ZFrGj/W45owekinNk0AIGBnZYwppUeck7Nlx/78gmJTsl9O1qO3j05LSTRl8vILr5r6/NqNO8CE5DN2LFezVJdf2IdQErh2ZiUemFRAQnJG31uyulWz+qnJdXTZCvphg7t9+d2mEq9tVvGYCNELh3QPXgcMAKNvembld5sYJdUfwf39QeEIh1QKgH66cv0VU557fsY/k+rEmtXZjiOHDjg1Nsa1fffBfz31PgAM7tPx7H7Zwwd3M8vhoCwy6tG5i2M9rlKfU5PCoTShZMuO3PG3z33qniuy2zX1a4eQWS0z5j4w/pdt+26e8ZpUqnF66uSxZ/fu0qp+vSSz1t7ibO3GHe8s/sYoQoVhL2YecWq7Zqe2axa+JrYjAjmQjJN1zfpt19z54qGCIkqJ1gQAYj0uSokWGspGDR3bNH5++tgNm3dPe/ite64fntm0Qe8urQDgyZeXjD7/tNS6CUaJjKA/Onexzy4wtTpaWHq0yJtcJ15ISQhJrZvw3IyxX/3wq4uz6+6dF0hcfP6grv17ths+uBuUhcxSQp574/PcAwVmNiq15py9v/S7qVefRynxrzkEPezMbnUT43fuPXjHo+8AQL+crGFndjt/UBchlZRSKk0A3lr0zU/+LHDRoxoQHcJh7G3+j3leVbuX+n8btIdQ47nL4qvXbXUc4X99htKcUyGkyfHZpUMzAMhsUj8+ziOEpJSaQSnn7KEXPp71yqcVjvDLGUfCxEcopZVWSlGttKr8xHRQSX/5488ixuPak5u/c+/Bbh2bm7M2q+/aZTZsl9kwq2WG13ZSkuIbp6ea8m6XBQC/bNt39Z0vHjx01HQhoxvBDR44RJUrMig5LnOaZbH1v+waN21O/pFiMwLSWlkWe2/p6q4dmg/u09E0ptGOVs0atGrWoH2rhq2bpwNAUbE3Ps6z6odf31v63Rdv3EUJAdCcUyHV7OljvT57++6Dk2fM/+/P20dMeuqD2Tc1yUg1xs70tGTzLqjMZg18tmNWSLdpnh7jcZmkXuadB5SSZf/ZUFTiZZQaV7qUijN6xZTZS+fd5l89SEAI2bdHW4C2Hdo0BoBmDdOS6sQa3eEuy6jzdz9uzT9SZFlMOlG1XCUahMOyOKXEzHVdlAOAuemrg9tlUUrMr8weQrPUmVUPQ654IP2U5A+fv8W4IcxElxKandXUFDOpLszfxaW+F9/+YtYrn1oWC31/NTH2vyDiKgnoNrey2a3JcBcaz+4/EYsHSvr/Pd5wUOq1KSX3Pvn+jGcXfjxnSsP6dQGAM+I4UmnVtmVG8FkwSku99t7fDw+b8JjpP8GiYHEWaPAAlDIOVa+gkUp5fY7X5wy8bEZpqV1c6jOTHTBPe6Hy8guvvfullx682iT4MF+ZShrVAID4OM+jcxdv+GVXcanvcEFRvZQ6Zs+EQFbLDADIOKWuUtrtsg4cOnLWVQ8ue2WaOV8oy9CRVXa+wWdt6lDi9c165dOfft0dHAWvtZYKNm7d2/8fMxbNneK2uJnLGMtIhfeA12e/vvCr5V//HNGLJk4WTnLhMEGQhwu37MgNGC85Z7tMfHTYsCvz7a59eVt25JpfmT3kFxQH9hxASHWooOhQQdHwax97/M4xtiOyWmaUkye3y9q1L89ni01b906852X/Dyt6672Sqlz2sGOpdI6nqNi7ZUeuWdxl3ieydWduudqZv/cfKAiUNP/uP1hQrqRS2rz8pd/I+5bOu01r3aBeUnycB4I6vNtl5R8pOnS4aOQNs8wLR8zK+uCD5RcUBxq80vYNwZS/f/aHn63aEHBIHbfzMheG7Yh/TH7m9ccnNsmo1yQjFcBUkAHA5t/2UUqXrvzxiZeXGD/xGaOnL3hucnJiXGpygtnJ1p2//7p9PwBIKSklhUWlIedbHrfL2r77oJBy7c87bp75WoX1N871rTty2wy8eVDvDtOuPb9JRmq5FnC7rD25+aVee/vuA2Nve6H6jXPSQRr2mljTdThpCDaMTxozOLtd00DEgZSKMXrDfa8WFpXWaB2rJvgs+uVkjRl2emDVqfnj+Tf/b/W6rSfaC1CW07DS15eY6d4LM/+p5LHFbFdNfb7Ckh1aN7rpqrNtR7hc/Kpbn4eg0wxzvgZzESfc+WI1XyITYNyl/XtmZ5pLD2X3wK0PvJF3uIo1clFANAgHpeXfPxrI7FQlockmVNgIJZO31qTbrbAAZ7Q6Rw9dBFHhDo+lliqjsp2HNkL4EzEnHuYswqQOCT1W9Qlfq3J1kCEmJ1Ptco1QrrYm105oBEeY8w3sp5p3jrkuf/IeOKk5yacqAGCMgn90MUikV1drbfz7nLPQzuMIWc1k1tUsprWupg8v0kYwJ25CD8wbDKDsVQZSVvH+yj/T4NVHSGVW3AZvrHBQYILxOGOm/rYjQhcHVXi+wVT/2kHZdQkEy/s3giZAItrPyUs0CEeNEB3RgcFhlH9DdNCbq8KjlA6TQiHAX3u+JlPZX7W3kwtcq4IgSMSgcCAIEjEoHAiCRAwKB4IgEYPCgSBIxKBwIAgSMSgcCIJEDAoHgiARg8KBIEjEoHAgCBIxKBwIgkQMCgeCIBGDwoEgSMSgcCAIEjEoHAiCRAwKB4IgEYPCgSBIxPw/7RoDvvMJpK8AAAAASUVORK5CYII=" style="height:90px;border-radius:20px;margin-bottom:20px;box-shadow:0 8px 28px rgba(28,58,107,0.22)"/>
     <div style="font-size:15px;color:#8E8E93;text-align:center;margin-bottom:32px;line-height:1.5">Family logistics, made simple.</div>
+    ${inviteBanner}
     <div style="width:100%;max-width:400px;display:flex;flex-direction:column;gap:12px">
       <input class="input" id="le" type="email" placeholder="Email address" autocomplete="email"/>
       <input class="input" id="lp" type="password" placeholder="Password" autocomplete="current-password"/>
@@ -680,10 +750,10 @@ function sSignup(){
         <input class="input" id="se" type="email" placeholder="Email address"/>
         <input class="input" id="sp" type="password" placeholder="Password (min 6 characters)"/>
 
-        <div style="background:#fff;border:1px solid #E5E5EA;border-radius:12px;padding:14px;margin-top:6px">
-          <div style="font-size:14px;font-weight:700;color:#1C3A6B;margin-bottom:4px">🔑 Got a personal invite code?</div>
-          <div style="font-size:12px;color:#8E8E93;margin-bottom:10px;line-height:1.45">Optional — paste it here to join an existing family directly. Otherwise you can create a new family on the next screen.</div>
-          <input class="input" id="sinvite" type="text" placeholder="HB-A-XXXXX or HB-C-XXXXX" style="font-family:monospace;text-transform:uppercase"/>
+        <div style="background:#fff;border:1px solid ${S.pendingInvite?'#1C3A6B':'#E5E5EA'};border-radius:12px;padding:14px;margin-top:6px;${S.pendingInvite?'box-shadow:0 0 0 3px rgba(28,58,107,0.1)':''}">
+          <div style="font-size:14px;font-weight:700;color:#1C3A6B;margin-bottom:4px">${S.pendingInvite?'✅ Invite code detected':'🔑 Got a personal invite code?'}</div>
+          <div style="font-size:12px;color:#8E8E93;margin-bottom:10px;line-height:1.45">${S.pendingInvite?'You\'ll join the family automatically once your account is created.':'Optional — paste it here to join an existing family directly. Otherwise you can create a new family on the next screen.'}</div>
+          <input class="input" id="sinvite" type="text" placeholder="HB-A-XXXXX or HB-C-XXXXX" value="${S.pendingInvite||''}" style="font-family:monospace;text-transform:uppercase"/>
         </div>
 
         <div id="serr" class="err"></div>
@@ -700,6 +770,10 @@ function sFamilySetup(){
       <div style="font-size:14px;color:#8E8E93;margin-top:4px">Hi ${S.user?.displayName||'there'}! 👋</div>
     </div>
     <div class="scroll-view" style="padding:20px;display:flex;flex-direction:column;gap:16px">
+      ${S.pendingInvite?`<div style="background:linear-gradient(135deg,#1C3A6B,#2E5FBF);border-radius:14px;padding:14px 16px;color:#fff">
+        <div style="font-size:13px;font-weight:700;color:rgba(255,255,255,0.85);letter-spacing:0.4px;margin-bottom:4px">🔑 INVITE CODE READY</div>
+        <div style="font-size:13px;color:#fff;line-height:1.5;margin-bottom:10px">Tap <strong>Join with Code</strong> below to apply your invite (${S.pendingInvite}).</div>
+      </div>`:''}
       <div style="background:#fff;border-radius:16px;padding:20px;box-shadow:0 1px 4px rgba(0,0,0,0.08)">
         <div style="font-size:17px;font-weight:700;margin-bottom:4px">🏠 Create a new family</div>
         <div style="font-size:14px;color:#8E8E93;margin-bottom:14px">Start fresh and invite others to join</div>
@@ -708,10 +782,10 @@ function sFamilySetup(){
         <button class="primary-btn" onclick="hCreateFamily()">Create Family</button>
       </div>
       <div style="text-align:center;color:#8E8E93;font-size:14px">— or —</div>
-      <div style="background:#fff;border-radius:16px;padding:20px;box-shadow:0 1px 4px rgba(0,0,0,0.08)">
-        <div style="font-size:17px;font-weight:700;margin-bottom:4px">🔑 Got an invite?</div>
-        <div style="font-size:14px;color:#8E8E93;margin-bottom:14px;line-height:1.45">Enter the personal invite code your partner or family admin sent you</div>
-        <input class="input" id="fc" type="text" placeholder="Invite code (e.g. HB-A-XXXXX)" style="margin-bottom:10px;font-family:monospace;text-transform:uppercase"/>
+      <div style="background:#fff;border-radius:16px;padding:20px;box-shadow:0 1px 4px rgba(0,0,0,0.08);${S.pendingInvite?'border:2px solid #1C3A6B':''}">
+        <div style="font-size:17px;font-weight:700;margin-bottom:4px">🔑 ${S.pendingInvite?'Use your invite':'Got an invite?'}</div>
+        <div style="font-size:14px;color:#8E8E93;margin-bottom:14px;line-height:1.45">${S.pendingInvite?'Code already filled in — just tap below.':'Enter the personal invite code your partner or family admin sent you'}</div>
+        <input class="input" id="fc" type="text" placeholder="Invite code (e.g. HB-A-XXXXX)" value="${S.pendingInvite||''}" style="margin-bottom:10px;font-family:monospace;text-transform:uppercase"/>
         <div id="jerr" class="err" style="margin-bottom:8px"></div>
         <button class="green-btn" onclick="hJoinFamily()">Join with Code</button>
       </div>
@@ -1151,7 +1225,8 @@ function sToday(){
       <!-- REMINDERS for the day being viewed -->
       ${(()=>{
         const dueReminders=(S.reminders||[]).filter(r=>{
-          if(r.done)return r.date===viewDateStr; // completed ones still show on the date if you want to see them
+          // Hide completed reminders entirely (Nash request: ticked = gone)
+          if(r.done)return false;
           // Ongoing mode: show every day from when created until the date (inclusive)
           if(r.mode==='ongoing')return viewDateStr<=r.date;
           // Default: only show on the date itself
@@ -2982,7 +3057,7 @@ function sPersonProfile(){
           }
           if(!relevant)return false;
           // Then: is it active on the date being viewed?
-          if(r.done)return r.date===viewDateStr;
+          if(r.done)return false; // hide ticked-off reminders (Nash request)
           if(r.mode==='ongoing')return viewDateStr<=r.date;
           return r.date===viewDateStr;
         });
@@ -3118,20 +3193,23 @@ function sPersonProfile(){
       ${S.screenParams?.fromFamily?(()=>{
         const m=person.isAdult?members().find(x=>x.uid===person.id):null;
         const code=person.isAdult?(m?.personalCode||''):(person.personalCode||'');
-        return `<div class="sh" style="padding:0 16px;margin-bottom:6px">🔑 Personal Invite Code</div>
-        <div style="margin:0 16px 14px;background:${color};border-radius:14px;padding:16px 18px;color:#fff">
+        const escName=name.replace(/'/g,"\\\\'");
+        return `<div class="sh" style="padding:0 16px;margin-bottom:6px">🔑 Personal Invite</div>
+        <div style="margin:0 16px 14px;background:${color};border-radius:14px;padding:18px 18px;color:#fff">
           ${code?`
-            <div style="font-size:11px;font-weight:700;color:rgba(255,255,255,0.78);letter-spacing:0.5px;margin-bottom:4px">FOR ${name.toUpperCase()} ONLY</div>
-            <div style="font-size:22px;font-weight:800;letter-spacing:2px;font-family:monospace;margin-bottom:4px">${code}</div>
-            <div style="font-size:12px;color:rgba(255,255,255,0.85);margin-bottom:10px;line-height:1.5">When ${name.split(' ')[0]} signs up at <strong>ourhomebase.com.au</strong> using this code, their account will link directly to this profile.</div>
+            <div style="font-size:11px;font-weight:700;color:rgba(255,255,255,0.78);letter-spacing:0.5px;margin-bottom:6px">FOR ${name.toUpperCase()} ONLY</div>
+            <div style="font-size:13px;color:rgba(255,255,255,0.92);line-height:1.5;margin-bottom:14px">When ${name.split(' ')[0]} taps the link below, they'll be guided through sign-up and their account will link directly to this profile.</div>
+            <button onclick="sharePersonalCode('${code}','${escName}')" style="width:100%;background:#fff;border:none;border-radius:12px;padding:14px;color:${color};font-size:15px;font-weight:800;cursor:pointer;font-family:inherit;display:flex;align-items:center;justify-content:center;gap:8px;margin-bottom:10px;box-shadow:0 2px 8px rgba(0,0,0,0.1)">📤 Send invite link</button>
             <div style="display:flex;gap:6px;flex-wrap:wrap">
-              <button onclick="copyPersonalCode('${code}','${name.replace(/'/g,"\\\\'")}')" style="background:rgba(255,255,255,0.22);border:none;border-radius:8px;padding:8px 14px;color:#fff;font-size:12px;font-weight:600;cursor:pointer;font-family:inherit">📋 Copy</button>
-              <button onclick="sharePersonalCode('${code}','${name.replace(/'/g,"\\\\'")}')" style="background:rgba(255,255,255,0.22);border:none;border-radius:8px;padding:8px 14px;color:#fff;font-size:12px;font-weight:600;cursor:pointer;font-family:inherit">📤 Share</button>
-              <button onclick="emailPersonalCode('${code}','${name.replace(/'/g,"\\\\'")}','${person.email||''}')" style="background:#fff;border:none;border-radius:8px;padding:8px 14px;color:${color};font-size:12px;font-weight:700;cursor:pointer;font-family:inherit">📧 Email</button>
+              <button onclick="copyPersonalCode('${code}','${escName}')" style="flex:1;min-width:0;background:rgba(255,255,255,0.22);border:none;border-radius:8px;padding:9px 12px;color:#fff;font-size:12px;font-weight:600;cursor:pointer;font-family:inherit">📋 Copy link</button>
+              <button onclick="emailPersonalCode('${code}','${escName}','${person.email||''}')" style="flex:1;min-width:0;background:rgba(255,255,255,0.22);border:none;border-radius:8px;padding:9px 12px;color:#fff;font-size:12px;font-weight:600;cursor:pointer;font-family:inherit">📧 Email</button>
             </div>
+            <div style="font-size:10px;font-weight:600;color:rgba(255,255,255,0.6);letter-spacing:0.5px;margin-top:14px;padding-top:10px;border-top:1px solid rgba(255,255,255,0.18)">FALLBACK CODE</div>
+            <div style="font-size:14px;font-weight:700;letter-spacing:1.5px;font-family:monospace;color:rgba(255,255,255,0.85);margin-top:2px">${code}</div>
+            <div style="font-size:10px;color:rgba(255,255,255,0.55);margin-top:2px;line-height:1.45">If the link can't be opened for any reason, ${name.split(' ')[0]} can also type this code on the sign-up page.</div>
           `:`
-            <div style="font-size:13px;color:rgba(255,255,255,0.92);margin-bottom:10px;line-height:1.5">Generate a personal invite code for ${name.split(' ')[0]}. Sharing this code ensures their sign-up links directly to this profile.</div>
-            <button onclick="generatePersonalCode('${person.id}','${person.isAdult?'adult':'child'}')" style="background:#fff;border:none;border-radius:10px;padding:10px 18px;color:${color};font-size:13px;font-weight:700;cursor:pointer;font-family:inherit">🔑 Generate Invite Code</button>
+            <div style="font-size:13px;color:rgba(255,255,255,0.92);margin-bottom:12px;line-height:1.55">Generate a personal invite link for ${name.split(' ')[0]}. They tap it, sign up, and the account links straight to this profile — no shared family codes, no chance of mix-ups.</div>
+            <button onclick="generatePersonalCode('${person.id}','${person.isAdult?'adult':'child'}')" style="width:100%;background:#fff;border:none;border-radius:12px;padding:14px;color:${color};font-size:15px;font-weight:800;cursor:pointer;font-family:inherit;box-shadow:0 2px 8px rgba(0,0,0,0.1)">🔑 Generate invite link</button>
           `}
         </div>`;
       })():''}
@@ -3806,12 +3884,14 @@ window.hSignup=async()=>{
       if(btn)btn.textContent='Joining family...';
       try{
         S.familyId=await joinFamily(inviteCode);
+        S.pendingInvite=null; // consumed
         subscribe();
         render();
+        notify('🎉 Account created — welcome to '+(S.family?.name||'the family')+'!','✅');
         return;
       }catch(joinEx){
-        // Account created but join failed — fall through to family setup screen with a message
-        if(err)err.textContent='Account created, but invite code not recognised. You can try again on the next screen.';
+        // Account created but join failed — show the actual reason and fall through to family setup
+        if(err)err.textContent='Account created, but: '+(joinEx.message||'invite not recognised');
         back();
         return;
       }
@@ -3830,7 +3910,15 @@ window.hCreateFamily=async()=>{
 window.hJoinFamily=async()=>{
   const c=$('fc')?.value?.trim(),err=$('jerr');
   if(!c){if(err)err.textContent='Enter an invite code';return;}
-  try{S.familyId=await joinFamily(c);subscribe();render();}catch(ex){if(err)err.textContent=ex.message||'Code not recognised. Check and try again.';}
+  try{
+    S.familyId=await joinFamily(c);
+    S.pendingInvite=null; // consumed
+    subscribe();
+    render();
+    notify('🎉 You\'re in!','✅');
+  }catch(ex){
+    if(err)err.textContent=ex.message||'Code not recognised. Check and try again.';
+  }
 };
 window.onPhoto=async(input)=>{
   if(!input||!input.files||!input.files[0])return;
@@ -5080,38 +5168,57 @@ window.generatePersonalCode=async function(personId,kind){
   if(!S.familyId){notify('No family found','⚠️');return;}
   const code='HB-'+(kind==='adult'?'A':'C')+'-'+Math.random().toString(36).substring(2,7).toUpperCase();
   try{
+    // 1. Write the invitation token doc — this is what makes the join work without enumerating families
+    await setDoc(doc(db,'invitations',code),{
+      familyId:S.familyId,
+      familyName:S.family?.name||'',
+      kind,
+      targetId:personId,
+      createdBy:S.user?.uid||'',
+      createdAt:new Date(),
+      used:false
+    });
+    // 2. Stamp the code on the person doc too (so admin can see it on the profile)
     if(kind==='child'){
       await updateDoc(doc(db,'families',S.familyId,'children',personId),{personalCode:code});
-      // local update
       const c=S.children.find(ch=>ch.id===personId);
       if(c)c.personalCode=code;
     }else{
-      // Adult: update the family.members map
       const path='members.'+personId+'.personalCode';
       await updateDoc(doc(db,'families',S.familyId),{[path]:code});
       if(S.family?.members?.[personId])S.family.members[personId].personalCode=code;
     }
-    notify('✅ Code created: '+code,'🔑');
+    notify('✅ Invite link ready','🔑');
     render();
   }catch(ex){
     notify('Error: '+ex.message,'❌');
   }
 };
+// Build the shareable invite URL
+function buildInviteUrl(code){
+  // Always point to the app domain (not the marketing site) so signup flow can pick up the code
+  return 'https://app.ourhomebase.com.au/?invite='+encodeURIComponent(code);
+}
 window.copyPersonalCode=function(code,name){
-  if(navigator.clipboard)navigator.clipboard.writeText(code).then(()=>notify(name+"'s code copied! 🔑"));
-  else alert('Code: '+code);
+  const url=buildInviteUrl(code);
+  if(navigator.clipboard)navigator.clipboard.writeText(url).then(()=>notify('Invite link copied! 🔗 Send it to '+name));
+  else alert(url);
 };
 window.sharePersonalCode=function(code,name){
-  const text='Join '+(S.family?.name||'our family')+" on HomeBase! Use "+name+"'s personal invite code: "+code+"\n\nSign up at: https://ourhomebase.com.au";
+  const url=buildInviteUrl(code);
+  const fname=S.family?.name||'our family';
+  const text='Join '+fname+' on HomeBase! '+name+', tap this link to set up your account:\n\n'+url;
   if(navigator.share){
-    navigator.share({title:'HomeBase invite for '+name,text});
+    navigator.share({title:'HomeBase invite for '+name,text,url}).catch(()=>{});
   }else{
-    navigator.clipboard?.writeText(text).then(()=>notify('Invite text copied to clipboard! 📋'));
+    navigator.clipboard?.writeText(text).then(()=>notify('Invite copied to clipboard! 📋'));
   }
 };
 window.emailPersonalCode=function(code,name,toEmail){
+  const url=buildInviteUrl(code);
+  const fname=S.family?.name||'our family';
   const subj=encodeURIComponent('Your HomeBase invite, '+name);
-  const body=encodeURIComponent("Hi "+name+",\n\nI've set up a profile for you on HomeBase — our family logistics app.\n\nYour personal invite code is:\n\n"+code+"\n\nSign up at https://ourhomebase.com.au and enter this code when prompted. It'll link your account directly to your profile.\n\nSee you there!");
+  const body=encodeURIComponent("Hi "+name+",\n\nI've set up a profile for you on HomeBase — our family logistics app.\n\nTap the link below to set up your account. It'll automatically link to your profile in "+fname+":\n\n"+url+"\n\n(If the link doesn't work for any reason, you can also go to https://app.ourhomebase.com.au and enter this code when prompted: "+code+")\n\nSee you there!");
   window.location.href='mailto:'+(toEmail||'')+'?subject='+subj+'&body='+body;
 };
 window.generateFamilyCode=async function(){
@@ -5319,6 +5426,19 @@ onAuthStateChanged(auth,async user=>{
   if(user){
     try{const ud=await getDoc(doc(db,'users',user.uid));if(ud.exists()){const d=ud.data();if(d.familyId){S.familyId=d.familyId;subscribe();}if(d.notifTime)S.notifTime=d.notifTime;}}
     catch(ex){}
+    // If the user is signed in, has no family, AND we have a pending invite from the URL — auto-join
+    if(!S.familyId&&S.pendingInvite){
+      try{
+        notify('Joining family...','⏳');
+        S.familyId=await joinFamily(S.pendingInvite);
+        S.pendingInvite=null;
+        subscribe();
+        notify('🎉 You\'re in!','✅');
+      }catch(ex){
+        notify('Invite couldn\'t be applied: '+(ex.message||'unknown error'),'⚠️');
+        // Leave S.pendingInvite set so the family-setup screen can offer it
+      }
+    }
     // Schedule daily notification
     setTimeout(function(){scheduleDailyNotif();},2000);
   }
