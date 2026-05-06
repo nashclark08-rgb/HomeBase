@@ -163,6 +163,7 @@ import{getAuth,createUserWithEmailAndPassword,signInWithEmailAndPassword,signOut
 import{getFirestore,doc,setDoc,getDoc,collection,addDoc,onSnapshot,updateDoc,deleteDoc,query,where,getDocs}from'https://www.gstatic.com/firebasejs/10.7.1/firebase-firestore.js';
 import{getStorage,ref as sref,uploadString,getDownloadURL}from'https://www.gstatic.com/firebasejs/10.7.1/firebase-storage.js';
 import{getMessaging,getToken,onMessage,isSupported as isMessagingSupported}from'https://www.gstatic.com/firebasejs/10.7.1/firebase-messaging.js';
+import{getFunctions,httpsCallable}from'https://www.gstatic.com/firebasejs/10.7.1/firebase-functions.js';
 
 // Lazy load Tesseract for OCR
 let _tesseractLoaded=false;
@@ -181,6 +182,7 @@ const fbapp=initializeApp({apiKey:"AIzaSyA2lrJJ0T_y_CBk8kOqRmwejCqHx6RVPXA",auth
 const auth=getAuth(fbapp);
 const db=getFirestore(fbapp);
 const storage=getStorage(fbapp);
+const functions=getFunctions(fbapp,'australia-southeast1');
 const gp=new GoogleAuthProvider();
 
 // ── PUSH NOTIFICATIONS (Firebase Cloud Messaging) ──
@@ -2291,7 +2293,7 @@ function sEvents(){
           <div style="font-size:14px;font-weight:700;color:var(--text);line-height:1.25">Spreadsheet</div>
           <div style="font-size:11px;color:var(--text-secondary);line-height:1.4">Download a template or upload your own.</div>
         </div>
-        <div onclick="openComingSoon('fixtures')" style="background:var(--card);border:1px dashed var(--border);border-radius:14px;padding:14px;cursor:pointer;display:flex;flex-direction:column;gap:6px;min-height:96px">
+        <div onclick="go('fixturesImport')" style="background:var(--card);border:1px dashed var(--border);border-radius:14px;padding:14px;cursor:pointer;display:flex;flex-direction:column;gap:6px;min-height:96px">
           <div style="font-size:24px">🏊</div>
           <div style="font-size:14px;font-weight:700;color:var(--text);line-height:1.25">Sport Fixtures</div>
           <div style="font-size:11px;color:var(--text-secondary);line-height:1.4">Import a season's worth from URL or PDF.</div>
@@ -2339,6 +2341,11 @@ async function downloadEventTemplate(){
   try{
     notify('Preparing template…','📄');
     await loadSheetJS();
+    const familyName=S.family?.name||'Family';
+    const safeFamilyName=familyName.replace(/[^a-zA-Z0-9 ]/g,'').replace(/\s+/g,'-');
+    const today=new Date();
+    const dateStamp=fd(today);
+
     const headers=['Title','Type','Sport','Frequency','Date','Days','Start Date','End Date','Time','Location','Drop-off','Pick-up','Participants','Notes'];
     // Sample rows showing different scenarios
     const samples=[
@@ -2358,18 +2365,30 @@ async function downloadEventTemplate(){
       {wch:18},{wch:22},{wch:14},{wch:14},{wch:18},{wch:30}
     ];
 
-    // Add a quick second sheet with instructions
+    // Instructions sheet — leads with prominent family name
+    const familyMembers=members().map(m=>m.name).filter(Boolean);
+    const childrenNames=S.children.map(c=>c.name).filter(Boolean);
+    const allPeople=[...familyMembers,...childrenNames];
+    const familySportsList=Array.isArray(S.family?.sports)&&S.family.sports.length?S.family.sports.join(', '):'(none yet — add some in Settings → Family Sports)';
+
     const instructions=[
       ['HomeBase event template'],
+      ['For family: '+familyName],
+      ['Generated: '+dateStamp],
       [],
-      ['How to use'],
+      ['── How to use ──'],
       ['1. Fill in one event per row, starting at row 2 of the Events sheet.'],
       ['2. The first 4 sample rows show the format — replace them or delete them.'],
       ['3. Save the file (keep .xlsx format).'],
       ['4. Back in HomeBase, tap "Upload filled template" and pick this file.'],
       ['5. You\'ll see a preview before anything is added — review then commit.'],
       [],
-      ['Column rules'],
+      ['── Your family details ──'],
+      ['Family members: '+(allPeople.length?allPeople.join(', '):'(no family members yet)')],
+      ['Family sports: '+familySportsList],
+      ['(Use these names exactly when filling Drop-off, Pick-up, and Participants)'],
+      [],
+      ['── Column rules ──'],
       ['Title — required. The event name (e.g. "Water Polo Training").'],
       ['Type — required. One of: Game, Training, Music, Work, Social, Medical, Other.'],
       ['Sport — required if Type is Game or Training (e.g. "Water Polo").'],
@@ -2391,13 +2410,13 @@ async function downloadEventTemplate(){
     XLSX.utils.book_append_sheet(wb,ws,'Events');
     XLSX.utils.book_append_sheet(wb,wsInst,'Instructions');
 
-    // Trigger download
+    // Trigger download with family name in filename
     const wbout=XLSX.write(wb,{bookType:'xlsx',type:'array'});
     const blob=new Blob([wbout],{type:'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet'});
     const url=URL.createObjectURL(blob);
     const a=document.createElement('a');
     a.href=url;
-    a.download='HomeBase-events-template.xlsx';
+    a.download='HomeBase-events-'+safeFamilyName+'-'+dateStamp+'.xlsx';
     document.body.appendChild(a);
     a.click();
     document.body.removeChild(a);
@@ -2803,6 +2822,604 @@ function sSpreadsheetPreview(){
       </div>
     </div>`;
 }
+
+// =================================================================
+// SPORT FIXTURES IMPORT — bulk-add games/training from URL or PDF
+// =================================================================
+
+// Lazy-load PDF.js (Mozilla's PDF library, runs entirely client-side)
+let _pdfjsLoadPromise=null;
+function loadPDFJS(){
+  if(typeof window.pdfjsLib!=='undefined')return Promise.resolve();
+  if(_pdfjsLoadPromise)return _pdfjsLoadPromise;
+  _pdfjsLoadPromise=new Promise((resolve,reject)=>{
+    const s=document.createElement('script');
+    s.src='https://cdnjs.cloudflare.com/ajax/libs/pdf.js/3.11.174/pdf.min.js';
+    s.onload=()=>{
+      // Worker file path — required for PDF.js to actually parse
+      window.pdfjsLib.GlobalWorkerOptions.workerSrc='https://cdnjs.cloudflare.com/ajax/libs/pdf.js/3.11.174/pdf.worker.min.js';
+      resolve();
+    };
+    s.onerror=()=>reject(new Error('Failed to load PDF library'));
+    document.head.appendChild(s);
+  });
+  return _pdfjsLoadPromise;
+}
+
+// Parse loose date strings into YYYY-MM-DD. Returns '' if not parseable.
+// Handles: 2026-05-10, 10/05/2026, 10/5/26, "Sat 10 May", "10 May 2026", "10th May", etc.
+function parseLooseDate(s){
+  if(!s)return '';
+  s=String(s).trim();
+  // ISO already
+  if(/^\d{4}-\d{2}-\d{2}/.test(s))return s.slice(0,10);
+  // DD/MM/YYYY or DD-MM-YYYY (Australian format default)
+  let m=s.match(/^(\d{1,2})[\/\-\.](\d{1,2})[\/\-\.](\d{2,4})$/);
+  if(m){
+    let dy=parseInt(m[1]);let mo=parseInt(m[2]);let yr=parseInt(m[3]);
+    if(yr<100)yr+=2000;
+    if(dy>=1&&dy<=31&&mo>=1&&mo<=12){
+      return yr+'-'+String(mo).padStart(2,'0')+'-'+String(dy).padStart(2,'0');
+    }
+  }
+  // "10 May 2026", "Sat 10 May", "10th May", "Saturday 10 May 2026"
+  const monthRe=/(?:\b(?:mon|tue|wed|thu|fri|sat|sun)[a-z]*\.?\s+)?(\d{1,2})(?:st|nd|rd|th)?\s+(jan|feb|mar|apr|may|jun|jul|aug|sep|oct|nov|dec)[a-z]*\.?(?:\s+(\d{2,4}))?/i;
+  m=s.match(monthRe);
+  if(m){
+    const dy=parseInt(m[1]);
+    const monthNames=['jan','feb','mar','apr','may','jun','jul','aug','sep','oct','nov','dec'];
+    const moIdx=monthNames.indexOf(m[2].toLowerCase().slice(0,3));
+    if(dy>=1&&dy<=31&&moIdx>=0){
+      let yr=m[3]?parseInt(m[3]):new Date().getFullYear();
+      if(yr<100)yr+=2000;
+      // If date is well in the past, assume next year (fixture lists are usually future-facing)
+      if(!m[3]){
+        const tryDate=new Date(yr,moIdx,dy);
+        if(tryDate.getTime()<Date.now()-30*86400*1000){yr+=1;}
+      }
+      return yr+'-'+String(moIdx+1).padStart(2,'0')+'-'+String(dy).padStart(2,'0');
+    }
+  }
+  return '';
+}
+
+// Extract a time-of-day string from a cell. Returns normalized like "9:00am" or ''.
+function parseLooseTime(s){
+  if(!s)return '';
+  // 9:00am / 9:00 am / 9 AM / 09:00 / 9.00am
+  const m=String(s).match(/\b(\d{1,2})[:\.]?(\d{2})?\s*(am|pm|AM|PM)\b/);
+  if(m){
+    const h=parseInt(m[1]);
+    const min=m[2]?':'+m[2]:'';
+    const ap=m[3].toLowerCase();
+    return h+min+ap;
+  }
+  // 24-hour: 09:00, 14:30
+  const m2=String(s).match(/\b([01]?\d|2[0-3]):([0-5]\d)\b/);
+  if(m2){
+    let h=parseInt(m2[1]);const min=m2[2];
+    const ap=h>=12?'pm':'am';
+    if(h===0)h=12;else if(h>12)h-=12;
+    return h+':'+min+ap;
+  }
+  return '';
+}
+
+// Parse an array of "cells" (strings) into a fixture object, or null if not a fixture.
+// Strategy: a fixture row must contain a parseable date.
+function parseRowAsFixture(cells){
+  if(!cells||cells.length<2)return null;
+  // Skip totally empty
+  const nonEmpty=cells.filter(c=>c&&c.trim());
+  if(nonEmpty.length<2)return null;
+
+  // Find date-like cell
+  let dateStr='';let dateIdx=-1;
+  for(let i=0;i<cells.length;i++){
+    const d=parseLooseDate(cells[i]);
+    if(d){dateStr=d;dateIdx=i;break;}
+  }
+  // Also try concatenating short adjacent cells (PDFs sometimes split "Sat" / "10" / "May" / "2026")
+  if(!dateStr){
+    for(let i=0;i<cells.length-1;i++){
+      const combined=cells[i]+' '+cells[i+1]+(cells[i+2]?' '+cells[i+2]:'')+(cells[i+3]?' '+cells[i+3]:'');
+      const d=parseLooseDate(combined);
+      if(d){dateStr=d;dateIdx=i;break;}
+    }
+  }
+  if(!dateStr)return null;
+
+  // Find time-like cell
+  let timeStr='';
+  for(const cell of cells){
+    const t=parseLooseTime(cell);
+    if(t){timeStr=t;break;}
+  }
+
+  // Find opponent
+  let opponent='';
+  // Pattern A: "vs Lions", "v. Lions", "v Lions"
+  for(const cell of cells){
+    const m=cell.match(/(?:^|\s)v\.?\s*s?\.?\s+(.+?)(?:\s+at\s+|\s+@\s+|$)/i);
+    if(m&&m[1].trim().length>1){opponent=m[1].trim();break;}
+  }
+  // Pattern B: longest-looking name cell that isn't date/time/venue keyword
+  if(!opponent){
+    const candidates=cells.filter((c,i)=>{
+      if(i===dateIdx)return false;
+      if(!c||c.trim().length<3)return false;
+      if(parseLooseTime(c)===c.trim())return false;
+      if(/^(home|away|bye|round|game|match|fixture|tba|tbd)$/i.test(c.trim()))return false;
+      return true;
+    });
+    // Prefer one that doesn't contain venue keywords
+    const teamLikely=candidates.find(c=>!/(?:pool|court|field|oval|park|centre|center|stadium|gym|complex|arena|grounds|ground|club\s+house|sports\s+ground)/i.test(c));
+    opponent=teamLikely||candidates[0]||'';
+    // Trim weird trailing/leading punctuation
+    opponent=opponent.replace(/^[\W_]+|[\W_]+$/g,'');
+  }
+
+  // Find venue
+  let venue='';
+  for(const cell of cells){
+    if(cell===opponent)continue;
+    if(/(?:pool|court|field|oval|park|centre|center|stadium|gym|complex|arena|grounds|club|sports\s+ground)/i.test(cell)){
+      venue=cell.replace(/^[\W_]+|[\W_]+$/g,'');
+      break;
+    }
+  }
+
+  return {date:dateStr,time:timeStr,opponent,venue,raw:cells.join(' | ')};
+}
+
+// Parse fixtures from raw HTML. Walks tables + lists.
+function parseFixturesFromHTML(html){
+  const parser=new DOMParser();
+  const doc=parser.parseFromString(html,'text/html');
+  const fixtures=[];
+  const seen=new Set();
+
+  // Try tables
+  const tables=doc.querySelectorAll('table');
+  for(const table of tables){
+    const rows=table.querySelectorAll('tr');
+    for(const tr of rows){
+      const cells=[...tr.querySelectorAll('td,th')].map(td=>(td.textContent||'').replace(/\s+/g,' ').trim());
+      const f=parseRowAsFixture(cells);
+      if(f){
+        const key=f.date+'|'+f.time+'|'+f.opponent;
+        if(!seen.has(key)){seen.add(key);fixtures.push(f);}
+      }
+    }
+  }
+
+  // Fallback: walk through divs/lists that look like fixture cards
+  if(fixtures.length===0){
+    const blocks=doc.querySelectorAll('article,li,.fixture,[class*="fixture"],[class*="match"],[class*="game"]');
+    for(const b of blocks){
+      // Split by line-break-ish boundaries
+      const text=(b.textContent||'').replace(/\s*\n\s*/g,'\n').trim();
+      const lines=text.split('\n').map(l=>l.trim()).filter(Boolean);
+      // Treat lines as cells
+      const f=parseRowAsFixture(lines);
+      if(f){
+        const key=f.date+'|'+f.time+'|'+f.opponent;
+        if(!seen.has(key)){seen.add(key);fixtures.push(f);}
+      }
+    }
+  }
+
+  return fixtures;
+}
+
+// Parse fixtures from a PDF file. Uses positional Y-coordinate grouping into lines.
+async function parseFixturesFromPDF(file){
+  await loadPDFJS();
+  const buf=await file.arrayBuffer();
+  const pdf=await window.pdfjsLib.getDocument({data:buf}).promise;
+  const fixtures=[];
+  const seen=new Set();
+
+  for(let pageNum=1;pageNum<=pdf.numPages;pageNum++){
+    const page=await pdf.getPage(pageNum);
+    const content=await page.getTextContent();
+
+    // Group text items by Y coordinate (rounded to nearest 4 pts to allow tolerance)
+    const lineMap=new Map();
+    for(const item of content.items){
+      if(!item.str||!item.str.trim())continue;
+      const y=Math.round(item.transform[5]/4)*4;
+      if(!lineMap.has(y))lineMap.set(y,[]);
+      lineMap.get(y).push({x:item.transform[4],text:item.str.trim()});
+    }
+    // Iterate top→bottom (Y descending in PDF coords)
+    const ys=[...lineMap.keys()].sort((a,b)=>b-a);
+    for(const y of ys){
+      const items=lineMap.get(y).sort((a,b)=>a.x-b.x);
+      // Group items into "cells" by gap-detection (gaps > 10 = cell boundary)
+      const cells=[];
+      let current=items[0]?items[0].text:'';
+      for(let i=1;i<items.length;i++){
+        const gap=items[i].x-(items[i-1].x+items[i-1].text.length*4);
+        if(gap>10){
+          if(current.trim())cells.push(current.trim());
+          current=items[i].text;
+        }else{
+          current+=' '+items[i].text;
+        }
+      }
+      if(current.trim())cells.push(current.trim());
+      // Now also try whole-line as one string + split on multi-space
+      const wholeLine=cells.join('  ');
+      const altCells=wholeLine.split(/\s{2,}|\t+/).map(s=>s.trim()).filter(Boolean);
+      const f=parseRowAsFixture(altCells.length>cells.length?altCells:cells)||parseRowAsFixture([wholeLine]);
+      if(f){
+        const key=f.date+'|'+f.time+'|'+f.opponent;
+        if(!seen.has(key)){seen.add(key);fixtures.push(f);}
+      }
+    }
+  }
+  return fixtures;
+}
+
+// Fetch a URL via cloud function (bypasses CORS) and parse fixtures from the HTML
+async function fetchAndParseFixturesFromURL(url){
+  let resp;
+  try{
+    const callable=httpsCallable(functions,'fetchSportFixtures');
+    resp=await callable({url});
+  }catch(ex){
+    const msg=ex?.message||'';
+    if(/not-found|not\s+exist/i.test(msg)){
+      throw new Error('The "fetchSportFixtures" cloud function is not deployed yet. See deployment notes.');
+    }
+    throw new Error('Couldn\'t fetch URL: '+(msg||'unknown error'));
+  }
+  const html=resp?.data?.html;
+  if(!html)throw new Error('No HTML returned from URL');
+  const fixtures=parseFixturesFromHTML(html);
+  if(fixtures.length===0)throw new Error('Didn\'t spot any fixtures on that page. The page might use an unusual format — try copying the fixtures into the spreadsheet template instead.');
+  return fixtures;
+}
+
+// === HUB SCREEN ===
+function sFixturesImport(){
+  // Initialise import state if not already there
+  if(!S.fixtureImport){
+    S.fixtureImport={
+      type:'sport-games', // 'sport-games' or 'sport-training'
+      sport:'',
+      participantIds:[],
+      url:'',
+      busy:false
+    };
+  }
+  const fi=S.fixtureImport;
+  const familySports=Array.isArray(S.family?.sports)?S.family.sports:[];
+  const allPeople=[...S.children.map(c=>({id:c.id,name:c.name,color:c.color||NAVY,photo:c.photoURL})),
+                   ...members().map(m=>({id:m.uid,name:m.name,color:m.color||NAVY,photo:m.photoURL}))];
+
+  return `
+    <div style="min-height:100%;display:flex;flex-direction:column;background:var(--bg)">
+      <div style="background:var(--card);padding:14px 16px;display:flex;align-items:center;border-bottom:1px solid var(--row-border);position:sticky;top:0;z-index:10">
+        <button class="back-btn" onclick="back()">${bk()} Back</button>
+        <div style="flex:1;text-align:center;font-size:17px;font-weight:600">Sport Fixtures</div>
+        <div style="width:60px"></div>
+      </div>
+      <div class="scroll-view" style="padding:18px 16px 80px;max-width:560px;margin:auto;width:100%">
+
+        <div style="text-align:center;margin-bottom:24px">
+          <div style="font-size:54px;margin-bottom:6px">🏊</div>
+          <div style="font-size:20px;font-weight:800;color:var(--text);margin-bottom:6px">Import a season's fixtures</div>
+          <div style="font-size:13px;color:var(--text-secondary);line-height:1.55">Paste a URL or upload a PDF — HomeBase reads<br>the fixtures and adds them all in one go.</div>
+        </div>
+
+        <!-- Step 1: WHAT'S THIS FOR? -->
+        <div style="background:var(--card);border-radius:14px;padding:18px;margin-bottom:14px;border:1px solid var(--row-border)">
+          <div style="display:flex;align-items:center;gap:10px;margin-bottom:14px">
+            <div style="width:28px;height:28px;border-radius:14px;background:var(--navy);color:#fff;display:flex;align-items:center;justify-content:center;font-size:14px;font-weight:800;flex-shrink:0">1</div>
+            <div style="font-size:15px;font-weight:700;color:var(--text)">What are these fixtures for?</div>
+          </div>
+
+          <div style="font-size:12px;color:var(--text-secondary);margin-bottom:6px;font-weight:600">Type</div>
+          <div style="display:flex;gap:8px;margin-bottom:14px">
+            <button onclick="S.fixtureImport.type='sport-games';render()" class="freq-btn ${fi.type==='sport-games'?'on':''}" style="flex:1;padding:10px">🏆 Games</button>
+            <button onclick="S.fixtureImport.type='sport-training';render()" class="freq-btn ${fi.type==='sport-training'?'on':''}" style="flex:1;padding:10px">🏃 Training</button>
+          </div>
+
+          <div style="font-size:12px;color:var(--text-secondary);margin-bottom:6px;font-weight:600">Sport <span style="color:#FF3B30">*</span></div>
+          ${familySports.length>0?`<div style="display:flex;flex-wrap:wrap;gap:6px;margin-bottom:8px">${familySports.map(s=>{const safe=s.replace(/'/g,"\\'");return `<button onclick="S.fixtureImport.sport='${safe}';document.getElementById('fi-sport-input').value='${safe}';render()" class="freq-btn ${fi.sport===s?'on':''}" style="padding:6px 12px;font-size:12px">${s}</button>`;}).join('')}</div>`:''}
+          <input class="input" id="fi-sport-input" type="text" placeholder="e.g. Water Polo" value="${(fi.sport||'').replace(/"/g,'&quot;')}" oninput="S.fixtureImport.sport=this.value" style="margin-bottom:14px"/>
+
+          <div style="font-size:12px;color:var(--text-secondary);margin-bottom:6px;font-weight:600">Who's playing? <span style="color:#FF3B30">*</span></div>
+          <div style="display:flex;flex-wrap:wrap;gap:6px">
+            ${allPeople.map(p=>{
+              const isOn=fi.participantIds.includes(p.id);
+              return `<button onclick="toggleFixturePerson('${p.id}')" class="freq-btn ${isOn?'on':''}" style="padding:6px 10px;font-size:12px;display:inline-flex;align-items:center;gap:6px">${p.name.split(' ')[0]}</button>`;
+            }).join('')}
+          </div>
+        </div>
+
+        <!-- Step 2: GET THE FIXTURES -->
+        <div style="background:var(--card);border-radius:14px;padding:18px;margin-bottom:14px;border:1px solid var(--row-border)">
+          <div style="display:flex;align-items:center;gap:10px;margin-bottom:14px">
+            <div style="width:28px;height:28px;border-radius:14px;background:var(--navy);color:#fff;display:flex;align-items:center;justify-content:center;font-size:14px;font-weight:800;flex-shrink:0">2</div>
+            <div style="font-size:15px;font-weight:700;color:var(--text)">Where are the fixtures?</div>
+          </div>
+
+          <div style="font-size:12px;color:var(--text-secondary);margin-bottom:6px;font-weight:600">📎 From a URL (Revolutionise, school site, etc.)</div>
+          <div style="display:flex;gap:8px;margin-bottom:14px">
+            <input class="input" id="fi-url-input" type="url" placeholder="https://..." value="${(fi.url||'').replace(/"/g,'&quot;')}" oninput="S.fixtureImport.url=this.value" style="flex:1"/>
+            <button onclick="handleFixtureUrlFetch()" ${fi.busy?'disabled':''} style="padding:12px 18px;border-radius:10px;background:#1C3A6B;border:none;color:#fff;font-size:14px;font-weight:700;cursor:${fi.busy?'wait':'pointer'};font-family:inherit;flex-shrink:0;${fi.busy?'opacity:0.7':''}">${fi.busy?'…':'Fetch'}</button>
+          </div>
+
+          <div style="text-align:center;font-size:11px;color:var(--text-secondary);margin:6px 0">— or —</div>
+
+          <div style="font-size:12px;color:var(--text-secondary);margin-bottom:6px;font-weight:600">📄 From a PDF</div>
+          <input type="file" id="fi-pdf" accept=".pdf,application/pdf" style="display:none" onchange="handleFixturePdfUpload(this)"/>
+          <button onclick="document.getElementById('fi-pdf').click()" ${fi.busy?'disabled':''} style="width:100%;padding:13px;border-radius:12px;background:#34C759;border:none;color:#fff;font-size:14px;font-weight:700;cursor:${fi.busy?'wait':'pointer'};font-family:inherit;${fi.busy?'opacity:0.7':''}">${fi.busy?'Reading…':'Upload PDF'}</button>
+        </div>
+
+        <details style="background:var(--card);border-radius:14px;padding:14px 18px;border:1px solid var(--row-border);margin-bottom:14px">
+          <summary style="font-size:14px;font-weight:700;color:var(--text);cursor:pointer">💡 Tips for best results</summary>
+          <div style="font-size:12px;color:var(--text-secondary);line-height:1.6;margin-top:10px">
+            <div><strong>Revolutionise URLs</strong> usually work well — pages with a fixture table.</div>
+            <div><strong>School fixture pages</strong> work too if they use a normal HTML table.</div>
+            <div><strong>PDFs</strong> work best when fixtures are in a clean grid (date, time, opponent, venue columns).</div>
+            <div><strong>Always review the preview</strong> — auto-parsing can miss things. You can edit each row before importing.</div>
+            <div><strong>If nothing's detected</strong>, the spreadsheet template is the most reliable backup.</div>
+          </div>
+        </details>
+
+      </div>
+    </div>`;
+}
+
+// Toggle a person in the fixture import
+window.toggleFixturePerson=function(id){
+  const fi=S.fixtureImport;
+  if(!fi)return;
+  const i=fi.participantIds.indexOf(id);
+  if(i>=0)fi.participantIds.splice(i,1);
+  else fi.participantIds.push(id);
+  render();
+};
+
+// Validate the "what's this for?" section before fetching
+function validateFixtureSetup(){
+  const fi=S.fixtureImport;
+  if(!fi)return 'Setup not initialised';
+  // Pull live values from inputs (in case user typed since last render)
+  const sportInput=document.getElementById('fi-sport-input');
+  if(sportInput)fi.sport=sportInput.value.trim();
+  const urlInput=document.getElementById('fi-url-input');
+  if(urlInput)fi.url=urlInput.value.trim();
+  if(!fi.sport)return 'Please pick or type a sport';
+  if(fi.participantIds.length===0)return 'Please pick who these fixtures are for';
+  return '';
+}
+
+window.handleFixtureUrlFetch=async function(){
+  const fi=S.fixtureImport;
+  const errMsg=validateFixtureSetup();
+  if(errMsg){notify(errMsg,'⚠️');return;}
+  if(!fi.url||!/^https?:\/\//.test(fi.url)){
+    notify('Please paste a valid URL starting with http(s)://','⚠️');
+    return;
+  }
+  fi.busy=true;render();
+  try{
+    notify('Fetching fixtures…','🌐');
+    const fixtures=await fetchAndParseFixturesFromURL(fi.url);
+    fi.busy=false;
+    S.fixturePreview={fixtures:fixtures.map(f=>({...f,id:Math.random().toString(36).slice(2,9)})),source:fi.url,sourceKind:'url'};
+    go('fixturesPreview');
+  }catch(ex){
+    fi.busy=false;
+    notify(ex.message||String(ex),'❌');
+    render();
+  }
+};
+
+window.handleFixturePdfUpload=async function(input){
+  if(!input?.files?.[0])return;
+  const file=input.files[0];
+  const fi=S.fixtureImport;
+  const errMsg=validateFixtureSetup();
+  if(errMsg){notify(errMsg,'⚠️');input.value='';return;}
+  fi.busy=true;render();
+  try{
+    notify('Reading PDF…','📄');
+    const fixtures=await parseFixturesFromPDF(file);
+    fi.busy=false;
+    if(fixtures.length===0){
+      notify('Didn\'t spot any fixtures in this PDF. Try the spreadsheet template instead.','⚠️');
+      render();
+      return;
+    }
+    S.fixturePreview={fixtures:fixtures.map(f=>({...f,id:Math.random().toString(36).slice(2,9)})),source:file.name,sourceKind:'pdf'};
+    go('fixturesPreview');
+  }catch(ex){
+    fi.busy=false;
+    notify('PDF read failed: '+(ex.message||ex),'❌');
+    render();
+  }finally{
+    if(input)input.value='';
+  }
+};
+
+// === PREVIEW SCREEN ===
+function sFixturesPreview(){
+  const data=S.fixturePreview;
+  const fi=S.fixtureImport;
+  if(!data||!fi){
+    return `
+      <div style="min-height:100%;display:flex;flex-direction:column;background:var(--bg)">
+        <div style="background:var(--card);padding:14px 16px;display:flex;align-items:center;border-bottom:1px solid var(--row-border)">
+          <button class="back-btn" onclick="back()">${bk()} Back</button>
+          <div style="flex:1;text-align:center;font-size:17px;font-weight:600">Preview</div>
+          <div style="width:60px"></div>
+        </div>
+        <div style="padding:60px 20px;text-align:center;color:var(--text-secondary)"><div style="font-size:14px">No fixtures loaded.</div></div>
+      </div>`;
+  }
+
+  const fixtures=data.fixtures;
+  const validCount=fixtures.filter(f=>f.date&&!f._removed).length;
+  const cat=EV_CATEGORIES.find(c=>c.id===fi.type)||EV_CATEGORIES[0];
+
+  const fixtureCard=f=>{
+    if(f._removed){
+      return `<div style="padding:10px 14px;opacity:0.5;display:flex;align-items:center;justify-content:space-between;border-bottom:1px solid var(--row-border)">
+        <div style="font-size:13px;color:var(--text-secondary);text-decoration:line-through">${f.opponent||f.raw||'(removed)'} ${f.date?'· '+f.date:''}</div>
+        <button onclick="restoreFixture('${f.id}')" style="font-size:11px;color:var(--navy);font-weight:600;border:none;background:none;cursor:pointer;font-family:inherit;text-decoration:underline">Undo</button>
+      </div>`;
+    }
+    const dateOk=!!f.date;
+    return `<div style="padding:14px;border-bottom:1px solid var(--row-border);${!dateOk?'background:#FF3B3008':''}">
+      <div style="display:grid;grid-template-columns:auto 1fr;gap:8px 10px;align-items:center;margin-bottom:8px">
+        <span style="font-size:11px;color:var(--text-secondary);font-weight:600">DATE</span>
+        <input type="date" value="${f.date||''}" onchange="updateFixture('${f.id}','date',this.value)" style="padding:6px 10px;border-radius:8px;border:1px solid ${dateOk?'var(--border)':'#FF3B30'};font-size:13px;font-family:inherit;background:var(--card);color:var(--text)"/>
+
+        <span style="font-size:11px;color:var(--text-secondary);font-weight:600">TIME</span>
+        <input type="text" value="${(f.time||'').replace(/"/g,'&quot;')}" placeholder="e.g. 9:00am" onchange="updateFixture('${f.id}','time',this.value)" style="padding:6px 10px;border-radius:8px;border:1px solid var(--border);font-size:13px;font-family:inherit;background:var(--card);color:var(--text)"/>
+
+        <span style="font-size:11px;color:var(--text-secondary);font-weight:600">vs</span>
+        <input type="text" value="${(f.opponent||'').replace(/"/g,'&quot;')}" placeholder="Opponent" onchange="updateFixture('${f.id}','opponent',this.value)" style="padding:6px 10px;border-radius:8px;border:1px solid var(--border);font-size:13px;font-family:inherit;background:var(--card);color:var(--text)"/>
+
+        <span style="font-size:11px;color:var(--text-secondary);font-weight:600">@</span>
+        <input type="text" value="${(f.venue||'').replace(/"/g,'&quot;')}" placeholder="Venue" onchange="updateFixture('${f.id}','venue',this.value)" style="padding:6px 10px;border-radius:8px;border:1px solid var(--border);font-size:13px;font-family:inherit;background:var(--card);color:var(--text)"/>
+      </div>
+      <div style="display:flex;justify-content:space-between;align-items:center;margin-top:6px">
+        <div style="font-size:10px;color:var(--text-secondary);font-style:italic;flex:1;min-width:0;overflow:hidden;text-overflow:ellipsis;white-space:nowrap">${f.raw?'From: '+f.raw.slice(0,80):''}</div>
+        <button onclick="removeFixture('${f.id}')" style="font-size:11px;color:#FF3B30;font-weight:600;border:none;background:none;cursor:pointer;font-family:inherit;padding:4px 8px">Remove</button>
+      </div>
+      ${!dateOk?`<div style="font-size:11px;color:#FF3B30;margin-top:6px;font-weight:600">⚠️ Set a date or this will be skipped</div>`:''}
+    </div>`;
+  };
+
+  return `
+    <div style="min-height:100%;display:flex;flex-direction:column;background:var(--bg)">
+      <div style="background:var(--card);padding:14px 16px;display:flex;align-items:center;border-bottom:1px solid var(--row-border);position:sticky;top:0;z-index:10">
+        <button class="back-btn" onclick="S.fixturePreview=null;back()">${bk()} Cancel</button>
+        <div style="flex:1;text-align:center;font-size:17px;font-weight:600">Preview Fixtures</div>
+        <div style="width:60px"></div>
+      </div>
+
+      <div style="padding:14px 16px;background:var(--card);border-bottom:1px solid var(--row-border)">
+        <div style="display:flex;align-items:center;gap:10px;margin-bottom:8px">
+          <div style="width:38px;height:38px;border-radius:19px;background:${cat.color}18;border:2px solid ${cat.color};display:flex;align-items:center;justify-content:center;font-size:18px;flex-shrink:0">${cat.emoji}</div>
+          <div style="flex:1;min-width:0">
+            <div style="font-size:16px;font-weight:800;color:var(--text);line-height:1.2">${cat.label} · ${fi.sport}</div>
+            <div style="font-size:11px;color:var(--text-secondary)">${data.source}</div>
+          </div>
+        </div>
+        <div style="font-size:12px;color:var(--text-secondary)">For: <strong style="color:var(--text)">${fi.participantIds.map(id=>{const c=S.children.find(x=>x.id===id);if(c)return c.name.split(' ')[0];const m=members().find(x=>x.uid===id);return m?m.name.split(' ')[0]:'?';}).join(', ')||'(no one selected)'}</strong></div>
+      </div>
+
+      <div class="scroll-view" style="padding:0 0 100px;max-width:680px;margin:auto;width:100%">
+        ${fixtures.length===0?'<div style="text-align:center;padding:60px 20px;color:var(--text-secondary);font-size:14px">No fixtures detected.</div>':`
+          <div style="font-size:12px;color:var(--text-secondary);padding:14px 16px 8px">${validCount} fixture${validCount===1?'':'s'} ready to import. Edit any row before committing.</div>
+          <div class="card" style="margin:0 16px">
+            ${fixtures.map(fixtureCard).join('')}
+          </div>
+        `}
+      </div>
+
+      <div style="position:fixed;bottom:0;left:0;right:0;background:var(--card);padding:12px 16px;border-top:1px solid var(--row-border);display:flex;gap:10px;max-width:680px;margin:auto;box-shadow:0 -2px 8px rgba(0,0,0,0.05)">
+        <button onclick="S.fixturePreview=null;back()" style="flex:1;padding:13px;border-radius:12px;background:var(--bg);border:none;color:var(--text);font-size:14px;font-weight:700;cursor:pointer;font-family:inherit">Cancel</button>
+        <button id="commit-fixtures-btn" onclick="commitFixturesImport()" ${validCount===0?'disabled':''} style="flex:2;padding:13px;border-radius:12px;background:${validCount>0?'#34C759':'#C7C7CC'};border:none;color:#fff;font-size:14px;font-weight:700;cursor:${validCount>0?'pointer':'not-allowed'};font-family:inherit">Import ${validCount} fixture${validCount===1?'':'s'}</button>
+      </div>
+    </div>`;
+}
+
+window.updateFixture=function(id,field,value){
+  const data=S.fixturePreview;
+  if(!data)return;
+  const f=data.fixtures.find(x=>x.id===id);
+  if(!f)return;
+  f[field]=value;
+  // No re-render needed for input typing — only date may change validity, so re-render once user changes that
+  if(field==='date')render();
+};
+window.removeFixture=function(id){
+  const data=S.fixturePreview;
+  if(!data)return;
+  const f=data.fixtures.find(x=>x.id===id);
+  if(f){f._removed=true;render();}
+};
+window.restoreFixture=function(id){
+  const data=S.fixturePreview;
+  if(!data)return;
+  const f=data.fixtures.find(x=>x.id===id);
+  if(f){f._removed=false;render();}
+};
+
+window.commitFixturesImport=async function(){
+  const data=S.fixturePreview;
+  const fi=S.fixtureImport;
+  if(!data||!fi){notify('Nothing to import','⚠️');return;}
+  if(!S.familyId){notify('No family loaded','⚠️');return;}
+  const valid=data.fixtures.filter(f=>f.date&&!f._removed);
+  if(valid.length===0){notify('No valid fixtures to import','⚠️');return;}
+
+  const btn=document.getElementById('commit-fixtures-btn');
+  if(btn){btn.disabled=true;btn.textContent='Importing…';}
+
+  // Auto-grow family.sports
+  const existingSports=Array.isArray(S.family?.sports)?S.family.sports:[];
+  if(fi.sport&&!existingSports.some(s=>s.toLowerCase()===fi.sport.toLowerCase())){
+    try{
+      const merged=[...existingSports,fi.sport].sort();
+      await updateDoc(doc(db,'families',S.familyId),{sports:merged});
+      if(S.family)S.family.sports=merged;
+    }catch(e){}
+  }
+
+  // Build legacy fields
+  let childId='',adultUid='';
+  if(fi.participantIds.length===1){
+    const c=S.children.find(x=>x.id===fi.participantIds[0]);
+    const m=members().find(x=>x.uid===fi.participantIds[0]);
+    if(c)childId=fi.participantIds[0];
+    else if(m)adultUid=fi.participantIds[0];
+  }
+
+  const emoji=SPORT_EMOJI[fi.sport.toLowerCase().trim()]||(fi.type==='sport-games'?'🏆':'🏃');
+  const oppositionLabel=fi.type==='sport-games'?'vs':'·';
+
+  let success=0;let failed=0;
+  for(const f of valid){
+    const opponentText=(f.opponent||'').replace(/^[\W_]+|[\W_]+$/g,'');
+    const titleParts=[fi.sport];
+    if(opponentText)titleParts.push(oppositionLabel,opponentText);
+    const title=titleParts.join(' ');
+    try{
+      await fadd(['events'],{
+        title,emoji,
+        participantIds:[...fi.participantIds],childId,adultUid,
+        freq:'once',
+        date:f.date,
+        startDate:'',endDate:'',
+        days:{Mon:false,Tue:false,Wed:false,Thu:false,Fri:false,Sat:false,Sun:false},
+        time:f.time||'',
+        category:fi.type,
+        sport:fi.sport,
+        location:f.venue||'',
+        dropoff:'',pickup:'',
+        packItems:[],
+        notes:''
+      });
+      success++;
+    }catch(e){failed++;console.warn('Fixture import failed',f,e);}
+  }
+
+  S.fixturePreview=null;
+  S.fixtureImport=null;
+  if(failed===0){notify('Imported '+success+' fixture'+(success===1?'':'s')+' ✅','📅');}
+  else{notify('Imported '+success+' / failed '+failed,'⚠️');}
+  S.screen=null;S.tab='events';S.evView='tiles';render();
+};
 
 // Shared event-row renderer (used by Events tab + Past Events)
 function renderEventRow(ev,isLast,isPast){
@@ -4496,7 +5113,8 @@ function render(){
       addPlayDate:sAddPlayDate,viewPlayDate:sViewPlayDate,
       help:sHelp,privacy:sPrivacy,about:sAbout,
       personProfile:sPersonProfile,
-      spreadsheetImport:sSpreadsheet,spreadsheetPreview:sSpreadsheetPreview
+      spreadsheetImport:sSpreadsheet,spreadsheetPreview:sSpreadsheetPreview,
+      fixturesImport:sFixturesImport,fixturesPreview:sFixturesPreview
     };
     html=(map[S.screen]||sToday)();
   } else {
