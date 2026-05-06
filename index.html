@@ -637,6 +637,30 @@ const fadd=(p,d)=>addDoc(fcol(p),{...d,createdAt:new Date()});
 const fupd=(p,d)=>updateDoc(fdoc(p),d);
 const fdel=(p)=>deleteDoc(fdoc(p));
 
+// Daily packing reset: untick every packing item that's still ticked from a previous day.
+// Best-effort, silent, race-safe (first device of the day wins by setting lastPackingReset).
+async function runDailyPackingReset(){
+  if(!S.family||!S.familyId)return;
+  const lastReset=S.family.lastPackingReset||'';
+  if(lastReset===todayStr)return; // already reset today
+  // Mark as reset first to win the race against other devices
+  try{
+    await updateDoc(doc(db,'families',S.familyId),{lastPackingReset:todayStr});
+    if(S.family)S.family.lastPackingReset=todayStr;
+  }catch(e){return;} // if we couldn't update the marker, bail (another device might be doing it)
+  // Untick any currently-ticked packing items across all children
+  for(const c of S.children){
+    const items=S.packing[c.id]||[];
+    for(const item of items){
+      if(item.checked){
+        try{
+          await updateDoc(doc(db,'families',S.familyId,'children',c.id,'packing',item.id),{checked:false});
+        }catch(e){}
+      }
+    }
+  }
+}
+
 function subscribe(){
   S.unsubs.forEach(u=>u());S.unsubs=[];
   // Separate tracker for per-child packing listeners (cleaned up when child list changes)
@@ -672,6 +696,16 @@ function subscribe(){
             }).catch(()=>{});
           }
         });
+      }
+      // DAILY PACKING RESET: if it's a new day since the last reset, untick all packing items.
+      // Runs once per session, after a small delay to let packing data load.
+      if(!S._packingResetChecked){
+        S._packingResetChecked=true;
+        const lastReset=S.family.lastPackingReset||'';
+        if(lastReset!==todayStr){
+          // Defer to allow children + packing data to populate from snapshots
+          setTimeout(()=>runDailyPackingReset(),2500);
+        }
       }
     }
     queueRender();
@@ -1145,14 +1179,7 @@ function sToday(){
         <div style="font-size:13px;font-weight:600;color:${NAVY};margin-bottom:2px">${greetIcon()} ${greeting()}, ${S.user?.displayName?.split(' ')[0]||''}!</div>
         <div style="font-size:26px;font-weight:800;color:#1C1C1E;letter-spacing:-0.4px">${S.family?.name||'Family'}</div>
       </div>
-      <!-- Day arrows navigation -->
-      <div style="display:flex;align-items:center;gap:8px;margin-top:10px">
-        <button onclick="changeDayOffset(-1)" style="width:34px;height:34px;border-radius:17px;background:var(--bg);border:none;color:var(--text);font-size:20px;font-weight:300;cursor:pointer;font-family:inherit;display:flex;align-items:center;justify-content:center;flex-shrink:0">‹</button>
-        <button onclick="S.dayOffset=0;render()" style="flex:1;padding:8px 12px;border-radius:12px;border:none;background:${(S.dayOffset||0)===0?'#1C3A6B':'var(--bg)'};color:${(S.dayOffset||0)===0?'#fff':'var(--text)'};font-size:13px;font-weight:700;cursor:pointer;font-family:inherit">${(()=>{const d=getViewDate();const off=S.dayOffset||0;return off===0?'Today · '+DAYNAMES[d.getDay()]+' '+d.getDate()+' '+MONTHS[d.getMonth()]:off===1?'Tomorrow · '+DAYNAMES[d.getDay()]+' '+d.getDate()+' '+MONTHS[d.getMonth()]:off===-1?'Yesterday · '+DAYNAMES[d.getDay()]+' '+d.getDate()+' '+MONTHS[d.getMonth()]:DAYNAMES[d.getDay()]+' · '+d.getDate()+' '+MONTHS[d.getMonth()];})()}</button>
-        <button onclick="changeDayOffset(1)" style="width:34px;height:34px;border-radius:17px;background:var(--bg);border:none;color:var(--text);font-size:20px;font-weight:300;cursor:pointer;font-family:inherit;display:flex;align-items:center;justify-content:center;flex-shrink:0">›</button>
-        <button onclick="S.dayOffset=0;render()" title="Back to today" style="padding:8px 14px;border-radius:14px;background:${(S.dayOffset||0)===0?'#FF9500':'#1C3A6B'};border:none;color:#fff;font-size:12px;font-weight:700;cursor:pointer;font-family:inherit;flex-shrink:0;letter-spacing:0.3px">Today</button>
-      </div>
-      <div style="display:flex;gap:14px;overflow-x:auto;padding:16px 4px 8px;-ms-overflow-style:none;scrollbar-width:none">
+      <div style="display:flex;gap:14px;overflow-x:auto;padding:14px 4px 6px;-ms-overflow-style:none;scrollbar-width:none">
         ${S.children.map(c=>{
           const cpk=packingForChildOnDate(c, getViewDateStr());
           const cpacked=cpk.filter(p=>p.checked).length;
@@ -1195,6 +1222,13 @@ function sToday(){
           <div style="font-size:11px;color:var(--text-secondary);line-height:1">·</div>
         </div>
       </div>
+      <!-- Day arrows navigation (now BELOW tiles) -->
+      <div style="display:flex;align-items:center;gap:8px;margin-top:8px">
+        <button onclick="changeDayOffset(-1)" style="width:34px;height:34px;border-radius:17px;background:var(--bg);border:none;color:var(--text);font-size:20px;font-weight:300;cursor:pointer;font-family:inherit;display:flex;align-items:center;justify-content:center;flex-shrink:0">‹</button>
+        <button onclick="S.dayOffset=0;render()" style="flex:1;padding:8px 12px;border-radius:12px;border:none;background:${(S.dayOffset||0)===0?'#1C3A6B':'var(--bg)'};color:${(S.dayOffset||0)===0?'#fff':'var(--text)'};font-size:13px;font-weight:700;cursor:pointer;font-family:inherit">${(()=>{const d=getViewDate();const off=S.dayOffset||0;return off===0?'Today · '+DAYNAMES[d.getDay()]+' '+d.getDate()+' '+MONTHS[d.getMonth()]:off===1?'Tomorrow · '+DAYNAMES[d.getDay()]+' '+d.getDate()+' '+MONTHS[d.getMonth()]:off===-1?'Yesterday · '+DAYNAMES[d.getDay()]+' '+d.getDate()+' '+MONTHS[d.getMonth()]:DAYNAMES[d.getDay()]+' · '+d.getDate()+' '+MONTHS[d.getMonth()];})()}</button>
+        <button onclick="changeDayOffset(1)" style="width:34px;height:34px;border-radius:17px;background:var(--bg);border:none;color:var(--text);font-size:20px;font-weight:300;cursor:pointer;font-family:inherit;display:flex;align-items:center;justify-content:center;flex-shrink:0">›</button>
+        <button onclick="S.dayOffset=0;render()" title="Back to today" style="padding:8px 14px;border-radius:14px;background:${(S.dayOffset||0)===0?'#FF9500':'#1C3A6B'};border:none;color:#fff;font-size:12px;font-weight:700;cursor:pointer;font-family:inherit;flex-shrink:0;letter-spacing:0.3px">Today</button>
+      </div>
     </div>
 
     <div style="padding:16px 0 100px">
@@ -1227,50 +1261,6 @@ function sToday(){
           </div>
         </div>`;
       })():''}
-
-      <!-- REMINDERS for the day being viewed -->
-      ${(()=>{
-        const dueReminders=(S.reminders||[]).filter(r=>{
-          // Hide completed reminders entirely (Nash request: ticked = gone)
-          if(r.done)return false;
-          // Ongoing mode: show every day from when created until the date (inclusive)
-          if(r.mode==='ongoing')return viewDateStr<=r.date;
-          // Default: only show on the date itself
-          return r.date===viewDateStr;
-        });
-        if(dueReminders.length===0)return '';
-        return `<div class="sh" style="margin-bottom:6px">⏰ Reminders</div>
-        <div class="card" style="margin-bottom:14px">
-          ${dueReminders.map((r,i)=>{
-            // Resolve who this reminder is for (forKeys array OR legacy fields)
-            const keys=Array.isArray(r.forKeys)&&r.forKeys.length?r.forKeys:(r.childId?['child:'+r.childId]:r.adultUid?['adult:'+r.adultUid]:[]);
-            const targets=keys.map(k=>{
-              if(k.startsWith('child:'))return S.children.find(c=>c.id===k.slice(6));
-              if(k.startsWith('adult:'))return members().find(m=>m.uid===k.slice(6));
-              return null;
-            }).filter(Boolean).map(p=>({name:p.name,color:p.color||NAVY,photo:p.photoURL}));
-            const tcol=targets[0]?.color||NAVY;
-            // Build "Due X" label for ongoing reminders so the user knows the deadline
-            let dueLabel='';
-            if(r.mode==='ongoing'&&r.date){
-              const dDate=new Date(r.date+'T12:00');
-              const isDueToday=r.date===viewDateStr;
-              const dStr=DAYSH[dDate.getDay()]+' '+dDate.getDate()+' '+MONTHS[dDate.getMonth()];
-              dueLabel=`<div style="font-size:11px;font-weight:700;color:${isDueToday?'#FF3B30':tcol};margin-top:3px">${isDueToday?'🔴 Due today · '+dStr:'📅 Due '+dStr}</div>`;
-            }
-            return `<div class="row" style="border-bottom:${i<dueReminders.length-1?'1px solid var(--row-border)':'none'};${r.done?'opacity:0.55':''}">
-              <div class="cb ${r.done?'on':''}" onclick="tReminder('${r.id}',${!r.done})" style="${r.done?'background:'+tcol+';border:none':'border-color:'+tcol}">${r.done?ck():''}</div>
-              <div style="flex:1;min-width:0">
-                <div style="font-size:15px;color:var(--text);font-weight:500;${r.done?'text-decoration:line-through':''}">${r.text}</div>
-                ${dueLabel}
-                ${targets.length===0?`<div style="font-size:11px;color:var(--text-secondary);font-weight:600;margin-top:3px">👨‍👩‍👧‍👦 Family-wide</div>`:`<div style="display:flex;align-items:center;gap:4px;margin-top:3px;flex-wrap:wrap">${targets.slice(0,4).map(t=>av(t.name,t.color,18,t.photo)).join('')}<span style="font-size:11px;color:${tcol};font-weight:600;margin-left:2px">${targets.map(t=>t.name.split(' ')[0]).join(', ')}${targets.length>4?' +'+(targets.length-4):''}</span></div>`}
-                ${r.notes?`<div style="font-size:11px;color:var(--text-secondary);font-style:italic;margin-top:2px">${r.notes}</div>`:''}
-              </div>
-              <button onclick="dReminder('${r.id}')" style="color:#FF3B30;font-size:18px;opacity:0.5;border:none;background:none;cursor:pointer">×</button>
-            </div>`;
-          }).join('')}
-        </div>`;
-      })()}
 
       <!-- WHERE THE KIDS ARE (hand-offs in last 12hrs) -->
       ${(()=>{
@@ -1311,7 +1301,7 @@ function sToday(){
         const myName=S.user?.displayName||'';
         const myFirstName=myName.split(' ')[0];
 
-        // Renderer for one event row (matches existing styling)
+        // Renderer for one event row — COMPACT (tap opens modal with full details)
         const renderRow=(ev,i,arr)=>{
           const ec=S.children.find(c=>c.id===ev.childId);
           const adultMember=ev.adultUid?members().find(x=>x.uid===ev.adultUid):null;
@@ -1320,15 +1310,14 @@ function sToday(){
           const isMyDropoff=ev.dropoff&&(ev.dropoff===myName||ev.dropoff===myFirstName);
           const isMyPickup=ev.pickup&&(ev.pickup===myName||ev.pickup===myFirstName);
           const isMine=isMyDropoff||isMyPickup;
-          const catChip=ev.category==='sport'?'<span style="font-size:10px;font-weight:700;padding:2px 7px;border-radius:8px;background:#34C75920;color:#1F8E3F">⚽ SPORT</span>':ev.category==='music'?'<span style="font-size:10px;font-weight:700;padding:2px 7px;border-radius:8px;background:#AF52DE20;color:#7B2CBF">🎵 MUSIC</span>':ev.category==='medical'?'<span style="font-size:10px;font-weight:700;padding:2px 7px;border-radius:8px;background:#FF3B3020;color:#C0392B">🏥 MEDICAL</span>':ev.category==='social'?'<span style="font-size:10px;font-weight:700;padding:2px 7px;border-radius:8px;background:#FF6B9D20;color:#D6336C">🎉 SOCIAL</span>':ev.category==='work'?'<span style="font-size:10px;font-weight:700;padding:2px 7px;border-radius:8px;background:#80808020;color:#5A5A5C">💼 WORK</span>':'';
-          return `<div class="row" style="border-bottom:${i<arr.length-1?'1px solid var(--row-border)':'none'};${isMine?'background:#FFF8E5':''}">
-            <div style="width:44px;text-align:right;font-size:12px;font-weight:600;color:var(--text-secondary);flex-shrink:0">${ev.time||''}</div>
+          return `<div class="row" onclick="openEventModal('${ev.id}')" style="border-bottom:${i<arr.length-1?'1px solid var(--row-border)':'none'};${isMine?'background:#FFF8E5':''};cursor:pointer">
+            <div style="width:48px;text-align:right;font-size:12px;font-weight:600;color:var(--text-secondary);flex-shrink:0">${ev.time||''}</div>
             <div style="width:32px;height:32px;border-radius:16px;background:${col}18;border:2px solid ${col};display:flex;align-items:center;justify-content:center;font-size:14px;flex-shrink:0">${ev.emoji||'📅'}</div>
-            <div style="flex:1">
-              <div style="font-size:14px;font-weight:600;display:flex;align-items:center;gap:6px;flex-wrap:wrap">${ev.title}${isMine?'<span style="font-size:10px;font-weight:700;padding:2px 7px;border-radius:8px;background:#FF9500;color:#fff">YOU</span>':''}${catChip}</div>
-              <div style="font-size:12px;color:var(--text-secondary)">${ownerName}${ev.location?' · '+locLink(ev.location):''}</div>
-              ${ev.dropoff||ev.pickup?`<div style="font-size:11px;color:${NAVY};font-weight:500">${ev.dropoff?(isMyDropoff?'🚗 <strong>'+ev.dropoff+' (you)</strong>':'🚗 '+ev.dropoff):''}${ev.dropoff&&ev.pickup?' · ':''}${ev.pickup?(isMyPickup?'🏠 <strong>'+ev.pickup+' (you)</strong>':'🏠 '+ev.pickup):''}</div>`:''}
+            <div style="flex:1;min-width:0">
+              <div style="font-size:14px;font-weight:600;color:var(--text);overflow:hidden;text-overflow:ellipsis;white-space:nowrap">${ev.title}${isMine?' <span style="font-size:9px;font-weight:700;padding:1px 6px;border-radius:7px;background:#FF9500;color:#fff;vertical-align:1px">YOU</span>':''}</div>
+              <div style="font-size:12px;color:${col};font-weight:600;overflow:hidden;text-overflow:ellipsis;white-space:nowrap">${ownerName}</div>
             </div>
+            <div style="color:var(--text-secondary);font-size:18px;flex-shrink:0;font-weight:300;padding-right:2px">›</div>
           </div>`;
         };
 
@@ -1365,6 +1354,45 @@ function sToday(){
           </div>`;
         }
         return html;
+      })()}
+
+      <!-- REMINDERS for the day being viewed (now BELOW activities, ABOVE dinners) -->
+      ${(()=>{
+        const dueReminders=(S.reminders||[]).filter(r=>{
+          if(r.done)return false;
+          if(r.mode==='ongoing')return viewDateStr<=r.date;
+          return r.date===viewDateStr;
+        });
+        if(dueReminders.length===0)return '';
+        return `<div class="sh" style="margin-bottom:6px">⏰ Reminders</div>
+        <div class="card" style="margin-bottom:14px">
+          ${dueReminders.map((r,i)=>{
+            const keys=Array.isArray(r.forKeys)&&r.forKeys.length?r.forKeys:(r.childId?['child:'+r.childId]:r.adultUid?['adult:'+r.adultUid]:[]);
+            const targets=keys.map(k=>{
+              if(k.startsWith('child:'))return S.children.find(c=>c.id===k.slice(6));
+              if(k.startsWith('adult:'))return members().find(m=>m.uid===k.slice(6));
+              return null;
+            }).filter(Boolean).map(p=>({name:p.name,color:p.color||NAVY,photo:p.photoURL}));
+            const tcol=targets[0]?.color||NAVY;
+            let dueLabel='';
+            if(r.mode==='ongoing'&&r.date){
+              const dDate=new Date(r.date+'T12:00');
+              const isDueToday=r.date===viewDateStr;
+              const dStr=DAYSH[dDate.getDay()]+' '+dDate.getDate()+' '+MONTHS[dDate.getMonth()];
+              dueLabel=`<div style="font-size:11px;font-weight:700;color:${isDueToday?'#FF3B30':tcol};margin-top:3px">${isDueToday?'🔴 Due today · '+dStr:'📅 Due '+dStr}</div>`;
+            }
+            return `<div class="row" style="border-bottom:${i<dueReminders.length-1?'1px solid var(--row-border)':'none'};${r.done?'opacity:0.55':''}">
+              <div class="cb ${r.done?'on':''}" onclick="tReminder('${r.id}',${!r.done})" style="${r.done?'background:'+tcol+';border:none':'border-color:'+tcol}">${r.done?ck():''}</div>
+              <div style="flex:1;min-width:0">
+                <div style="font-size:15px;color:var(--text);font-weight:500;${r.done?'text-decoration:line-through':''}">${r.text}</div>
+                ${dueLabel}
+                ${targets.length===0?`<div style="font-size:11px;color:var(--text-secondary);font-weight:600;margin-top:3px">👨‍👩‍👧‍👦 Family-wide</div>`:`<div style="display:flex;align-items:center;gap:4px;margin-top:3px;flex-wrap:wrap">${targets.slice(0,4).map(t=>av(t.name,t.color,18,t.photo)).join('')}<span style="font-size:11px;color:${tcol};font-weight:600;margin-left:2px">${targets.map(t=>t.name.split(' ')[0]).join(', ')}${targets.length>4?' +'+(targets.length-4):''}</span></div>`}
+                ${r.notes?`<div style="font-size:11px;color:var(--text-secondary);font-style:italic;margin-top:2px">${r.notes}</div>`:''}
+              </div>
+              <button onclick="dReminder('${r.id}')" style="color:#FF3B30;font-size:18px;opacity:0.5;border:none;background:none;cursor:pointer">×</button>
+            </div>`;
+          }).join('')}
+        </div>`;
       })()}
 
       <!-- DINNERS THIS WEEK (collapsible) -->
@@ -5052,10 +5080,20 @@ function sendDailyNotif(){
     if(now<start||(end&&now>end))return false;
     return ev.days&&ev.days[DAYSH[now.getDay()]];
   });
+  // Short title (always fits the preview), plus a body that fits in 2 lines on most lockscreens
+  let title=allEvs.length===0?'No events today 🎉':(allEvs.length+' event'+(allEvs.length>1?'s':'')+' today');
   let body='';
-  if(allEvs.length===0)body='No events today 🎉';
-  else body=allEvs.length+' event'+(allEvs.length>1?'s':'')+' today: '+allEvs.slice(0,3).map(function(e){return e.title;}).join(', ');
-  new Notification('HomeBase · '+greeting(),{body:body,icon:'data:image/png;base64,iVBORw0KGgo=',tag:'hb-daily',renotify:false});
+  if(allEvs.length>0){
+    // Build "9am Swimming · 3pm Soccer" style — much shorter than full titles
+    const shortItems=allEvs.slice(0,3).map(function(e){
+      const t=(e.time||'').replace(/:00\b/g,'').replace(' ','');
+      const tt=(e.title||'').slice(0,28);
+      return t?(t+' '+tt):tt;
+    });
+    body=shortItems.join(' · ');
+    if(allEvs.length>3)body+=' +'+(allEvs.length-3)+' more';
+  }
+  new Notification(title,{body:body,icon:'data:image/png;base64,iVBORw0KGgo=',tag:'hb-daily',renotify:false});
 }
 
 window.saveNotifTime=async function(){
@@ -5406,6 +5444,123 @@ window.changeDayOffset=function(delta){
   S.dayOffset=(S.dayOffset||0)+delta;
   render();
 };
+
+// ── EVENT DETAIL MODAL ──────────────────────────────
+// Opens a bottom-sheet modal with full event info. Tap outside or × to close.
+window.openEventModal=function(eventId){
+  const ev=S.events.find(e=>e.id===eventId);
+  if(!ev){return;}
+  closeEventModal(); // close any existing modal first
+
+  const ec=S.children.find(c=>c.id===ev.childId);
+  const adultMember=ev.adultUid?members().find(x=>x.uid===ev.adultUid):null;
+  const col=ec?.color||adultMember?.color||NAVY;
+  const ownerName=ec?ec.name:adultMember?adultMember.name:'Family';
+  const myName=S.user?.displayName||'';
+  const myFirstName=myName.split(' ')[0];
+  const isMyDropoff=ev.dropoff&&(ev.dropoff===myName||ev.dropoff===myFirstName);
+  const isMyPickup=ev.pickup&&(ev.pickup===myName||ev.pickup===myFirstName);
+  const youChip='<span style="display:inline-block;font-size:10px;font-weight:700;padding:2px 7px;border-radius:7px;background:#FF9500;color:#fff;margin-left:6px;vertical-align:1px">YOU</span>';
+
+  // Category chip (mirrors the row's old behaviour, now lives in modal)
+  const catData={'sport':{bg:'#34C75920',color:'#1F8E3F',label:'⚽ Sport'},'music':{bg:'#AF52DE20',color:'#7B2CBF',label:'🎵 Music'},'medical':{bg:'#FF3B3020',color:'#C0392B',label:'🏥 Medical'},'social':{bg:'#FF6B9D20',color:'#D6336C',label:'🎉 Social'},'work':{bg:'#80808020',color:'#5A5A5C',label:'💼 Work'},'school-event':{bg:'#1C3A6B20',color:'#1C3A6B',label:'🏫 School Event'},'school-subject':{bg:'#1C3A6B20',color:'#1C3A6B',label:'📚 School Subject'}};
+  const cd=catData[ev.category]||null;
+  const catChip=cd?`<span style="font-size:11px;font-weight:700;padding:3px 9px;border-radius:9px;background:${cd.bg};color:${cd.color}">${cd.label}</span>`:'';
+
+  // Frequency hint
+  const freqLabel=ev.freq==='weekly'?'Weekly':ev.freq==='fortnightly'?'Fortnightly':ev.freq==='daily'?'Daily':'';
+  const freqDays=ev.freq&&ev.freq!=='once'&&ev.days?Object.keys(ev.days).filter(d=>ev.days[d]).join(', '):'';
+
+  const overlay=document.createElement('div');
+  overlay.id='event-modal-overlay';
+  overlay.style.cssText='position:fixed;inset:0;background:rgba(0,0,0,0.45);z-index:9999;display:flex;align-items:flex-end;justify-content:center;animation:hbFadeIn 0.18s ease-out';
+  // Ensure keyframes exist (shared with openPersonPicker)
+  if(!document.getElementById('hbPickerKeyframes')){
+    const st=document.createElement('style');st.id='hbPickerKeyframes';
+    st.textContent='@keyframes hbFadeIn{from{opacity:0}to{opacity:1}}@keyframes hbSlideUp{from{transform:translateY(20px);opacity:0}to{transform:translateY(0);opacity:1}}';
+    document.head.appendChild(st);
+  }
+  overlay.onclick=function(e){if(e.target===overlay)closeEventModal();};
+
+  const sheet=document.createElement('div');
+  sheet.style.cssText='background:var(--card);border-radius:20px 20px 0 0;width:100%;max-width:560px;max-height:88vh;overflow-y:auto;animation:hbSlideUp 0.24s cubic-bezier(.22,.61,.36,1);box-shadow:0 -8px 32px rgba(0,0,0,0.18);-webkit-overflow-scrolling:touch';
+  sheet.onclick=function(e){e.stopPropagation();};
+
+  // Build the location line as a tappable Maps link if present
+  let locationLine='';
+  if(ev.location){
+    const q=encodeURIComponent(ev.location);
+    locationLine=`<div style="display:flex;align-items:flex-start;gap:10px;padding:10px 0;border-bottom:1px solid var(--row-border)">
+      <span style="font-size:18px;line-height:1.2">📍</span>
+      <a href="https://www.google.com/maps/search/?api=1&query=${q}" target="_blank" rel="noopener" style="flex:1;font-size:14px;color:${NAVY};font-weight:600;text-decoration:none;line-height:1.4">${ev.location} <span style="font-size:11px;color:var(--text-secondary);font-weight:500">↗ Open in Maps</span></a>
+    </div>`;
+  }
+
+  sheet.innerHTML=`
+    <div style="position:sticky;top:0;background:var(--card);padding:10px 0 6px;z-index:1;border-bottom:1px solid var(--row-border)">
+      <div style="width:40px;height:4px;background:#D1D1D6;border-radius:2px;margin:0 auto"></div>
+    </div>
+    <div style="padding:14px 20px 22px">
+      <div style="display:flex;align-items:flex-start;gap:12px;margin-bottom:10px">
+        <div style="width:52px;height:52px;border-radius:26px;background:${col}18;border:2.5px solid ${col};display:flex;align-items:center;justify-content:center;font-size:24px;flex-shrink:0">${ev.emoji||'📅'}</div>
+        <div style="flex:1;min-width:0">
+          <div style="font-size:19px;font-weight:800;color:var(--text);line-height:1.25">${ev.title}</div>
+          <div style="font-size:13px;color:${col};font-weight:600;margin-top:3px">${ownerName}</div>
+        </div>
+        <button onclick="closeEventModal()" aria-label="Close" style="width:34px;height:34px;border-radius:17px;border:none;background:var(--bg);color:var(--text-secondary);font-size:20px;line-height:1;cursor:pointer;display:flex;align-items:center;justify-content:center;flex-shrink:0;font-family:inherit;padding:0">×</button>
+      </div>
+
+      ${catChip?`<div style="margin-bottom:14px">${catChip}</div>`:''}
+
+      <div style="background:var(--bg);border-radius:14px;padding:4px 14px">
+        <div style="display:flex;align-items:flex-start;gap:10px;padding:10px 0;border-bottom:${ev.location||ev.dropoff||ev.pickup||ev.notes||freqLabel?'1px solid var(--row-border)':'none'}">
+          <span style="font-size:18px;line-height:1.2">⏰</span>
+          <div style="flex:1;font-size:14px;color:var(--text);font-weight:600">${ev.time||'—'}${ev.endTime?' – '+ev.endTime:''}</div>
+        </div>
+
+        ${locationLine}
+
+        ${ev.dropoff?`<div style="display:flex;align-items:flex-start;gap:10px;padding:10px 0;border-bottom:${ev.pickup||ev.notes||freqLabel?'1px solid var(--row-border)':'none'}">
+          <span style="font-size:18px;line-height:1.2">🚗</span>
+          <div style="flex:1;font-size:14px;color:var(--text);line-height:1.4"><span style="color:var(--text-secondary);font-size:12px;display:block;font-weight:500;margin-bottom:1px">Drop-off</span><strong>${ev.dropoff}</strong>${isMyDropoff?youChip:''}</div>
+        </div>`:''}
+
+        ${ev.pickup?`<div style="display:flex;align-items:flex-start;gap:10px;padding:10px 0;border-bottom:${ev.notes||freqLabel?'1px solid var(--row-border)':'none'}">
+          <span style="font-size:18px;line-height:1.2">🏠</span>
+          <div style="flex:1;font-size:14px;color:var(--text);line-height:1.4"><span style="color:var(--text-secondary);font-size:12px;display:block;font-weight:500;margin-bottom:1px">Pick-up</span><strong>${ev.pickup}</strong>${isMyPickup?youChip:''}</div>
+        </div>`:''}
+
+        ${ev.notes?`<div style="display:flex;align-items:flex-start;gap:10px;padding:10px 0;border-bottom:${freqLabel?'1px solid var(--row-border)':'none'}">
+          <span style="font-size:18px;line-height:1.2">📝</span>
+          <div style="flex:1;font-size:14px;color:var(--text);line-height:1.5">${ev.notes}</div>
+        </div>`:''}
+
+        ${freqLabel?`<div style="display:flex;align-items:flex-start;gap:10px;padding:10px 0">
+          <span style="font-size:18px;line-height:1.2">🔁</span>
+          <div style="flex:1;font-size:13px;color:var(--text-secondary);line-height:1.4">${freqLabel}${freqDays?' · '+freqDays:''}</div>
+        </div>`:''}
+      </div>
+
+      <button onclick="closeEventModal()" style="width:100%;margin-top:16px;padding:13px;border-radius:12px;background:var(--bg);border:none;color:var(--text);font-size:14px;font-weight:700;cursor:pointer;font-family:inherit">Close</button>
+    </div>`;
+
+  overlay.appendChild(sheet);
+  document.body.appendChild(overlay);
+
+  // ESC key to close
+  const escHandler=function(e){if(e.key==='Escape')closeEventModal();};
+  document.addEventListener('keydown',escHandler);
+  overlay._escHandler=escHandler;
+};
+window.closeEventModal=function(){
+  const m=document.getElementById('event-modal-overlay');
+  if(m){
+    if(m._escHandler)document.removeEventListener('keydown',m._escHandler);
+    m.style.animation='hbFadeIn 0.15s reverse';
+    setTimeout(function(){if(m.parentNode)m.remove();},140);
+  }
+};
+
 window.go=go;window.back=back;window.setTab=setTab;window.render=render;window.S=S;
 
 // Load persisted settings
