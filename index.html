@@ -1737,7 +1737,7 @@ function sCalendar(){
           <div style="font-size:11px;color:rgba(255,255,255,0.8);font-weight:500">· ${events.length} ${events.length===1?'event':'events'}</div>
         </div>`:''}
         <div style="display:flex;flex-direction:column;gap:10px">
-          ${events.map((ev,i)=>`<div style="${i>0?'padding-top:10px;border-top:1px solid rgba(255,255,255,0.18)':''}">
+          ${events.map((ev,i)=>`<div onclick="openEventModal('${ev.id}')" style="${i>0?'padding-top:10px;border-top:1px solid rgba(255,255,255,0.18)':''};cursor:pointer">
             <div style="display:flex;align-items:center;gap:8px;margin-bottom:4px;flex-wrap:wrap">
               <span style="font-size:20px">${ev.emoji||'📅'}</span>
               <span style="font-size:15px;font-weight:700;color:#fff;flex:1;min-width:0">${ev.title}</span>
@@ -1961,161 +1961,169 @@ function sCalendar(){
 
 // ── EVENTS TAB ────────────────────────────────────
 function sEvents(){
-  const sub=S.evTab;
-  // Auto-switch off invalid tabs (gifts/assessments removed - now in profiles)
-  if(sub==='gifts'||sub==='assessments'||sub==='playdates')S.evTab='events';
-  const tabBar=`<div style="background:var(--card);padding:0 12px;border-bottom:1px solid var(--row-border);display:flex;gap:0;position:sticky;top:57px;z-index:9;overflow-x:auto;scrollbar-width:none">
-    <button class="sub-tab ${S.evTab==='events'?'on':'off'}" onclick="S.evTab='events';render()">All</button>
-    <button class="sub-tab ${S.evTab==='playdate'?'on':'off'}" onclick="S.evTab='playdate';render()">🎈 Play Date</button>
-    <button class="sub-tab ${S.evTab==='sleepover'?'on':'off'}" onclick="S.evTab='sleepover';render()">🛏 Sleep Over</button>
-    <button class="sub-tab ${S.evTab==='birthday'?'on':'off'}" onclick="S.evTab='birthday';render()">🎂 Birthday</button>
-    <button class="sub-tab ${S.evTab==='sport'?'on':'off'}" onclick="S.evTab='sport';render()">⚽ Sport</button>
-    <button class="sub-tab ${S.evTab==='general'?'on':'off'}" onclick="S.evTab='general';render()">⭐ General</button>
-    <button class="sub-tab ${S.evTab==='work'?'on':'off'}" onclick="S.evTab='work';render()">💼 Work</button>
-    <button class="sub-tab ${S.evTab==='school'?'on':'off'}" onclick="S.evTab='school';render()">🏫 School</button>
-    <button class="sub-tab ${S.evTab==='past'?'on':'off'}" onclick="S.evTab='past';render()">📜 Past</button>
-  </div>`;
-  // Route to type-specific views
-  if(['playdate','sleepover','birthday'].includes(S.evTab))return sPlayDateType(tabBar,S.evTab);
-  if(S.evTab==='sport')return sCategoryEvents(tabBar,'sport','⚽ Sport');
-  if(S.evTab==='general')return sGeneralEvents(tabBar);
-  if(S.evTab==='work')return sCategoryEvents(tabBar,'work','💼 Work');
-  if(S.evTab==='school')return sSchoolEvents(tabBar);
+  // Pull retention preference from family doc; default 30 days
+  const retentionDays=(S.family && Number.isFinite(S.family.pastEventsRetentionDays))
+    ? S.family.pastEventsRetentionDays
+    : 30;
+  const retentionForever=retentionDays===0;
 
-  // ── PAST EVENTS (one-off events whose date has passed) ──
-  if(S.evTab==='past'){
-    const todayStr=fd(new Date());
-    const past=S.events.filter(ev=>(!ev.freq||ev.freq==='once')&&ev.date&&ev.date<todayStr)
-      .sort((a,b)=>(b.date||'').localeCompare(a.date||''));
+  const today=new Date();
+  const todayStr=fd(today);
+
+  // Split events
+  const oneoffs=S.events.filter(ev=>!ev.freq||ev.freq==='once');
+  const recurring=S.events.filter(ev=>ev.freq&&ev.freq!=='once');
+
+  // Group recurring by title (case-insensitive) → activity tiles
+  const activityMap=new Map();
+  recurring.forEach(ev=>{
+    const key=(ev.title||'Untitled').trim().toLowerCase();
+    if(!activityMap.has(key)){
+      activityMap.set(key,{title:ev.title||'Untitled',events:[]});
+    }
+    activityMap.get(key).events.push(ev);
+  });
+  const activities=[...activityMap.values()].sort((a,b)=>a.title.localeCompare(b.title));
+
+  // Upcoming one-offs (today or future)
+  const upcoming=oneoffs.filter(ev=>ev.date&&ev.date>=todayStr)
+    .sort((a,b)=>(a.date||'').localeCompare(b.date||'')||parseTimeToMinutes(a.time)-parseTimeToMinutes(b.time));
+
+  // Past one-offs within retention window (or all if forever)
+  let cutoffStr='';
+  if(!retentionForever){
+    const co=new Date(today);
+    co.setDate(co.getDate()-retentionDays);
+    cutoffStr=fd(co);
+  }
+  const past=oneoffs.filter(ev=>{
+    if(!ev.date||ev.date>=todayStr)return false;
+    if(retentionForever)return true;
+    return ev.date>=cutoffStr;
+  }).sort((a,b)=>(b.date||'').localeCompare(a.date||''));
+
+  // ── Helpers (inline) ──
+  const peopleForEvent=ev=>{
+    const ids=Array.isArray(ev.participantIds)&&ev.participantIds.length
+      ?ev.participantIds
+      :[ev.childId,ev.adultUid].filter(Boolean);
+    return ids.map(id=>{
+      const c=S.children.find(x=>x.id===id);
+      if(c)return {name:c.name,color:c.color||NAVY,photo:c.photoURL,id};
+      const m=members().find(x=>x.uid===id);
+      if(m)return {name:m.name,color:m.color||NAVY,photo:m.photoURL,id};
+      return null;
+    }).filter(Boolean);
+  };
+
+  const formatDateShort=ds=>{
+    if(!ds)return '';
+    const d=new Date(ds+'T12:00');
+    return DAYSH[d.getDay()]+' '+d.getDate()+' '+MONTHS[d.getMonth()];
+  };
+
+  // Activity tile (recurring events grouped by title)
+  const activityTile=a=>{
+    // Collect unique people across all events of this activity
+    const peopleMap=new Map();
+    a.events.forEach(ev=>{
+      peopleForEvent(ev).forEach(p=>{
+        if(!peopleMap.has(p.id))peopleMap.set(p.id,p);
+      });
+    });
+    const people=[...peopleMap.values()];
+    const primaryColor=people[0]?.color||NAVY;
+    const peopleLabel=people.length===0?'Family':people.map(p=>p.name.split(' ')[0]).join(', ');
+    const safeTitle=(a.title||'').replace(/'/g,"\\'");
+    return `<div onclick="openActivityModal('${safeTitle}')" style="background:var(--card);border:1px solid var(--row-border);border-radius:14px;padding:14px;cursor:pointer;display:flex;flex-direction:column;gap:6px;min-height:96px;border-top:3px solid ${primaryColor};transition:transform 0.1s">
+      <div style="font-size:15px;font-weight:700;color:var(--text);line-height:1.25;overflow:hidden;text-overflow:ellipsis;white-space:nowrap">${a.title}</div>
+      <div style="font-size:11px;color:var(--text-secondary);font-weight:600">${a.events.length} weekly</div>
+      <div style="margin-top:auto;display:flex;align-items:center;gap:4px;flex-wrap:wrap">
+        ${people.slice(0,3).map(p=>av(p.name,p.color,20,p.photo)).join('')}
+        <div style="font-size:11px;color:${primaryColor};font-weight:600;margin-left:2px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;flex:1">${peopleLabel}</div>
+      </div>
+    </div>`;
+  };
+
+  // One-off row (upcoming or past)
+  const oneoffRow=(ev,i,total)=>{
+    const people=peopleForEvent(ev);
+    const col=people[0]?.color||NAVY;
+    const personLabel=people.length===0?'Family':people.map(p=>p.name.split(' ')[0]).join(', ');
+    return `<div class="row" onclick="openEventModal('${ev.id}')" style="border-bottom:${i<total-1?'1px solid var(--row-border)':'none'};cursor:pointer">
+      <div style="width:32px;height:32px;border-radius:16px;background:${col}18;border:2px solid ${col};display:flex;align-items:center;justify-content:center;font-size:14px;flex-shrink:0">${ev.emoji||'📅'}</div>
+      <div style="flex:1;min-width:0">
+        <div style="font-size:14px;font-weight:600;color:var(--text);overflow:hidden;text-overflow:ellipsis;white-space:nowrap">${ev.title||'Event'}</div>
+        <div style="font-size:12px;color:var(--text-secondary);overflow:hidden;text-overflow:ellipsis;white-space:nowrap">${formatDateShort(ev.date)}${ev.time?' · '+ev.time:''} · ${personLabel}</div>
+      </div>
+      <div style="color:var(--text-secondary);font-size:18px;flex-shrink:0;font-weight:300">›</div>
+    </div>`;
+  };
+
+  // Empty state
+  if(S.events.length===0){
     return `
-      <div style="background:var(--card);padding:14px 16px 0;border-bottom:1px solid var(--row-border);position:sticky;top:0;z-index:10">
+      <div style="background:var(--card);padding:14px 16px 12px;border-bottom:1px solid var(--row-border);position:sticky;top:0;z-index:10">
         <div style="font-size:26px;font-weight:800;color:var(--text)">Events</div>
       </div>
-      ${tabBar}
-      <div class="scroll-view" style="padding:14px 0 80px">
-        ${past.length===0?`<div style="text-align:center;padding:60px 20px;color:var(--text-secondary)"><div style="font-size:48px;margin-bottom:10px">📜</div><div style="font-size:15px">No past one-off events yet.</div><div style="font-size:12px;margin-top:6px">Recurring events stay on the active list.</div></div>`:
-        `<div class="card">${past.map((ev,i)=>renderEventRow(ev,i===past.length-1,true)).join('')}</div>`}
-      </div>`;
+      <div class="scroll-view" style="padding:60px 20px;text-align:center">
+        <div style="font-size:56px;margin-bottom:14px">📅</div>
+        <div style="font-size:17px;font-weight:700;margin-bottom:6px;color:var(--text)">No events yet</div>
+        <div style="font-size:14px;color:var(--text-secondary);margin-bottom:24px;line-height:1.55">Add a one-off, or import recurring events<br>from a spreadsheet or sport fixtures URL.</div>
+        <button onclick="go('addEvent')" style="padding:13px 26px;border-radius:12px;background:var(--navy);border:none;color:#fff;font-size:15px;font-weight:600;cursor:pointer;font-family:inherit">+ Add your first event</button>
+      </div>
+      <div class="fab"><button class="fab-btn" style="background:#1C3A6B" onclick="go('addEvent')">+</button></div>`;
   }
 
-  // Sort + filter + group state (with defaults)
-  if(!S.evSort)S.evSort='title';
-  if(!S.evFilterPerson)S.evFilterPerson='all';
-  if(!S.evFilterCategory)S.evFilterCategory='all';
-  if(!S.evGroupBy)S.evGroupBy='none';
-
-  // Active events only (exclude past one-offs)
-  const todayStr=fd(new Date());
-  let filtered=S.events.filter(ev=>!((!ev.freq||ev.freq==='once')&&ev.date&&ev.date<todayStr));
-
-  if(S.evFilterPerson!=='all'){
-    filtered=filtered.filter(ev=>{
-      const ids=Array.isArray(ev.participantIds)&&ev.participantIds.length?ev.participantIds:[ev.childId,ev.adultUid].filter(Boolean);
-      return ids.includes(S.evFilterPerson);
-    });
-  }
-  if(S.evFilterCategory!=='all'){
-    filtered=filtered.filter(ev=>(ev.category||'')===(S.evFilterCategory==='none'?'':S.evFilterCategory));
-  }
-
-  // Apply sort
-  const sorters={
-    title:(a,b)=>(a.title||'').localeCompare(b.title||''),
-    time:(a,b)=>parseTimeToMinutes(a.time)-parseTimeToMinutes(b.time),
-    category:(a,b)=>(a.category||'zzz').localeCompare(b.category||'zzz'),
-    frequency:(a,b)=>(a.freq||'').localeCompare(b.freq||''),
-    person:(a,b)=>{
-      const aIds=Array.isArray(a.participantIds)&&a.participantIds.length?a.participantIds:[a.childId,a.adultUid].filter(Boolean);
-      const bIds=Array.isArray(b.participantIds)&&b.participantIds.length?b.participantIds:[b.childId,b.adultUid].filter(Boolean);
-      const aName=(()=>{const id=aIds[0];if(!id)return 'zzz';const c=S.children.find(x=>x.id===id);if(c)return c.name;const m=members().find(x=>x.uid===id);return m?m.name:'zzz';})();
-      const bName=(()=>{const id=bIds[0];if(!id)return 'zzz';const c=S.children.find(x=>x.id===id);if(c)return c.name;const m=members().find(x=>x.uid===id);return m?m.name:'zzz';})();
-      return aName.localeCompare(bName);
-    }
-  };
-  filtered.sort(sorters[S.evSort]||sorters.title);
-
-  // Build groups
-  let groups=[];
-  if(S.evGroupBy==='person'){
-    const map=new Map();
-    filtered.forEach(ev=>{
-      const ids=Array.isArray(ev.participantIds)&&ev.participantIds.length?ev.participantIds:[ev.childId,ev.adultUid].filter(Boolean);
-      if(ids.length===0){
-        if(!map.has('__family'))map.set('__family',{label:'Family-wide',color:NAVY,events:[]});
-        map.get('__family').events.push(ev);
-      }else{
-        ids.forEach(id=>{
-          if(!map.has(id)){
-            const c=S.children.find(x=>x.id===id);
-            const m=members().find(x=>x.uid===id);
-            if(c)map.set(id,{label:c.name,color:c.color||NAVY,events:[]});
-            else if(m)map.set(id,{label:m.name,color:m.color||NAVY,events:[]});
-            else return;
-          }
-          map.get(id).events.push(ev);
-        });
-      }
-    });
-    groups=[...map.values()].sort((a,b)=>a.label.localeCompare(b.label));
-  }else if(S.evGroupBy==='category'){
-    const map=new Map();
-    filtered.forEach(ev=>{
-      const k=ev.category||'';
-      if(!map.has(k))map.set(k,{label:CAT_LABELS[k]||k,color:NAVY,events:[]});
-      map.get(k).events.push(ev);
-    });
-    groups=[...map.values()].sort((a,b)=>a.label.localeCompare(b.label));
-  }else{
-    groups=[{label:'',color:NAVY,events:filtered}];
-  }
-
-  // ── COMPACT RIBBON: 4 dropdown selects in one row ──
-  const personOptions=[{id:'all',label:'All people'},...S.children.map(c=>({id:c.id,label:c.name})),...members().map(m=>({id:m.uid,label:m.name}))];
-  const ribbon=S.events.length>0?`<div style="background:var(--card);padding:8px 12px;border-bottom:1px solid var(--row-border);display:flex;gap:6px;flex-wrap:wrap;position:sticky;top:104px;z-index:8">
-    <select onchange="S.evSort=this.value;render()" style="flex:1;min-width:0;padding:6px 8px;border-radius:8px;border:1px solid var(--border);background:var(--bg);color:var(--text);font-size:12px;font-family:inherit;cursor:pointer">
-      <option value="title" ${S.evSort==='title'?'selected':''}>Sort: A-Z</option>
-      <option value="time" ${S.evSort==='time'?'selected':''}>Sort: Time</option>
-      <option value="person" ${S.evSort==='person'?'selected':''}>Sort: Person</option>
-      <option value="category" ${S.evSort==='category'?'selected':''}>Sort: Category</option>
-      <option value="frequency" ${S.evSort==='frequency'?'selected':''}>Sort: Frequency</option>
-    </select>
-    <select onchange="S.evGroupBy=this.value;render()" style="flex:1;min-width:0;padding:6px 8px;border-radius:8px;border:1px solid var(--border);background:var(--bg);color:var(--text);font-size:12px;font-family:inherit;cursor:pointer">
-      <option value="none" ${S.evGroupBy==='none'?'selected':''}>Group: None</option>
-      <option value="person" ${S.evGroupBy==='person'?'selected':''}>Group: Person</option>
-      <option value="category" ${S.evGroupBy==='category'?'selected':''}>Group: Category</option>
-    </select>
-    <select onchange="S.evFilterPerson=this.value;render()" style="flex:1;min-width:0;padding:6px 8px;border-radius:8px;border:1px solid ${S.evFilterPerson!=='all'?'var(--navy)':'var(--border)'};background:${S.evFilterPerson!=='all'?'var(--navy-soft)':'var(--bg)'};color:var(--text);font-size:12px;font-family:inherit;cursor:pointer">
-      ${personOptions.map(o=>`<option value="${o.id}" ${S.evFilterPerson===o.id?'selected':''}>${o.id==='all'?'Person: '+o.label:o.label}</option>`).join('')}
-    </select>
-    <select onchange="S.evFilterCategory=this.value;render()" style="flex:1;min-width:0;padding:6px 8px;border-radius:8px;border:1px solid ${S.evFilterCategory!=='all'?'var(--navy)':'var(--border)'};background:${S.evFilterCategory!=='all'?'var(--navy-soft)':'var(--bg)'};color:var(--text);font-size:12px;font-family:inherit;cursor:pointer">
-      <option value="all" ${S.evFilterCategory==='all'?'selected':''}>Cat: All</option>
-      <option value="school-event" ${S.evFilterCategory==='school-event'?'selected':''}>🏫 School Event</option>
-      <option value="school-subject" ${S.evFilterCategory==='school-subject'?'selected':''}>📚 School Subject</option>
-      <option value="sport" ${S.evFilterCategory==='sport'?'selected':''}>⚽ Sport</option>
-      <option value="music" ${S.evFilterCategory==='music'?'selected':''}>🎵 Music</option>
-      <option value="work" ${S.evFilterCategory==='work'?'selected':''}>💼 Work</option>
-      <option value="social" ${S.evFilterCategory==='social'?'selected':''}>🎉 Social</option>
-      <option value="medical" ${S.evFilterCategory==='medical'?'selected':''}>🏥 Medical</option>
-      <option value="other" ${S.evFilterCategory==='other'?'selected':''}>📌 Other</option>
-      <option value="none" ${S.evFilterCategory==='none'?'selected':''}>⭐ Uncat.</option>
-    </select>
-  </div>`:'';
-
+  // ── Main layout ──
   return `
-    <div style="background:var(--card);padding:14px 16px 0;border-bottom:1px solid var(--row-border);position:sticky;top:0;z-index:10">
+    <div style="background:var(--card);padding:14px 16px 12px;border-bottom:1px solid var(--row-border);position:sticky;top:0;z-index:10">
       <div style="font-size:26px;font-weight:800;color:var(--text)">Events</div>
     </div>
-    ${tabBar}
-    ${ribbon}
-    <div class="scroll-view" style="padding:14px 0 80px">
-      ${S.events.length===0?`<div style="text-align:center;padding:60px 20px"><div style="font-size:56px;margin-bottom:14px">📅</div><div style="font-size:17px;font-weight:700;margin-bottom:6px;color:var(--text)">No events yet</div><div style="font-size:14px;color:var(--text-secondary);margin-bottom:20px;line-height:1.5">Add soccer practice, swimming lessons, music classes —<br>anything that happens at a regular time.</div><button onclick="go('addEvent')" style="padding:12px 24px;border-radius:12px;background:var(--navy);border:none;color:#fff;font-size:15px;font-weight:600;cursor:pointer;font-family:inherit">+ Add your first event</button></div>`:
-      filtered.length===0?`<div style="text-align:center;padding:40px 20px;color:var(--text-secondary)">No events match those filters.<br><button onclick="S.evFilterPerson='all';S.evFilterCategory='all';render()" style="margin-top:10px;padding:8px 16px;border-radius:10px;background:var(--navy);border:none;color:#fff;font-size:13px;font-weight:600;cursor:pointer;font-family:inherit">Clear filters</button></div>`:
-      groups.map(g=>`
-        ${S.evGroupBy!=='none'&&g.label?`<div class="sh" style="padding:0 16px;margin-bottom:6px;color:${g.color}">${g.label} (${g.events.length})</div>`:''}
-        <div class="card" style="margin-bottom:14px">
-          ${g.events.map((ev,i)=>renderEventRow(ev,i===g.events.length-1,false)).join('')}
+    <div class="scroll-view" style="padding:14px 16px 100px">
+
+      <!-- Quick add one-off -->
+      <button onclick="go('addEvent')" style="width:100%;padding:14px;border-radius:14px;background:var(--navy);border:none;color:#fff;font-size:15px;font-weight:700;cursor:pointer;font-family:inherit;margin-bottom:18px;display:flex;align-items:center;justify-content:center;gap:6px;box-shadow:0 2px 8px rgba(28,58,107,0.15)">+ Add one-off event</button>
+
+      <!-- RECURRING IMPORT TOOLS -->
+      <div class="sh" style="padding:0;margin-bottom:8px">RECURRING EVENTS</div>
+      <div style="display:grid;grid-template-columns:1fr 1fr;gap:10px;margin-bottom:18px">
+        <div onclick="openComingSoon('spreadsheet')" style="background:var(--card);border:1px dashed var(--border);border-radius:14px;padding:14px;cursor:pointer;display:flex;flex-direction:column;gap:6px;min-height:96px">
+          <div style="font-size:24px">📄</div>
+          <div style="font-size:14px;font-weight:700;color:var(--text);line-height:1.25">Spreadsheet</div>
+          <div style="font-size:11px;color:var(--text-secondary);line-height:1.4">Download a template or upload your own to bulk-add recurring events.</div>
         </div>
-      `).join('')}
+        <div onclick="openComingSoon('fixtures')" style="background:var(--card);border:1px dashed var(--border);border-radius:14px;padding:14px;cursor:pointer;display:flex;flex-direction:column;gap:6px;min-height:96px">
+          <div style="font-size:24px">🏊</div>
+          <div style="font-size:14px;font-weight:700;color:var(--text);line-height:1.25">Sport Fixtures</div>
+          <div style="font-size:11px;color:var(--text-secondary);line-height:1.4">Import a season's worth from a URL or PDF.</div>
+        </div>
+      </div>
+
+      ${activities.length>0?`
+        <!-- ACTIVITIES (recurring grouped by title) -->
+        <div class="sh" style="padding:0;margin-bottom:8px">ACTIVITIES <span style="color:var(--text-secondary);font-weight:500">· ${activities.length}</span></div>
+        <div style="display:grid;grid-template-columns:1fr 1fr;gap:10px;margin-bottom:18px">
+          ${activities.map(activityTile).join('')}
+        </div>
+      `:''}
+
+      ${upcoming.length>0?`
+        <!-- UPCOMING ONE-OFFS -->
+        <div class="sh" style="padding:0;margin-bottom:8px">UPCOMING ONE-OFFS <span style="color:var(--text-secondary);font-weight:500">· ${upcoming.length}</span></div>
+        <div class="card" style="margin-bottom:18px">
+          ${upcoming.map((ev,i)=>oneoffRow(ev,i,upcoming.length)).join('')}
+        </div>
+      `:''}
+
+      ${past.length>0?`
+        <!-- PAST ONE-OFFS -->
+        <div class="sh" style="padding:0;margin-bottom:8px">PAST <span style="color:var(--text-secondary);font-weight:500">· ${retentionForever?'all':'last '+retentionDays+' days'}</span></div>
+        <div class="card" style="margin-bottom:18px;opacity:0.85">
+          ${past.map((ev,i)=>oneoffRow(ev,i,past.length)).join('')}
+        </div>
+      `:''}
+
     </div>
     <div class="fab"><button class="fab-btn" style="background:#1C3A6B" onclick="go('addEvent')">+</button></div>`;
 }
@@ -2920,6 +2928,17 @@ function sSettings(){
   +'</div>'
   +'<div style="padding:14px 16px">'
   +'<button onclick="saveTermDates()" style="width:100%;padding:12px;border-radius:12px;background:#1C3A6B;border:none;color:#fff;font-size:14px;font-weight:600;cursor:pointer;font-family:inherit">Save Term Dates</button>'
+  +'</div>'
+  +'</div>'
+  // Past events retention
+  +'<div class="sh" style="margin-bottom:6px">📜 Past Events Retention</div>'
+  +'<div class="card" style="margin-bottom:12px">'
+  +'<div style="padding:14px 16px">'
+  +'<div style="font-size:13px;color:#8E8E93;margin-bottom:10px">How long past one-off events stay visible on the Events page</div>'
+  +'<select id="set-past-retention" style="width:100%;padding:10px;border-radius:10px;border:1px solid #E5E5EA;background:#fff;font-size:14px;font-family:inherit">'
+  +(()=>{const cur=(S.family&&Number.isFinite(S.family.pastEventsRetentionDays))?S.family.pastEventsRetentionDays:30;const opts=[{v:7,l:'7 days'},{v:14,l:'2 weeks'},{v:30,l:'30 days (default)'},{v:60,l:'2 months'},{v:90,l:'3 months'},{v:0,l:'Forever'}];return opts.map(o=>'<option value="'+o.v+'" '+(cur===o.v?'selected':'')+'>'+o.l+'</option>').join('');})()
+  +'</select>'
+  +'<button onclick="savePastRetention()" style="width:100%;margin-top:10px;padding:12px;border-radius:12px;background:#1C3A6B;border:none;color:#fff;font-size:14px;font-weight:600;cursor:pointer;font-family:inherit">Save</button>'
   +'</div>'
   +'</div>'
   +'<div class="sh" style="margin-bottom:6px">⏰ Daily Reminder</div>'
@@ -4923,6 +4942,16 @@ window.saveTermDates=async function(){
   }catch(e){notify('Saved locally (sync failed)','⚠️');}
   setTimeout(function(){render();},1000);
 };
+window.savePastRetention=async function(){
+  const v=parseInt(document.getElementById('set-past-retention')?.value,10);
+  if(isNaN(v)){notify('Could not save — pick an option','⚠️');return;}
+  try{
+    if(S.familyId)await updateDoc(doc(db,'families',S.familyId),{pastEventsRetentionDays:v});
+    if(S.family)S.family.pastEventsRetentionDays=v;
+    notify('✅ Saved','📜');
+    render();
+  }catch(e){notify('Save failed: '+(e.message||e),'⚠️');}
+};
 window.saveLocationSettings=async function(){
   const city=document.getElementById('set-city')?.value?.trim();
   const lat=document.getElementById('set-lat')?.value?.trim();
@@ -5568,6 +5597,167 @@ window.closeEventModal=function(){
     m.style.animation='hbFadeIn 0.15s reverse';
     setTimeout(function(){if(m.parentNode)m.remove();},140);
   }
+};
+
+// ── ACTIVITY MODAL ──────────────────────────────────
+// Opens a bottom-sheet showing all recurring events of a given title (e.g. "Swimming"),
+// grouped by person. Tap outside or × to close.
+window.openActivityModal=function(activityTitle){
+  // Find all recurring events matching this title (case-insensitive)
+  const target=(activityTitle||'').trim().toLowerCase();
+  const matching=S.events.filter(ev=>(ev.freq&&ev.freq!=='once')&&((ev.title||'').trim().toLowerCase()===target));
+  if(matching.length===0)return;
+  closeActivityModal();
+
+  // Group events by person (using participantIds OR childId/adultUid)
+  const peopleForEv=ev=>{
+    const ids=Array.isArray(ev.participantIds)&&ev.participantIds.length
+      ?ev.participantIds
+      :[ev.childId,ev.adultUid].filter(Boolean);
+    return ids.map(id=>{
+      const c=S.children.find(x=>x.id===id);
+      if(c)return {name:c.name,color:c.color||NAVY,photo:c.photoURL,id};
+      const m=members().find(x=>x.uid===id);
+      if(m)return {name:m.name,color:m.color||NAVY,photo:m.photoURL,id};
+      return null;
+    }).filter(Boolean);
+  };
+
+  // Map: personId → {person, events[]} ; family events keyed under '__family'
+  const byPerson=new Map();
+  matching.forEach(ev=>{
+    const ppl=peopleForEv(ev);
+    if(ppl.length===0){
+      if(!byPerson.has('__family'))byPerson.set('__family',{person:null,events:[]});
+      byPerson.get('__family').events.push(ev);
+    }else{
+      ppl.forEach(p=>{
+        if(!byPerson.has(p.id))byPerson.set(p.id,{person:p,events:[]});
+        byPerson.get(p.id).events.push(ev);
+      });
+    }
+  });
+
+  const groups=[...byPerson.values()].sort((a,b)=>{
+    if(!a.person)return 1;
+    if(!b.person)return -1;
+    return a.person.name.localeCompare(b.person.name);
+  });
+
+  // Format the days array into "Mon, Wed" or "weekly" style
+  const formatDays=ev=>{
+    if(!ev.days)return ev.freq||'';
+    const order=['Mon','Tue','Wed','Thu','Fri','Sat','Sun'];
+    const ds=order.filter(d=>ev.days[d]);
+    if(ds.length===7)return 'every day';
+    if(ds.length===0)return ev.freq||'';
+    const long={Mon:'Mondays',Tue:'Tuesdays',Wed:'Wednesdays',Thu:'Thursdays',Fri:'Fridays',Sat:'Saturdays',Sun:'Sundays'};
+    if(ds.length===1)return long[ds[0]];
+    return ds.join(', ');
+  };
+
+  const overlay=document.createElement('div');
+  overlay.id='activity-modal-overlay';
+  overlay.style.cssText='position:fixed;inset:0;background:rgba(0,0,0,0.45);z-index:9999;display:flex;align-items:flex-end;justify-content:center;animation:hbFadeIn 0.18s ease-out';
+  if(!document.getElementById('hbPickerKeyframes')){
+    const st=document.createElement('style');st.id='hbPickerKeyframes';
+    st.textContent='@keyframes hbFadeIn{from{opacity:0}to{opacity:1}}@keyframes hbSlideUp{from{transform:translateY(20px);opacity:0}to{transform:translateY(0);opacity:1}}';
+    document.head.appendChild(st);
+  }
+  overlay.onclick=function(e){if(e.target===overlay)closeActivityModal();};
+
+  const sheet=document.createElement('div');
+  sheet.style.cssText='background:var(--card);border-radius:20px 20px 0 0;width:100%;max-width:560px;max-height:88vh;overflow-y:auto;animation:hbSlideUp 0.24s cubic-bezier(.22,.61,.36,1);box-shadow:0 -8px 32px rgba(0,0,0,0.18);-webkit-overflow-scrolling:touch';
+  sheet.onclick=function(e){e.stopPropagation();};
+
+  const groupHtml=groups.map(g=>{
+    const personLabel=g.person?g.person.name.split(' ')[0]:'Family';
+    const personColor=g.person?g.person.color:NAVY;
+    const eventsHtml=g.events.sort((a,b)=>parseTimeToMinutes(a.time)-parseTimeToMinutes(b.time)).map(ev=>{
+      const myName=S.user?.displayName||'';
+      const myFirst=myName.split(' ')[0];
+      const isMyDropoff=ev.dropoff&&(ev.dropoff===myName||ev.dropoff===myFirst);
+      const isMyPickup=ev.pickup&&(ev.pickup===myName||ev.pickup===myFirst);
+      return `<div onclick="closeActivityModal();openEventModal('${ev.id}')" style="background:var(--bg);border-radius:10px;padding:10px 12px;margin-bottom:6px;cursor:pointer;display:flex;align-items:center;gap:8px">
+        <div style="flex:1;min-width:0">
+          <div style="font-size:13px;font-weight:600;color:var(--text)">${formatDays(ev)}${ev.time?' · '+ev.time:''}</div>
+          ${ev.location?`<div style="font-size:11px;color:var(--text-secondary);margin-top:1px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap">📍 ${ev.location}</div>`:''}
+          ${ev.dropoff||ev.pickup?`<div style="font-size:11px;color:${personColor};margin-top:2px;font-weight:500">${ev.dropoff?(isMyDropoff?'🚗 '+ev.dropoff.split(' ')[0]+' (you)':'🚗 '+ev.dropoff.split(' ')[0]):''}${ev.dropoff&&ev.pickup?' · ':''}${ev.pickup?(isMyPickup?'🏠 '+ev.pickup.split(' ')[0]+' (you)':'🏠 '+ev.pickup.split(' ')[0]):''}</div>`:''}
+        </div>
+        <div style="color:var(--text-secondary);font-size:16px;flex-shrink:0">›</div>
+      </div>`;
+    }).join('');
+    return `<div style="margin-bottom:14px">
+      <div style="display:flex;align-items:center;gap:8px;margin-bottom:8px">
+        ${g.person?av(g.person.name,personColor,28,g.person.photo):'<div style="width:28px;height:28px;border-radius:14px;background:'+NAVY+'18;display:flex;align-items:center;justify-content:center;font-size:14px">👨‍👩‍👧</div>'}
+        <div style="font-size:14px;font-weight:700;color:${personColor}">${personLabel}</div>
+        <div style="font-size:11px;color:var(--text-secondary);font-weight:500">· ${g.events.length} ${g.events.length===1?'event':'events'}</div>
+      </div>
+      ${eventsHtml}
+    </div>`;
+  }).join('');
+
+  sheet.innerHTML=`
+    <div style="position:sticky;top:0;background:var(--card);padding:10px 0 6px;z-index:1;border-bottom:1px solid var(--row-border)">
+      <div style="width:40px;height:4px;background:#D1D1D6;border-radius:2px;margin:0 auto"></div>
+    </div>
+    <div style="padding:14px 20px 22px">
+      <div style="display:flex;align-items:center;gap:10px;margin-bottom:14px">
+        <div style="flex:1">
+          <div style="font-size:11px;font-weight:600;color:var(--text-secondary);letter-spacing:0.5px;margin-bottom:2px">ACTIVITY</div>
+          <div style="font-size:22px;font-weight:800;color:var(--text);line-height:1.2">${activityTitle}</div>
+        </div>
+        <button onclick="closeActivityModal()" aria-label="Close" style="width:34px;height:34px;border-radius:17px;border:none;background:var(--bg);color:var(--text-secondary);font-size:20px;line-height:1;cursor:pointer;display:flex;align-items:center;justify-content:center;flex-shrink:0;font-family:inherit;padding:0">×</button>
+      </div>
+      ${groupHtml}
+      <button onclick="closeActivityModal()" style="width:100%;margin-top:6px;padding:13px;border-radius:12px;background:var(--bg);border:none;color:var(--text);font-size:14px;font-weight:700;cursor:pointer;font-family:inherit">Close</button>
+    </div>`;
+
+  overlay.appendChild(sheet);
+  document.body.appendChild(overlay);
+
+  const escHandler=function(e){if(e.key==='Escape')closeActivityModal();};
+  document.addEventListener('keydown',escHandler);
+  overlay._escHandler=escHandler;
+};
+window.closeActivityModal=function(){
+  const m=document.getElementById('activity-modal-overlay');
+  if(m){
+    if(m._escHandler)document.removeEventListener('keydown',m._escHandler);
+    m.style.animation='hbFadeIn 0.15s reverse';
+    setTimeout(function(){if(m.parentNode)m.remove();},140);
+  }
+};
+
+// "Coming soon" placeholder modal for the recurring-import buttons
+window.openComingSoon=function(kind){
+  const titles={
+    spreadsheet:{emoji:'📄',title:'Spreadsheet template',desc:'Download a pre-formatted .xlsx template, fill in your recurring events, then upload it back here. Bulk-add an entire term in one go — much faster than entering one event at a time.'},
+    fixtures:{emoji:'🏊',title:'Sport fixtures import',desc:'Paste a Revolutionise URL or upload a fixture PDF (e.g. an Ovens & Murray sports schedule). HomeBase parses the rows and creates the events for you.'}
+  };
+  const data=titles[kind]||{emoji:'✨',title:'Coming soon',desc:'This feature is on the way.'};
+
+  const overlay=document.createElement('div');
+  overlay.id='coming-soon-overlay';
+  overlay.style.cssText='position:fixed;inset:0;background:rgba(0,0,0,0.45);z-index:9999;display:flex;align-items:center;justify-content:center;padding:20px;animation:hbFadeIn 0.18s ease-out';
+  if(!document.getElementById('hbPickerKeyframes')){
+    const st=document.createElement('style');st.id='hbPickerKeyframes';
+    st.textContent='@keyframes hbFadeIn{from{opacity:0}to{opacity:1}}@keyframes hbSlideUp{from{transform:translateY(20px);opacity:0}to{transform:translateY(0);opacity:1}}';
+    document.head.appendChild(st);
+  }
+  overlay.onclick=function(e){if(e.target===overlay){overlay.style.animation='hbFadeIn 0.15s reverse';setTimeout(()=>overlay.remove(),140);}};
+
+  const card=document.createElement('div');
+  card.style.cssText='background:var(--card);border-radius:18px;padding:24px;max-width:380px;width:100%;text-align:center;animation:hbSlideUp 0.24s cubic-bezier(.22,.61,.36,1);box-shadow:0 12px 48px rgba(0,0,0,0.25)';
+  card.onclick=function(e){e.stopPropagation();};
+  card.innerHTML=`
+    <div style="font-size:44px;margin-bottom:8px">${data.emoji}</div>
+    <div style="font-size:18px;font-weight:800;color:var(--text);margin-bottom:8px">${data.title}</div>
+    <div style="font-size:13px;color:var(--text-secondary);line-height:1.55;margin-bottom:6px">${data.desc}</div>
+    <div style="font-size:12px;color:var(--navy);font-weight:700;margin-bottom:18px;letter-spacing:0.3px">COMING NEXT UPDATE ✨</div>
+    <button onclick="this.closest('#coming-soon-overlay').click()" style="width:100%;padding:12px;border-radius:12px;background:var(--navy);border:none;color:#fff;font-size:14px;font-weight:700;cursor:pointer;font-family:inherit">Got it</button>`;
+  overlay.appendChild(card);
+  document.body.appendChild(overlay);
 };
 
 window.go=go;window.back=back;window.setTab=setTab;window.render=render;window.S=S;
