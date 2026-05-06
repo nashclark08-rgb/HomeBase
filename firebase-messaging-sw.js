@@ -18,11 +18,23 @@ const messaging = firebase.messaging();
 
 // Listen for messages received while the app is in the background or closed.
 // (Foreground messages are handled in index.html via onMessage.)
+//
+// CRITICAL FIX: When the cloud function sends a `notification` payload (title/body),
+// Firebase's web SDK AUTO-DISPLAYS the notification before this handler even runs.
+// If we ALSO call self.registration.showNotification(), the user gets duplicate
+// notifications. So we only manually display when the payload is data-only.
 messaging.onBackgroundMessage((payload) => {
   console.log('[HomeBase SW] Push received:', payload);
 
-  const title = payload.notification?.title || payload.data?.title || 'HomeBase';
-  const body = payload.notification?.body || payload.data?.body || '';
+  // If FCM is already auto-displaying this notification, do nothing.
+  // This prevents the "two identical pushes per event" bug.
+  if (payload.notification) {
+    return;
+  }
+
+  // Data-only payload — we control the display.
+  const title = payload.data?.title || 'HomeBase';
+  const body = payload.data?.body || '';
   const tag = payload.data?.tag || 'homebase-' + Date.now();
   const url = payload.data?.url || '/';
 
