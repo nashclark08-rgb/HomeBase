@@ -1164,6 +1164,15 @@ function sToday(){
       return wks%2===0;
     }
     return true;
+  }).filter(ev=>{
+    // When viewing today, hide events that have already finished.
+    // Other days: show everything (so you can review yesterday or plan tomorrow).
+    if(!isViewToday)return true;
+    if(!ev.time)return true; // no time set → show all day
+    const range=parseTimeRange(ev.time);
+    if(!range)return true; // unparseable → show
+    const nowMins=new Date().getHours()*60+new Date().getMinutes();
+    return nowMins<range.end; // hide once end time has passed
   }).sort((a,b)=>parseTimeToMinutes(a.time)-parseTimeToMinutes(b.time));
 
   // Shopping list summary
@@ -1178,6 +1187,13 @@ function sToday(){
       <div style="margin-bottom:4px">
         <div style="font-size:13px;font-weight:600;color:${NAVY};margin-bottom:2px">${greetIcon()} ${greeting()}, ${S.user?.displayName?.split(' ')[0]||''}!</div>
         <div style="font-size:26px;font-weight:800;color:#1C1C1E;letter-spacing:-0.4px">${S.family?.name||'Family'}</div>
+      </div>
+      <!-- Day arrows navigation (ABOVE tiles, per Nash's preference) -->
+      <div style="display:flex;align-items:center;gap:8px;margin-top:10px">
+        <button onclick="changeDayOffset(-1)" style="width:34px;height:34px;border-radius:17px;background:var(--bg);border:none;color:var(--text);font-size:20px;font-weight:300;cursor:pointer;font-family:inherit;display:flex;align-items:center;justify-content:center;flex-shrink:0">‹</button>
+        <button onclick="S.dayOffset=0;render()" style="flex:1;padding:8px 12px;border-radius:12px;border:none;background:${(S.dayOffset||0)===0?'#1C3A6B':'var(--bg)'};color:${(S.dayOffset||0)===0?'#fff':'var(--text)'};font-size:13px;font-weight:700;cursor:pointer;font-family:inherit">${(()=>{const d=getViewDate();const off=S.dayOffset||0;return off===0?'Today · '+DAYNAMES[d.getDay()]+' '+d.getDate()+' '+MONTHS[d.getMonth()]:off===1?'Tomorrow · '+DAYNAMES[d.getDay()]+' '+d.getDate()+' '+MONTHS[d.getMonth()]:off===-1?'Yesterday · '+DAYNAMES[d.getDay()]+' '+d.getDate()+' '+MONTHS[d.getMonth()]:DAYNAMES[d.getDay()]+' · '+d.getDate()+' '+MONTHS[d.getMonth()];})()}</button>
+        <button onclick="changeDayOffset(1)" style="width:34px;height:34px;border-radius:17px;background:var(--bg);border:none;color:var(--text);font-size:20px;font-weight:300;cursor:pointer;font-family:inherit;display:flex;align-items:center;justify-content:center;flex-shrink:0">›</button>
+        <button onclick="S.dayOffset=0;render()" title="Back to today" style="padding:8px 14px;border-radius:14px;background:${(S.dayOffset||0)===0?'#FF9500':'#1C3A6B'};border:none;color:#fff;font-size:12px;font-weight:700;cursor:pointer;font-family:inherit;flex-shrink:0;letter-spacing:0.3px">Today</button>
       </div>
       <div style="display:flex;gap:14px;overflow-x:auto;padding:14px 4px 6px;-ms-overflow-style:none;scrollbar-width:none">
         ${S.children.map(c=>{
@@ -1221,13 +1237,6 @@ function sToday(){
           <div style="font-size:13px;font-weight:600;color:var(--navy);text-align:center;line-height:1.15">Add Child</div>
           <div style="font-size:11px;color:var(--text-secondary);line-height:1">·</div>
         </div>
-      </div>
-      <!-- Day arrows navigation (now BELOW tiles) -->
-      <div style="display:flex;align-items:center;gap:8px;margin-top:8px">
-        <button onclick="changeDayOffset(-1)" style="width:34px;height:34px;border-radius:17px;background:var(--bg);border:none;color:var(--text);font-size:20px;font-weight:300;cursor:pointer;font-family:inherit;display:flex;align-items:center;justify-content:center;flex-shrink:0">‹</button>
-        <button onclick="S.dayOffset=0;render()" style="flex:1;padding:8px 12px;border-radius:12px;border:none;background:${(S.dayOffset||0)===0?'#1C3A6B':'var(--bg)'};color:${(S.dayOffset||0)===0?'#fff':'var(--text)'};font-size:13px;font-weight:700;cursor:pointer;font-family:inherit">${(()=>{const d=getViewDate();const off=S.dayOffset||0;return off===0?'Today · '+DAYNAMES[d.getDay()]+' '+d.getDate()+' '+MONTHS[d.getMonth()]:off===1?'Tomorrow · '+DAYNAMES[d.getDay()]+' '+d.getDate()+' '+MONTHS[d.getMonth()]:off===-1?'Yesterday · '+DAYNAMES[d.getDay()]+' '+d.getDate()+' '+MONTHS[d.getMonth()]:DAYNAMES[d.getDay()]+' · '+d.getDate()+' '+MONTHS[d.getMonth()];})()}</button>
-        <button onclick="changeDayOffset(1)" style="width:34px;height:34px;border-radius:17px;background:var(--bg);border:none;color:var(--text);font-size:20px;font-weight:300;cursor:pointer;font-family:inherit;display:flex;align-items:center;justify-content:center;flex-shrink:0">›</button>
-        <button onclick="S.dayOffset=0;render()" title="Back to today" style="padding:8px 14px;border-radius:14px;background:${(S.dayOffset||0)===0?'#FF9500':'#1C3A6B'};border:none;color:#fff;font-size:12px;font-weight:700;cursor:pointer;font-family:inherit;flex-shrink:0;letter-spacing:0.3px">Today</button>
       </div>
     </div>
 
