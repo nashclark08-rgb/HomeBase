@@ -2286,7 +2286,7 @@ function sEvents(){
       <!-- RECURRING IMPORT TOOLS -->
       <div class="sh" style="padding:0;margin-bottom:8px">RECURRING EVENTS</div>
       <div style="display:grid;grid-template-columns:1fr 1fr;gap:10px;margin-bottom:22px">
-        <div onclick="openComingSoon('spreadsheet')" style="background:var(--card);border:1px dashed var(--border);border-radius:14px;padding:14px;cursor:pointer;display:flex;flex-direction:column;gap:6px;min-height:96px">
+        <div onclick="go('spreadsheetImport')" style="background:var(--card);border:1px dashed var(--border);border-radius:14px;padding:14px;cursor:pointer;display:flex;flex-direction:column;gap:6px;min-height:96px">
           <div style="font-size:24px">📄</div>
           <div style="font-size:14px;font-weight:700;color:var(--text);line-height:1.25">Spreadsheet</div>
           <div style="font-size:11px;color:var(--text-secondary);line-height:1.4">Download a template or upload your own.</div>
@@ -2313,6 +2313,495 @@ function sEvents(){
 
     </div>
     <div class="fab"><button class="fab-btn" style="background:#1C3A6B" onclick="go('addEvent')">+</button></div>`;
+}
+
+// =================================================================
+// SPREADSHEET IMPORT — bulk-add events from .xlsx
+// =================================================================
+
+// Lazy-load SheetJS only when actually needed (saves bandwidth on initial load)
+let _xlsxLoadPromise=null;
+function loadSheetJS(){
+  if(typeof XLSX!=='undefined')return Promise.resolve();
+  if(_xlsxLoadPromise)return _xlsxLoadPromise;
+  _xlsxLoadPromise=new Promise((resolve,reject)=>{
+    const s=document.createElement('script');
+    s.src='https://cdn.sheetjs.com/xlsx-0.20.0/package/dist/xlsx.full.min.js';
+    s.onload=()=>resolve();
+    s.onerror=()=>reject(new Error('Failed to load spreadsheet library'));
+    document.head.appendChild(s);
+  });
+  return _xlsxLoadPromise;
+}
+
+// Generate the template as a Blob and trigger a download.
+async function downloadEventTemplate(){
+  try{
+    notify('Preparing template…','📄');
+    await loadSheetJS();
+    const headers=['Title','Type','Sport','Frequency','Date','Days','Start Date','End Date','Time','Location','Drop-off','Pick-up','Participants','Notes'];
+    // Sample rows showing different scenarios
+    const samples=[
+      ['Water Polo Training','Training','Water Polo','Weekly','','Mon,Wed','2026-05-06','2026-09-26','5:30pm – 6:30pm','GT Aquatics','Nash Clark','Olivia Clark','Alby','Bring goggles + cap'],
+      ['Water Polo · Round 1','Game','Water Polo','Once','2026-05-10','','','','9:00am – 10:00am','Albury Pool','Olivia Clark','Olivia Clark','Alby',''],
+      ['Piano Lesson','Music','','Weekly','','Thu','2026-05-06','','4:00pm – 4:45pm','Mrs Smith\'s','Nash Clark','Nash Clark','Hattie','Bring sheet music'],
+      ['Dentist','Medical','','Once','2026-05-20','','','','3:30pm','Albury Dental','Olivia Clark','','Alby','Cleaning + check'],
+      ['','','','','','','','','','','','','','']
+    ];
+
+    const rows=[headers,...samples];
+    const ws=XLSX.utils.aoa_to_sheet(rows);
+
+    // Set column widths so it's readable when opened
+    ws['!cols']=[
+      {wch:24},{wch:10},{wch:14},{wch:11},{wch:11},{wch:14},{wch:11},{wch:11},
+      {wch:18},{wch:22},{wch:14},{wch:14},{wch:18},{wch:30}
+    ];
+
+    // Add a quick second sheet with instructions
+    const instructions=[
+      ['HomeBase event template'],
+      [],
+      ['How to use'],
+      ['1. Fill in one event per row, starting at row 2 of the Events sheet.'],
+      ['2. The first 4 sample rows show the format — replace them or delete them.'],
+      ['3. Save the file (keep .xlsx format).'],
+      ['4. Back in HomeBase, tap "Upload filled template" and pick this file.'],
+      ['5. You\'ll see a preview before anything is added — review then commit.'],
+      [],
+      ['Column rules'],
+      ['Title — required. The event name (e.g. "Water Polo Training").'],
+      ['Type — required. One of: Game, Training, Music, Work, Social, Medical, Other.'],
+      ['Sport — required if Type is Game or Training (e.g. "Water Polo").'],
+      ['Frequency — required. One of: Once, Weekly, Fortnightly.'],
+      ['Date — required if Frequency is Once. Format: YYYY-MM-DD (e.g. 2026-05-10).'],
+      ['Days — required if Frequency is Weekly/Fortnightly. Comma-separated 3-letter days: Mon,Wed,Fri.'],
+      ['Start Date — optional for recurring. Defaults to today.'],
+      ['End Date — optional for recurring. Leave blank to recur indefinitely.'],
+      ['Time — optional. e.g. "5:30pm – 6:30pm" or "5:30pm".'],
+      ['Location — optional.'],
+      ['Drop-off / Pick-up — optional. Use the caregiver\'s name as it appears in HomeBase.'],
+      ['Participants — optional. Comma-separated names of family members (e.g. "Alby, Hattie"). Names must match HomeBase exactly.'],
+      ['Notes — optional. Any extra info.']
+    ];
+    const wsInst=XLSX.utils.aoa_to_sheet(instructions);
+    wsInst['!cols']=[{wch:90}];
+
+    const wb=XLSX.utils.book_new();
+    XLSX.utils.book_append_sheet(wb,ws,'Events');
+    XLSX.utils.book_append_sheet(wb,wsInst,'Instructions');
+
+    // Trigger download
+    const wbout=XLSX.write(wb,{bookType:'xlsx',type:'array'});
+    const blob=new Blob([wbout],{type:'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet'});
+    const url=URL.createObjectURL(blob);
+    const a=document.createElement('a');
+    a.href=url;
+    a.download='HomeBase-events-template.xlsx';
+    document.body.appendChild(a);
+    a.click();
+    document.body.removeChild(a);
+    setTimeout(()=>URL.revokeObjectURL(url),2000);
+    notify('Template downloaded ✅','📥');
+  }catch(ex){
+    notify('Could not generate template: '+(ex.message||ex),'❌');
+  }
+}
+window.downloadEventTemplate=downloadEventTemplate;
+
+// Map a "Type" cell value to the canonical category id
+function typeToCategory(typeStr){
+  const t=String(typeStr||'').trim().toLowerCase();
+  const map={
+    'game':'sport-games','games':'sport-games','match':'sport-games','fixture':'sport-games',
+    'training':'sport-training','practice':'sport-training','drill':'sport-training','drills':'sport-training','squad':'sport-training','lesson':'sport-training','class':'sport-training',
+    'music':'music','work':'work','social':'social','medical':'medical','other':'other'
+  };
+  return map[t]||'';
+}
+
+// Parse a date string (YYYY-MM-DD or Excel serial number) into YYYY-MM-DD
+function normalizeDateCell(v){
+  if(!v&&v!==0)return '';
+  if(v instanceof Date){
+    if(isNaN(v.getTime()))return '';
+    return fd(v);
+  }
+  if(typeof v==='number'){
+    // Excel serial date: days since 1899-12-30
+    const d=new Date(Math.round((v-25569)*86400*1000));
+    if(isNaN(d.getTime()))return '';
+    return fd(d);
+  }
+  const s=String(v).trim();
+  // Already YYYY-MM-DD?
+  if(/^\d{4}-\d{2}-\d{2}$/.test(s))return s;
+  // Try parsing as Date
+  const d=new Date(s);
+  if(!isNaN(d.getTime()))return fd(d);
+  return '';
+}
+
+// Parse "Mon,Wed,Fri" into {Mon:true,Wed:true,Fri:true}
+function parseDaysCell(v){
+  const days={Mon:false,Tue:false,Wed:false,Thu:false,Fri:false,Sat:false,Sun:false};
+  if(!v)return days;
+  String(v).split(/[,;\/\s]+/).forEach(t=>{
+    const k=t.trim().slice(0,3);
+    const cap=k.charAt(0).toUpperCase()+k.slice(1).toLowerCase();
+    if(days.hasOwnProperty(cap))days[cap]=true;
+  });
+  return days;
+}
+
+// Parse a "Participants" cell ("Alby, Hattie") into participantIds
+function resolveParticipants(v){
+  if(!v)return {ids:[],unresolved:[]};
+  const names=String(v).split(/[,;]+/).map(s=>s.trim()).filter(Boolean);
+  const ids=[];
+  const unresolved=[];
+  names.forEach(n=>{
+    const lower=n.toLowerCase();
+    const c=S.children.find(x=>(x.name||'').toLowerCase()===lower||(x.name||'').toLowerCase().split(' ')[0]===lower);
+    if(c){ids.push(c.id);return;}
+    const m=members().find(x=>(x.name||'').toLowerCase()===lower||(x.name||'').toLowerCase().split(' ')[0]===lower);
+    if(m){ids.push(m.uid);return;}
+    unresolved.push(n);
+  });
+  return {ids,unresolved};
+}
+
+// Parse the uploaded file. Returns {rows: [{event, errors[], warnings[]}], totalRows, fileName}
+async function parseSpreadsheetFile(file){
+  await loadSheetJS();
+  const buf=await file.arrayBuffer();
+  const wb=XLSX.read(buf,{type:'array',cellDates:true});
+  // Use first sheet, or "Events" if it exists
+  const sheetName=wb.SheetNames.find(n=>n.toLowerCase()==='events')||wb.SheetNames[0];
+  const ws=wb.Sheets[sheetName];
+  if(!ws)throw new Error('Spreadsheet has no readable sheet');
+  const json=XLSX.utils.sheet_to_json(ws,{defval:'',raw:false});
+
+  const parsed=[];
+  json.forEach((row,idx)=>{
+    // Try multiple header variants
+    const get=keys=>{
+      for(const k of keys){
+        for(const rk of Object.keys(row)){
+          if(rk.trim().toLowerCase()===k.toLowerCase())return row[rk];
+        }
+      }
+      return '';
+    };
+
+    const title=String(get(['Title','Event','Name'])||'').trim();
+    // Skip totally blank rows silently
+    if(!title&&!get(['Type'])&&!get(['Date']))return;
+
+    const errors=[];
+    const warnings=[];
+    if(!title)errors.push('Title is required');
+
+    const typeRaw=String(get(['Type','Category'])||'').trim();
+    const category=typeToCategory(typeRaw);
+    if(!typeRaw)errors.push('Type is required');
+    else if(!category)errors.push('Type "'+typeRaw+'" not recognised — use Game, Training, Music, Work, Social, Medical, or Other');
+
+    const sport=String(get(['Sport'])||'').trim();
+    if((category==='sport-games'||category==='sport-training')&&!sport){
+      errors.push('Sport is required when Type is '+typeRaw);
+    }
+
+    const freqRaw=String(get(['Frequency','Freq','Repeat'])||'').trim().toLowerCase();
+    let freq='once';
+    if(freqRaw==='once'||freqRaw==='one-off'||freqRaw==='one off'||freqRaw==='single')freq='once';
+    else if(freqRaw==='weekly'||freqRaw==='week')freq='weekly';
+    else if(freqRaw==='fortnightly'||freqRaw==='fortnight'||freqRaw==='biweekly'||freqRaw==='bi-weekly')freq='fortnightly';
+    else if(freqRaw==='daily'||freqRaw==='day')freq='daily';
+    else if(!freqRaw){errors.push('Frequency is required');}
+    else{errors.push('Frequency "'+freqRaw+'" not recognised — use Once, Weekly, or Fortnightly');}
+
+    let date='';
+    const days={Mon:false,Tue:false,Wed:false,Thu:false,Fri:false,Sat:false,Sun:false};
+    let startDate='';
+    let endDate='';
+    if(freq==='once'){
+      date=normalizeDateCell(get(['Date']));
+      if(!date)errors.push('Date required for Once events (format YYYY-MM-DD)');
+    }else if(freq!=='once'&&!errors.length){
+      const parsedDays=parseDaysCell(get(['Days','Day']));
+      Object.assign(days,parsedDays);
+      if(!Object.values(days).some(Boolean)){
+        errors.push('Days required for recurring events (e.g. "Mon,Wed,Fri")');
+      }
+      startDate=normalizeDateCell(get(['Start Date','StartDate','From']))||fd(new Date());
+      endDate=normalizeDateCell(get(['End Date','EndDate','Until','To']))||'';
+    }
+
+    const time=String(get(['Time','When'])||'').trim();
+    const location=String(get(['Location','Where','Venue'])||'').trim();
+    const dropoff=String(get(['Drop-off','Dropoff','Drop off','DropOff'])||'').trim();
+    const pickup=String(get(['Pick-up','Pickup','Pick up','PickUp'])||'').trim();
+    const notes=String(get(['Notes','Note','Comments'])||'').trim();
+
+    const partRaw=String(get(['Participants','Participant','People','Who','For'])||'').trim();
+    const part=resolveParticipants(partRaw);
+    if(part.unresolved.length){
+      warnings.push('Couldn\'t match: '+part.unresolved.join(', ')+' — these will be saved without people linked');
+    }
+
+    parsed.push({
+      idx:idx+2, // account for header row + 1-indexed
+      event:{
+        title,category,sport,freq,date,days,startDate,endDate,time,
+        location,dropoff,pickup,
+        participantIds:part.ids,
+        notes,
+        emoji:category==='sport-games'||category==='sport-training'?(SPORT_EMOJI[sport.toLowerCase().trim()]||'⚽'):'📅'
+      },
+      errors,warnings,
+      rawType:typeRaw
+    });
+  });
+
+  return {rows:parsed,fileName:file.name};
+}
+
+// Wire up the upload input handler
+window.handleSpreadsheetUpload=async function(input){
+  if(!input?.files?.[0])return;
+  const file=input.files[0];
+  if(!/\.(xlsx|xls|csv)$/i.test(file.name)){
+    notify('Please upload an .xlsx, .xls, or .csv file','⚠️');
+    return;
+  }
+  try{
+    notify('Reading file…','📂');
+    const result=await parseSpreadsheetFile(file);
+    if(!result.rows.length){
+      notify('No event rows found in this file. Make sure data starts at row 2 with the right headers.','⚠️');
+      return;
+    }
+    S.spreadsheetPreview=result;
+    go('spreadsheetPreview');
+  }catch(ex){
+    notify('Couldn\'t read file: '+(ex.message||ex),'❌');
+  }finally{
+    if(input)input.value=''; // allow re-upload of same file
+  }
+};
+
+// Bulk-import valid rows. Skips rows with errors. Auto-grows family.sports.
+window.commitSpreadsheetImport=async function(){
+  const data=S.spreadsheetPreview;
+  if(!data||!Array.isArray(data.rows)){notify('Nothing to import','⚠️');return;}
+  const valid=data.rows.filter(r=>r.errors.length===0);
+  if(valid.length===0){notify('No valid rows to import — fix errors and re-upload','⚠️');return;}
+  if(!S.familyId){notify('No family loaded','⚠️');return;}
+
+  const btn=document.getElementById('commit-import-btn');
+  if(btn){btn.disabled=true;btn.textContent='Importing…';}
+  let success=0;
+  let failed=0;
+  // Collect new sports to add to family.sports
+  const newSports=new Set();
+  const existingSports=new Set((Array.isArray(S.family?.sports)?S.family.sports:[]).map(s=>s.toLowerCase()));
+
+  for(const row of valid){
+    const ev=row.event;
+    if(ev.sport&&!existingSports.has(ev.sport.toLowerCase()))newSports.add(ev.sport);
+    // Derive legacy childId/adultUid for backwards compat with older code paths
+    let childId='',adultUid='';
+    if(ev.participantIds.length===1){
+      const c=S.children.find(x=>x.id===ev.participantIds[0]);
+      const m=members().find(x=>x.uid===ev.participantIds[0]);
+      if(c)childId=ev.participantIds[0];
+      else if(m)adultUid=ev.participantIds[0];
+    }
+    try{
+      await fadd(['events'],{
+        title:ev.title,emoji:ev.emoji,
+        participantIds:ev.participantIds,childId,adultUid,
+        freq:ev.freq,
+        date:ev.date,startDate:ev.startDate,endDate:ev.endDate,
+        days:ev.days,
+        time:ev.time,
+        category:ev.category,sport:ev.sport,
+        location:ev.location,dropoff:ev.dropoff,pickup:ev.pickup,
+        packItems:[],notes:ev.notes
+      });
+      success++;
+    }catch(e){failed++;console.warn('Import row failed',row,e);}
+  }
+
+  // Persist any new sports
+  if(newSports.size>0){
+    const merged=[...new Set([...(S.family?.sports||[]),...newSports])].sort();
+    try{
+      await updateDoc(doc(db,'families',S.familyId),{sports:merged});
+      if(S.family)S.family.sports=merged;
+    }catch(e){}
+  }
+
+  S.spreadsheetPreview=null;
+  if(failed===0){
+    notify('Imported '+success+' event'+(success===1?'':'s')+' ✅','📅');
+  }else{
+    notify('Imported '+success+' / failed '+failed,'⚠️');
+  }
+  // Go back to events tab
+  S.screen=null;S.tab='events';S.evView='tiles';render();
+};
+
+// ── SPREADSHEET HUB SCREEN ──
+function sSpreadsheet(){
+  return `
+    <div style="min-height:100%;display:flex;flex-direction:column;background:var(--bg)">
+      <div style="background:var(--card);padding:14px 16px;display:flex;align-items:center;border-bottom:1px solid var(--row-border);position:sticky;top:0;z-index:10">
+        <button class="back-btn" onclick="back()">${bk()} Back</button>
+        <div style="flex:1;text-align:center;font-size:17px;font-weight:600">Spreadsheet Import</div>
+        <div style="width:60px"></div>
+      </div>
+      <div class="scroll-view" style="padding:18px 16px 80px;max-width:560px;margin:auto;width:100%">
+
+        <div style="text-align:center;margin-bottom:24px">
+          <div style="font-size:54px;margin-bottom:6px">📄</div>
+          <div style="font-size:20px;font-weight:800;color:var(--text);margin-bottom:6px">Bulk-add events</div>
+          <div style="font-size:13px;color:var(--text-secondary);line-height:1.55">Save heaps of typing — fill out a spreadsheet on your computer<br>and HomeBase imports the lot in one go.</div>
+        </div>
+
+        <!-- Step 1 -->
+        <div style="background:var(--card);border-radius:14px;padding:18px;margin-bottom:14px;border:1px solid var(--row-border)">
+          <div style="display:flex;align-items:center;gap:10px;margin-bottom:8px">
+            <div style="width:28px;height:28px;border-radius:14px;background:var(--navy);color:#fff;display:flex;align-items:center;justify-content:center;font-size:14px;font-weight:800;flex-shrink:0">1</div>
+            <div style="font-size:15px;font-weight:700;color:var(--text)">Download the template</div>
+          </div>
+          <div style="font-size:13px;color:var(--text-secondary);margin-bottom:14px;line-height:1.5;padding-left:38px">An .xlsx file with headers, sample rows, and instructions. Open it in Excel, Numbers, or Google Sheets.</div>
+          <button onclick="downloadEventTemplate()" style="width:100%;padding:13px;border-radius:12px;background:var(--navy);border:none;color:#fff;font-size:14px;font-weight:700;cursor:pointer;font-family:inherit">📥 Download template (.xlsx)</button>
+        </div>
+
+        <!-- Step 2 -->
+        <div style="background:var(--card);border-radius:14px;padding:18px;margin-bottom:14px;border:1px solid var(--row-border)">
+          <div style="display:flex;align-items:center;gap:10px;margin-bottom:8px">
+            <div style="width:28px;height:28px;border-radius:14px;background:var(--navy);color:#fff;display:flex;align-items:center;justify-content:center;font-size:14px;font-weight:800;flex-shrink:0">2</div>
+            <div style="font-size:15px;font-weight:700;color:var(--text)">Fill it in</div>
+          </div>
+          <div style="font-size:13px;color:var(--text-secondary);line-height:1.5;padding-left:38px">One row per event. The sample rows show the format — replace them or delete them. Keep the file as .xlsx when you save.</div>
+        </div>
+
+        <!-- Step 3 -->
+        <div style="background:var(--card);border-radius:14px;padding:18px;margin-bottom:14px;border:1px solid var(--row-border)">
+          <div style="display:flex;align-items:center;gap:10px;margin-bottom:8px">
+            <div style="width:28px;height:28px;border-radius:14px;background:var(--navy);color:#fff;display:flex;align-items:center;justify-content:center;font-size:14px;font-weight:800;flex-shrink:0">3</div>
+            <div style="font-size:15px;font-weight:700;color:var(--text)">Upload it back</div>
+          </div>
+          <div style="font-size:13px;color:var(--text-secondary);margin-bottom:14px;line-height:1.5;padding-left:38px">You'll see a preview of every event before anything is added.</div>
+          <input type="file" id="ss-upload" accept=".xlsx,.xls,.csv" style="display:none" onchange="handleSpreadsheetUpload(this)"/>
+          <button onclick="document.getElementById('ss-upload').click()" style="width:100%;padding:13px;border-radius:12px;background:#34C759;border:none;color:#fff;font-size:14px;font-weight:700;cursor:pointer;font-family:inherit">📤 Upload filled template</button>
+        </div>
+
+        <!-- Quick reference -->
+        <details style="background:var(--card);border-radius:14px;padding:14px 18px;border:1px solid var(--row-border)">
+          <summary style="font-size:14px;font-weight:700;color:var(--text);cursor:pointer">What goes in each column?</summary>
+          <div style="font-size:12px;color:var(--text-secondary);line-height:1.6;margin-top:10px">
+            <div><strong>Title</strong> — required. The event name.</div>
+            <div><strong>Type</strong> — required. <em>Game, Training, Music, Work, Social, Medical, Other</em>.</div>
+            <div><strong>Sport</strong> — required when Type is Game or Training.</div>
+            <div><strong>Frequency</strong> — required. <em>Once, Weekly, Fortnightly</em>.</div>
+            <div><strong>Date</strong> — required for Once events. Format <em>YYYY-MM-DD</em>.</div>
+            <div><strong>Days</strong> — required for recurring. e.g. <em>Mon,Wed,Fri</em>.</div>
+            <div><strong>Start/End Date</strong> — optional, for recurring.</div>
+            <div><strong>Time</strong> — optional. e.g. <em>5:30pm – 6:30pm</em>.</div>
+            <div><strong>Location, Drop-off, Pick-up, Notes</strong> — optional.</div>
+            <div><strong>Participants</strong> — comma-separated names matching family members exactly.</div>
+          </div>
+        </details>
+
+      </div>
+    </div>`;
+}
+
+// ── PREVIEW SCREEN ──
+function sSpreadsheetPreview(){
+  const data=S.spreadsheetPreview;
+  if(!data){
+    return `
+      <div style="min-height:100%;display:flex;flex-direction:column;background:var(--bg)">
+        <div style="background:var(--card);padding:14px 16px;display:flex;align-items:center;border-bottom:1px solid var(--row-border)">
+          <button class="back-btn" onclick="back()">${bk()} Back</button>
+          <div style="flex:1;text-align:center;font-size:17px;font-weight:600">Preview</div>
+          <div style="width:60px"></div>
+        </div>
+        <div style="padding:60px 20px;text-align:center;color:var(--text-secondary)">
+          <div style="font-size:14px">No file loaded. Go back and upload one.</div>
+        </div>
+      </div>`;
+  }
+
+  const rows=data.rows;
+  const valid=rows.filter(r=>r.errors.length===0);
+  const invalid=rows.filter(r=>r.errors.length>0);
+  const withWarnings=rows.filter(r=>r.warnings.length>0);
+
+  const formatRow=(r,withErrors)=>{
+    const ev=r.event;
+    const cat=EV_CATEGORIES.find(c=>c.id===ev.category);
+    const catEmoji=cat?cat.emoji:(ev.category||'📌');
+    const sportLabel=ev.sport?` · ${ev.sport}`:'';
+    const whenLabel=ev.freq==='once'?(ev.date||'no date'):(Object.keys(ev.days).filter(d=>ev.days[d]).join(', ')||ev.freq);
+    return `<div style="padding:12px 14px;border-bottom:1px solid var(--row-border);${withErrors?'background:#FF3B3008':''}">
+      <div style="display:flex;align-items:center;gap:8px;margin-bottom:4px">
+        <span style="font-size:14px">${ev.emoji||catEmoji}</span>
+        <span style="font-size:14px;font-weight:700;color:var(--text);flex:1;min-width:0;overflow:hidden;text-overflow:ellipsis;white-space:nowrap">${ev.title||'(no title)'}</span>
+        <span style="font-size:10px;color:var(--text-secondary);font-weight:600">Row ${r.idx}</span>
+      </div>
+      <div style="font-size:11px;color:var(--text-secondary);margin-bottom:${withErrors||r.warnings.length?'6px':'0'}">${cat?cat.label:r.rawType||'?'}${sportLabel} · ${whenLabel}${ev.time?' · '+ev.time:''}${ev.location?' · '+ev.location:''}</div>
+      ${r.errors.length?`<div style="font-size:11px;color:#FF3B30;font-weight:600;line-height:1.5">⚠️ ${r.errors.join(' · ')}</div>`:''}
+      ${r.warnings.length?`<div style="font-size:11px;color:#FF9500;font-weight:500;line-height:1.5">⚡ ${r.warnings.join(' · ')}</div>`:''}
+    </div>`;
+  };
+
+  return `
+    <div style="min-height:100%;display:flex;flex-direction:column;background:var(--bg)">
+      <div style="background:var(--card);padding:14px 16px;display:flex;align-items:center;border-bottom:1px solid var(--row-border);position:sticky;top:0;z-index:10">
+        <button class="back-btn" onclick="S.spreadsheetPreview=null;back()">${bk()} Cancel</button>
+        <div style="flex:1;text-align:center;font-size:17px;font-weight:600">Preview Import</div>
+        <div style="width:60px"></div>
+      </div>
+
+      <div style="padding:14px 16px;background:var(--card);border-bottom:1px solid var(--row-border)">
+        <div style="font-size:13px;color:var(--text-secondary);margin-bottom:6px">${data.fileName}</div>
+        <div style="display:flex;gap:14px;flex-wrap:wrap">
+          <div><span style="font-size:18px;font-weight:800;color:#34C759">${valid.length}</span> <span style="font-size:11px;color:var(--text-secondary);font-weight:600">VALID</span></div>
+          ${invalid.length?`<div><span style="font-size:18px;font-weight:800;color:#FF3B30">${invalid.length}</span> <span style="font-size:11px;color:var(--text-secondary);font-weight:600">WITH ERRORS</span></div>`:''}
+          ${withWarnings.length?`<div><span style="font-size:18px;font-weight:800;color:#FF9500">${withWarnings.length}</span> <span style="font-size:11px;color:var(--text-secondary);font-weight:600">WARNINGS</span></div>`:''}
+        </div>
+      </div>
+
+      <div class="scroll-view" style="padding:14px 16px 100px;max-width:680px;margin:auto;width:100%">
+
+        ${invalid.length?`<div style="margin-bottom:18px">
+          <div class="sh" style="padding:0;margin-bottom:6px;color:#FF3B30">❌ Errors (will be skipped)</div>
+          <div class="card" style="margin-bottom:0">
+            ${invalid.map(r=>formatRow(r,true)).join('')}
+          </div>
+          <div style="font-size:11px;color:var(--text-secondary);margin-top:6px;line-height:1.4">Fix these in the spreadsheet and re-upload, or click Import to skip them.</div>
+        </div>`:''}
+
+        ${valid.length?`<div style="margin-bottom:18px">
+          <div class="sh" style="padding:0;margin-bottom:6px;color:#34C759">✅ Valid (will be imported)</div>
+          <div class="card" style="margin-bottom:0">
+            ${valid.map(r=>formatRow(r,false)).join('')}
+          </div>
+        </div>`:''}
+
+      </div>
+
+      <div style="position:fixed;bottom:0;left:0;right:0;background:var(--card);padding:12px 16px;border-top:1px solid var(--row-border);display:flex;gap:10px;max-width:680px;margin:auto;box-shadow:0 -2px 8px rgba(0,0,0,0.05)">
+        <button onclick="S.spreadsheetPreview=null;back()" style="flex:1;padding:13px;border-radius:12px;background:var(--bg);border:none;color:var(--text);font-size:14px;font-weight:700;cursor:pointer;font-family:inherit">Cancel</button>
+        <button id="commit-import-btn" onclick="commitSpreadsheetImport()" ${valid.length===0?'disabled':''} style="flex:2;padding:13px;border-radius:12px;background:${valid.length>0?'#34C759':'#C7C7CC'};border:none;color:#fff;font-size:14px;font-weight:700;cursor:${valid.length>0?'pointer':'not-allowed'};font-family:inherit">Import ${valid.length} event${valid.length===1?'':'s'}</button>
+      </div>
+    </div>`;
 }
 
 // Shared event-row renderer (used by Events tab + Past Events)
@@ -4006,7 +4495,8 @@ function render(){
       addDinner:sAddDinner,
       addPlayDate:sAddPlayDate,viewPlayDate:sViewPlayDate,
       help:sHelp,privacy:sPrivacy,about:sAbout,
-      personProfile:sPersonProfile
+      personProfile:sPersonProfile,
+      spreadsheetImport:sSpreadsheet,spreadsheetPreview:sSpreadsheetPreview
     };
     html=(map[S.screen]||sToday)();
   } else {
