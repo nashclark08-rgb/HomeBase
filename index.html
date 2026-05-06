@@ -342,7 +342,7 @@ const S={
   toggles:{notifs:true,loc:false},unsubs:[],
   pendingInvite:null,
   // event form
-  ef:{freq:'once',days:{Mon:false,Tue:false,Wed:false,Thu:false,Fri:false,Sat:false,Sun:false},packItems:[],emoji:'📅',category:'',participantIds:[]}
+  ef:{freq:'once',days:{Mon:false,Tue:false,Wed:false,Thu:false,Fri:false,Sat:false,Sun:false},packItems:[],emoji:'📅',category:'',sport:'',participantIds:[]}
 };
 
 // Parse ?invite=HB-A-XXXXX from the URL so a recipient can land directly into signup
@@ -417,7 +417,11 @@ function renderLastSaved(){
 
 function go(sc,params){S.screen=sc;S.screenParams=params||{};S.fabOpen=false;render();}
 function back(){S.screen=null;S.screenParams={};render();}
-function setTab(t){S.tab=t;S.screen=null;S.screenParams={};S.morningMode=false;S.fabOpen=false;render();}
+function setTab(t){
+  // Reset Events sub-view state when leaving so coming back lands on the tile home
+  if(S.tab==='events'&&t!=='events'){S.evView='tiles';S.evCategory='';S.evSport='';}
+  S.tab=t;S.screen=null;S.screenParams={};S.morningMode=false;S.fabOpen=false;render();
+}
 function gc(){return S.children.find(c=>c.id===S.activeChild)||S.children[0];}
 function greeting(){
   const h=new Date().getHours();
@@ -661,6 +665,64 @@ async function runDailyPackingReset(){
   }
 }
 
+// One-time event categorisation migration.
+// Runs when family loads with `eventsCategorized != true`. Auto-guesses category + sport
+// for every event based on title keywords + legacy category. Also seeds family.sports.
+const COMMON_SPORTS_FOR_MIGRATION=['Water Polo','Swimming','Soccer','Basketball','Hockey','Netball','Volleyball','Tennis','Golf','Rugby','AFL','Cricket','Baseball','Football','Athletics','Cross Country','Lacrosse','Badminton','Squash','Karate','Taekwondo','Boxing','Gymnastics','Dance','Ballet','Cycling','Running','Surfing','Sailing','Rowing','Skating','Skiing','Climbing','Equestrian','Triathlon','Archery','Fencing','Wrestling','Bowling','Table Tennis'];
+async function runEventCategoryMigration(){
+  if(!S.family||!S.familyId)return;
+  if(S.family.eventsCategorized===true)return;
+  if(!Array.isArray(S.events))return;
+  if(S._migrationRunning)return;
+  S._migrationRunning=true;
+  try{
+    const detectedSports=new Set(Array.isArray(S.family.sports)?S.family.sports:[]);
+    for(const ev of S.events){
+      // Detect sport from title (longest match wins so "Water Polo" before "Polo")
+      const lowTitle=(ev.title||'').toLowerCase();
+      let detectedSport='';
+      for(const s of COMMON_SPORTS_FOR_MIGRATION.sort((a,b)=>b.length-a.length)){
+        if(lowTitle.includes(s.toLowerCase())){detectedSport=s;break;}
+      }
+
+      // Determine new category
+      let newCat=ev.category||'';
+      const isTraining=/\b(training|practice|drills?|squad|lesson|class)\b/i.test(ev.title||'');
+      if(detectedSport){
+        // Has a sport in the title
+        newCat=isTraining?'sport-training':'sport-games';
+        detectedSports.add(detectedSport);
+      }else if(ev.category==='sport'){
+        // Legacy generic sport tag, no detected name → default to games
+        newCat='sport-games';
+      }else if(ev.category==='school'||ev.category==='school-event'||ev.category==='school-subject'){
+        // School category dropped → fold to other
+        newCat='other';
+      }else if(!ev.category){
+        // No category at all → other
+        newCat='other';
+      }
+      // else: keep music / work / social / medical / other as-is
+
+      // Only write if anything actually changes
+      const targetSport=detectedSport||ev.sport||'';
+      if(newCat!==(ev.category||'')||targetSport!==(ev.sport||'')){
+        try{
+          await updateDoc(doc(db,'families',S.familyId,'events',ev.id),{category:newCat,sport:targetSport});
+        }catch(e){console.warn('Migrate event',ev.id,'failed',e);}
+      }
+    }
+    // Update family with detected sports + mark migrated
+    const sortedSports=[...detectedSports].sort();
+    try{
+      await updateDoc(doc(db,'families',S.familyId),{sports:sortedSports,eventsCategorized:true});
+      if(S.family){S.family.sports=sortedSports;S.family.eventsCategorized=true;}
+    }catch(e){console.warn('Migration finalize failed',e);}
+  }finally{
+    S._migrationRunning=false;
+  }
+}
+
 function subscribe(){
   S.unsubs.forEach(u=>u());S.unsubs=[];
   // Separate tracker for per-child packing listeners (cleaned up when child list changes)
@@ -707,6 +769,10 @@ function subscribe(){
           setTimeout(()=>runDailyPackingReset(),2500);
         }
       }
+      // EVENT CATEGORY MIGRATION: run once per family if not yet done
+      if(S.family.eventsCategorized!==true&&!S._migrationRunning){
+        setTimeout(()=>runEventCategoryMigration(),2000);
+      }
     }
     queueRender();
   }));
@@ -737,7 +803,13 @@ function subscribe(){
     });
     queueRender();
   }));
-  S.unsubs.push(onSnapshot(fcol(['events']),s=>{S.events=s.docs.map(d=>({id:d.id,...d.data()}));queueRender();}));
+  S.unsubs.push(onSnapshot(fcol(['events']),s=>{S.events=s.docs.map(d=>({id:d.id,...d.data()}));
+    // Trigger one-time category migration if family is loaded and not yet categorised
+    if(S.family&&S.family.eventsCategorized!==true&&!S._migrationRunning){
+      setTimeout(()=>runEventCategoryMigration(),1500);
+    }
+    queueRender();
+  }));
   S.unsubs.push(onSnapshot(fcol(['assessments']),s=>{S.assessments=s.docs.map(d=>({id:d.id,...d.data()}));queueRender();}));
   S.unsubs.push(onSnapshot(fcol(['groceries']),s=>{S.groceries=s.docs.map(d=>({id:d.id,...d.data()}));queueRender();}));
   S.unsubs.push(onSnapshot(fcol(['gifts']),s=>{S.gifts=s.docs.map(d=>({id:d.id,...d.data()}));queueRender();}));
@@ -1557,7 +1629,7 @@ function sAddEvent(){
   }
   return `<div style="min-height:100%;display:flex;flex-direction:column;background:#F2F2F7">
     <div style="background:#fff;padding:14px 16px;display:flex;align-items:center;border-bottom:1px solid #F2F2F7;position:sticky;top:0;z-index:10">
-      <button class="back-btn" onclick="S.ef={freq:'once',days:{Mon:false,Tue:false,Wed:false,Thu:false,Fri:false,Sat:false,Sun:false},packItems:[],emoji:'📅',category:'',participantIds:[]};back()">${bk()} Back</button>
+      <button class="back-btn" onclick="S.ef={freq:'once',days:{Mon:false,Tue:false,Wed:false,Thu:false,Fri:false,Sat:false,Sun:false},packItems:[],emoji:'📅',category:'',sport:'',participantIds:[]};back()">${bk()} Back</button>
       <div style="flex:1;text-align:center;font-size:17px;font-weight:600">${ef._editId?'Edit Event':'Add Event'}</div>
       <div style="width:60px"></div>
     </div>
@@ -1647,13 +1719,14 @@ function sAddEvent(){
 
         <input class="input" id="eloc" type="text" placeholder="Location (optional)" value="${(ef.location||'').replace(/"/g,'&quot;')}"/>
 
-        <!-- Category tags -->
+        <!-- Category tags (COMPULSORY) -->
         <div>
-          <div style="font-size:14px;font-weight:600;margin-bottom:8px">🏷 Category (optional)</div>
+          <div style="font-size:14px;font-weight:600;margin-bottom:8px">🏷 Category <span style="color:#FF3B30">*</span></div>
           ${(S.ef.category==='school-event'||S.ef.category==='school-subject'||S.ef.category==='school')?`<div style="background:var(--navy-soft);border:1px solid var(--navy);border-radius:10px;padding:10px 14px;margin-bottom:10px;display:flex;align-items:center;justify-content:space-between"><span style="font-size:13px;font-weight:600;color:var(--navy)">Filed under: ${CAT_LABELS[S.ef.category]||S.ef.category}</span><button type="button" onclick="S.ef.category='';render()" style="background:none;border:none;color:var(--navy);font-size:12px;font-weight:600;cursor:pointer;font-family:inherit;text-decoration:underline">Change</button></div>`:''}
           <div style="display:flex;gap:8px;flex-wrap:wrap">
             ${[
-              {id:'sport',label:'⚽ Sport'},
+              {id:'sport-games',label:'🏆 Sport Games'},
+              {id:'sport-training',label:'🏃 Sport Training'},
               {id:'music',label:'🎵 Music'},
               {id:'work',label:'💼 Work'},
               {id:'social',label:'🎉 Social'},
@@ -1661,6 +1734,15 @@ function sAddEvent(){
               {id:'other',label:'📌 Other'}
             ].map(t=>`<button type="button" onclick="toggleCategory('${t.id}')" id="cat-${t.id}" class="freq-btn ${(S.ef.category===t.id)?'on':''}" style="padding:8px 14px;font-size:13px">${t.label}</button>`).join('')}
           </div>
+          ${(S.ef.category==='sport-games'||S.ef.category==='sport-training')?(()=>{
+            const familySports=Array.isArray(S.family?.sports)?S.family.sports:[];
+            const currentSport=S.ef.sport||'';
+            return `<div style="margin-top:14px;padding:12px;background:var(--bg);border-radius:10px;border:1px solid var(--border)">
+              <div style="font-size:13px;font-weight:700;color:var(--text);margin-bottom:6px">Which sport? <span style="color:#FF3B30">*</span></div>
+              ${familySports.length===0?`<div style="font-size:12px;color:var(--text-secondary);line-height:1.5;margin-bottom:8px">No sports added yet. <a onclick="setTab('settings')" style="color:var(--navy);font-weight:600;cursor:pointer;text-decoration:underline">Add some in Settings</a> or type one below.</div>`:`<div style="display:flex;gap:6px;flex-wrap:wrap;margin-bottom:8px">${familySports.map(s=>{const safe=s.replace(/'/g,"\\'");return `<button type="button" onclick="S.ef.sport='${safe}';document.getElementById('ev-sport-input').value='${safe}';render()" class="freq-btn ${currentSport===s?'on':''}" style="padding:6px 12px;font-size:12px">${s}</button>`;}).join('')}</div>`}
+              <input class="input" id="ev-sport-input" type="text" placeholder="Type a sport (e.g. Water Polo)" value="${(currentSport||'').replace(/"/g,'&quot;')}" oninput="S.ef.sport=this.value" style="font-size:14px"/>
+            </div>`;
+          })():''}
         </div>
 
         <div>
@@ -1960,53 +2042,44 @@ function sCalendar(){
 }
 
 // ── EVENTS TAB ────────────────────────────────────
+// ── EVENTS PAGE — round category tiles + drilldown ──
+const EV_CATEGORIES=[
+  {id:'sport-games',emoji:'🏆',label:'Sport Games',color:'#FF6B35'},
+  {id:'sport-training',emoji:'🏃',label:'Sport Training',color:'#5856D6'},
+  {id:'music',emoji:'🎵',label:'Music',color:'#AF52DE'},
+  {id:'work',emoji:'💼',label:'Work',color:'#5A5A5C'},
+  {id:'social',emoji:'🎉',label:'Social',color:'#FF6B9D'},
+  {id:'medical',emoji:'🏥',label:'Medical',color:'#FF3B30'},
+  {id:'other',emoji:'📌',label:'Other',color:'#8E8E93'},
+  {id:'past',emoji:'📜',label:'Past',color:'#6E6E73'}
+];
+const SPORT_EMOJI={'water polo':'🤽','swimming':'🏊','soccer':'⚽','football':'⚽','basketball':'🏀','hockey':'🏑','field hockey':'🏑','ice hockey':'🏒','netball':'🏐','volleyball':'🏐','tennis':'🎾','golf':'⛳','rugby':'🏉','afl':'🏉','cricket':'🏏','baseball':'⚾','athletics':'🏃','cross country':'🏃','running':'🏃','cycling':'🚴','gymnastics':'🤸','dance':'💃','ballet':'🩰','karate':'🥋','taekwondo':'🥋','boxing':'🥊','surfing':'🏄','sailing':'⛵','rowing':'🚣','diving':'🤿','skating':'⛸','skiing':'⛷','snowboarding':'🏂','climbing':'🧗','equestrian':'🐎','horse riding':'🐎','triathlon':'🏃','squash':'🎾','badminton':'🏸','table tennis':'🏓','ping pong':'🏓','fencing':'🤺','wrestling':'🤼','lacrosse':'🥍','archery':'🏹','bowling':'🎳','pole vault':'🤸'};
+function sportEmoji(sport){
+  if(!sport)return '⚽';
+  return SPORT_EMOJI[String(sport).toLowerCase().trim()]||'⚽';
+}
+
 function sEvents(){
-  // Pull retention preference from family doc; default 30 days
-  const retentionDays=(S.family && Number.isFinite(S.family.pastEventsRetentionDays))
-    ? S.family.pastEventsRetentionDays
-    : 30;
+  // Default view = tiles
+  S.evView=S.evView||'tiles';
+
+  const todayStr=fd(new Date());
+  const retentionDays=(S.family&&Number.isFinite(S.family.pastEventsRetentionDays))?S.family.pastEventsRetentionDays:30;
   const retentionForever=retentionDays===0;
-
-  const today=new Date();
-  const todayStr=fd(today);
-
-  // Split events
-  const oneoffs=S.events.filter(ev=>!ev.freq||ev.freq==='once');
-  const recurring=S.events.filter(ev=>ev.freq&&ev.freq!=='once');
-
-  // Group recurring by title (case-insensitive) → activity tiles
-  const activityMap=new Map();
-  recurring.forEach(ev=>{
-    const key=(ev.title||'Untitled').trim().toLowerCase();
-    if(!activityMap.has(key)){
-      activityMap.set(key,{title:ev.title||'Untitled',events:[]});
-    }
-    activityMap.get(key).events.push(ev);
-  });
-  const activities=[...activityMap.values()].sort((a,b)=>a.title.localeCompare(b.title));
-
-  // Upcoming one-offs (today or future)
-  const upcoming=oneoffs.filter(ev=>ev.date&&ev.date>=todayStr)
-    .sort((a,b)=>(a.date||'').localeCompare(b.date||'')||parseTimeToMinutes(a.time)-parseTimeToMinutes(b.time));
-
-  // Past one-offs within retention window (or all if forever)
   let cutoffStr='';
   if(!retentionForever){
-    const co=new Date(today);
-    co.setDate(co.getDate()-retentionDays);
-    cutoffStr=fd(co);
+    const co=new Date();co.setDate(co.getDate()-retentionDays);cutoffStr=fd(co);
   }
-  const past=oneoffs.filter(ev=>{
-    if(!ev.date||ev.date>=todayStr)return false;
-    if(retentionForever)return true;
-    return ev.date>=cutoffStr;
-  }).sort((a,b)=>(b.date||'').localeCompare(a.date||''));
 
-  // ── Helpers (inline) ──
+  // Active events = recurring + one-offs from today onward
+  const isPastOneoff=ev=>(!ev.freq||ev.freq==='once')&&ev.date&&ev.date<todayStr;
+  const activeEvents=S.events.filter(ev=>!isPastOneoff(ev));
+  const pastOneoffs=S.events.filter(ev=>isPastOneoff(ev)&&(retentionForever||ev.date>=cutoffStr))
+    .sort((a,b)=>(b.date||'').localeCompare(a.date||''));
+
+  // Helpers
   const peopleForEvent=ev=>{
-    const ids=Array.isArray(ev.participantIds)&&ev.participantIds.length
-      ?ev.participantIds
-      :[ev.childId,ev.adultUid].filter(Boolean);
+    const ids=Array.isArray(ev.participantIds)&&ev.participantIds.length?ev.participantIds:[ev.childId,ev.adultUid].filter(Boolean);
     return ids.map(id=>{
       const c=S.children.find(x=>x.id===id);
       if(c)return {name:c.name,color:c.color||NAVY,photo:c.photoURL,id};
@@ -2015,46 +2088,31 @@ function sEvents(){
       return null;
     }).filter(Boolean);
   };
-
   const formatDateShort=ds=>{
     if(!ds)return '';
     const d=new Date(ds+'T12:00');
     return DAYSH[d.getDay()]+' '+d.getDate()+' '+MONTHS[d.getMonth()];
   };
-
-  // Activity tile (recurring events grouped by title)
-  const activityTile=a=>{
-    // Collect unique people across all events of this activity
-    const peopleMap=new Map();
-    a.events.forEach(ev=>{
-      peopleForEvent(ev).forEach(p=>{
-        if(!peopleMap.has(p.id))peopleMap.set(p.id,p);
-      });
-    });
-    const people=[...peopleMap.values()];
-    const primaryColor=people[0]?.color||NAVY;
-    const peopleLabel=people.length===0?'Family':people.map(p=>p.name.split(' ')[0]).join(', ');
-    const safeTitle=(a.title||'').replace(/'/g,"\\'");
-    return `<div onclick="openActivityModal('${safeTitle}')" style="background:var(--card);border:1px solid var(--row-border);border-radius:14px;padding:14px;cursor:pointer;display:flex;flex-direction:column;gap:6px;min-height:96px;border-top:3px solid ${primaryColor};transition:transform 0.1s">
-      <div style="font-size:15px;font-weight:700;color:var(--text);line-height:1.25;overflow:hidden;text-overflow:ellipsis;white-space:nowrap">${a.title}</div>
-      <div style="font-size:11px;color:var(--text-secondary);font-weight:600">${a.events.length} weekly</div>
-      <div style="margin-top:auto;display:flex;align-items:center;gap:4px;flex-wrap:wrap">
-        ${people.slice(0,3).map(p=>av(p.name,p.color,20,p.photo)).join('')}
-        <div style="font-size:11px;color:${primaryColor};font-weight:600;margin-left:2px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;flex:1">${peopleLabel}</div>
-      </div>
-    </div>`;
+  const formatDays=ev=>{
+    if(!ev.days)return ev.freq||'';
+    const order=['Mon','Tue','Wed','Thu','Fri','Sat','Sun'];
+    const ds=order.filter(d=>ev.days[d]);
+    if(ds.length===7)return 'every day';
+    if(ds.length===0)return ev.freq||'';
+    if(ds.length===1){const long={Mon:'Mondays',Tue:'Tuesdays',Wed:'Wednesdays',Thu:'Thursdays',Fri:'Fridays',Sat:'Saturdays',Sun:'Sundays'};return long[ds[0]];}
+    return ds.join(', ');
   };
-
-  // One-off row (upcoming or past)
-  const oneoffRow=(ev,i,total)=>{
+  const eventRow=(ev,i,total)=>{
     const people=peopleForEvent(ev);
     const col=people[0]?.color||NAVY;
     const personLabel=people.length===0?'Family':people.map(p=>p.name.split(' ')[0]).join(', ');
+    const isOnce=!ev.freq||ev.freq==='once';
+    const whenLabel=isOnce?formatDateShort(ev.date):formatDays(ev);
     return `<div class="row" onclick="openEventModal('${ev.id}')" style="border-bottom:${i<total-1?'1px solid var(--row-border)':'none'};cursor:pointer">
       <div style="width:32px;height:32px;border-radius:16px;background:${col}18;border:2px solid ${col};display:flex;align-items:center;justify-content:center;font-size:14px;flex-shrink:0">${ev.emoji||'📅'}</div>
       <div style="flex:1;min-width:0">
         <div style="font-size:14px;font-weight:600;color:var(--text);overflow:hidden;text-overflow:ellipsis;white-space:nowrap">${ev.title||'Event'}</div>
-        <div style="font-size:12px;color:var(--text-secondary);overflow:hidden;text-overflow:ellipsis;white-space:nowrap">${formatDateShort(ev.date)}${ev.time?' · '+ev.time:''} · ${personLabel}</div>
+        <div style="font-size:12px;color:var(--text-secondary);overflow:hidden;text-overflow:ellipsis;white-space:nowrap">${whenLabel}${ev.time?' · '+ev.time:''} · ${personLabel}</div>
       </div>
       <div style="color:var(--text-secondary);font-size:18px;flex-shrink:0;font-weight:300">›</div>
     </div>`;
@@ -2075,7 +2133,147 @@ function sEvents(){
       <div class="fab"><button class="fab-btn" style="background:#1C3A6B" onclick="go('addEvent')">+</button></div>`;
   }
 
-  // ── Main layout ──
+  // ========== VIEW: SPORT SUB-CATEGORY (events for one sport) ==========
+  if(S.evView==='sport-sub'){
+    const catId=S.evCategory;
+    const sport=S.evSport;
+    const cat=EV_CATEGORIES.find(c=>c.id===catId)||EV_CATEGORIES[0];
+    const filtered=activeEvents
+      .filter(ev=>(ev.category||'other')===catId&&(ev.sport||'')===sport)
+      .sort((a,b)=>parseTimeToMinutes(a.time)-parseTimeToMinutes(b.time));
+    return `
+      <div style="background:var(--card);padding:14px 16px 12px;border-bottom:1px solid var(--row-border);position:sticky;top:0;z-index:10">
+        <div style="display:flex;align-items:center;gap:10px">
+          <button onclick="S.evView='category';render()" style="padding:6px 10px;border-radius:8px;border:none;background:var(--bg);color:var(--text);font-size:13px;font-weight:600;cursor:pointer;font-family:inherit">‹ ${cat.label}</button>
+          <div style="flex:1"></div>
+        </div>
+        <div style="display:flex;align-items:center;gap:10px;margin-top:10px">
+          <div style="width:42px;height:42px;border-radius:21px;background:${cat.color}18;border:2px solid ${cat.color};display:flex;align-items:center;justify-content:center;font-size:20px;flex-shrink:0">${sportEmoji(sport)}</div>
+          <div style="flex:1;min-width:0">
+            <div style="font-size:11px;font-weight:600;color:var(--text-secondary);letter-spacing:0.5px">${cat.label.toUpperCase()}</div>
+            <div style="font-size:22px;font-weight:800;color:var(--text);line-height:1.2">${sport||'Untagged'}</div>
+          </div>
+        </div>
+      </div>
+      <div class="scroll-view" style="padding:14px 16px 100px">
+        ${filtered.length===0?`<div style="text-align:center;padding:40px 20px;color:var(--text-secondary);font-size:14px">No ${sport} events yet.</div>`:`<div class="card">${filtered.map((ev,i)=>eventRow(ev,i,filtered.length)).join('')}</div>`}
+      </div>
+      <div class="fab"><button class="fab-btn" style="background:#1C3A6B" onclick="go('addEvent')">+</button></div>`;
+  }
+
+  // ========== VIEW: CATEGORY (events list OR sport sub-tiles) ==========
+  if(S.evView==='category'){
+    const catId=S.evCategory;
+    const cat=EV_CATEGORIES.find(c=>c.id===catId)||EV_CATEGORIES[0];
+
+    // Sport categories show sub-tiles
+    if(catId==='sport-games'||catId==='sport-training'){
+      // Count events per sport
+      const sportCounts=new Map();
+      activeEvents.filter(ev=>(ev.category||'other')===catId).forEach(ev=>{
+        const s=(ev.sport||'').trim()||'Untagged';
+        sportCounts.set(s,(sportCounts.get(s)||0)+1);
+      });
+      // Combine family-defined sports + actually-used sports
+      const familySports=Array.isArray(S.family?.sports)?S.family.sports:[];
+      const allSports=new Set([...familySports]);
+      sportCounts.forEach((_,k)=>allSports.add(k));
+      const displaySports=[...allSports].sort((a,b)=>{
+        if(a==='Untagged')return 1;
+        if(b==='Untagged')return -1;
+        return a.localeCompare(b);
+      });
+
+      return `
+        <div style="background:var(--card);padding:14px 16px 12px;border-bottom:1px solid var(--row-border);position:sticky;top:0;z-index:10">
+          <div style="display:flex;align-items:center;gap:10px">
+            <button onclick="S.evView='tiles';render()" style="padding:6px 10px;border-radius:8px;border:none;background:var(--bg);color:var(--text);font-size:13px;font-weight:600;cursor:pointer;font-family:inherit">‹ Events</button>
+            <div style="flex:1"></div>
+          </div>
+          <div style="display:flex;align-items:center;gap:10px;margin-top:10px">
+            <div style="width:42px;height:42px;border-radius:21px;background:${cat.color}18;border:2px solid ${cat.color};display:flex;align-items:center;justify-content:center;font-size:20px;flex-shrink:0">${cat.emoji}</div>
+            <div style="flex:1;min-width:0">
+              <div style="font-size:22px;font-weight:800;color:var(--text);line-height:1.2">${cat.label}</div>
+              <div style="font-size:12px;color:var(--text-secondary)">Pick a sport to see events</div>
+            </div>
+          </div>
+        </div>
+        <div class="scroll-view" style="padding:18px 16px 100px">
+          ${displaySports.length===0?`<div style="text-align:center;padding:40px 20px;color:var(--text-secondary)">
+            <div style="font-size:14px;margin-bottom:14px">No sports added yet.</div>
+            <button onclick="setTab('settings')" style="padding:10px 18px;border-radius:10px;background:var(--navy);border:none;color:#fff;font-size:13px;font-weight:600;cursor:pointer;font-family:inherit">Add sports in Settings →</button>
+          </div>`:`
+            <div style="display:grid;grid-template-columns:repeat(3,1fr);gap:14px 8px">
+              ${displaySports.map(sport=>{
+                const count=sportCounts.get(sport)||0;
+                const safe=String(sport).replace(/'/g,"\\'");
+                return `<div onclick="S.evView='sport-sub';S.evCategory='${catId}';S.evSport='${safe}';render()" style="display:flex;flex-direction:column;align-items:center;cursor:pointer;padding:6px 2px">
+                  <div style="width:74px;height:74px;border-radius:37px;background:${cat.color}18;border:3px solid ${cat.color};display:flex;align-items:center;justify-content:center;font-size:28px;margin-bottom:6px">${sportEmoji(sport)}</div>
+                  <div style="font-size:12px;font-weight:700;color:var(--text);text-align:center;line-height:1.2;max-width:90px;overflow:hidden;text-overflow:ellipsis">${sport}</div>
+                  <div style="font-size:10px;color:var(--text-secondary);font-weight:500;margin-top:1px">${count}</div>
+                </div>`;
+              }).join('')}
+            </div>
+          `}
+        </div>
+        <div class="fab"><button class="fab-btn" style="background:#1C3A6B" onclick="go('addEvent')">+</button></div>`;
+    }
+
+    // Past category: show past one-offs
+    if(catId==='past'){
+      return `
+        <div style="background:var(--card);padding:14px 16px 12px;border-bottom:1px solid var(--row-border);position:sticky;top:0;z-index:10">
+          <div style="display:flex;align-items:center;gap:10px">
+            <button onclick="S.evView='tiles';render()" style="padding:6px 10px;border-radius:8px;border:none;background:var(--bg);color:var(--text);font-size:13px;font-weight:600;cursor:pointer;font-family:inherit">‹ Events</button>
+            <div style="flex:1"></div>
+          </div>
+          <div style="display:flex;align-items:center;gap:10px;margin-top:10px">
+            <div style="width:42px;height:42px;border-radius:21px;background:${cat.color}18;border:2px solid ${cat.color};display:flex;align-items:center;justify-content:center;font-size:20px;flex-shrink:0">${cat.emoji}</div>
+            <div style="flex:1;min-width:0">
+              <div style="font-size:22px;font-weight:800;color:var(--text);line-height:1.2">Past one-offs</div>
+              <div style="font-size:12px;color:var(--text-secondary)">${retentionForever?'All-time':'Last '+retentionDays+' days'} · change in Settings</div>
+            </div>
+          </div>
+        </div>
+        <div class="scroll-view" style="padding:14px 16px 100px">
+          ${pastOneoffs.length===0?`<div style="text-align:center;padding:40px 20px;color:var(--text-secondary);font-size:14px">No past one-offs.</div>`:`<div class="card" style="opacity:0.85">${pastOneoffs.map((ev,i)=>eventRow(ev,i,pastOneoffs.length)).join('')}</div>`}
+        </div>`;
+    }
+
+    // Other categories: simple event list
+    const filtered=activeEvents.filter(ev=>(ev.category||'other')===catId)
+      .sort((a,b)=>parseTimeToMinutes(a.time)-parseTimeToMinutes(b.time));
+    return `
+      <div style="background:var(--card);padding:14px 16px 12px;border-bottom:1px solid var(--row-border);position:sticky;top:0;z-index:10">
+        <div style="display:flex;align-items:center;gap:10px">
+          <button onclick="S.evView='tiles';render()" style="padding:6px 10px;border-radius:8px;border:none;background:var(--bg);color:var(--text);font-size:13px;font-weight:600;cursor:pointer;font-family:inherit">‹ Events</button>
+          <div style="flex:1"></div>
+        </div>
+        <div style="display:flex;align-items:center;gap:10px;margin-top:10px">
+          <div style="width:42px;height:42px;border-radius:21px;background:${cat.color}18;border:2px solid ${cat.color};display:flex;align-items:center;justify-content:center;font-size:20px;flex-shrink:0">${cat.emoji}</div>
+          <div style="flex:1;min-width:0">
+            <div style="font-size:22px;font-weight:800;color:var(--text);line-height:1.2">${cat.label}</div>
+            <div style="font-size:12px;color:var(--text-secondary)">${filtered.length} event${filtered.length===1?'':'s'}</div>
+          </div>
+        </div>
+      </div>
+      <div class="scroll-view" style="padding:14px 16px 100px">
+        ${filtered.length===0?`<div style="text-align:center;padding:40px 20px;color:var(--text-secondary);font-size:14px">No ${cat.label.toLowerCase()} events yet.</div>`:`<div class="card">${filtered.map((ev,i)=>eventRow(ev,i,filtered.length)).join('')}</div>`}
+      </div>
+      <div class="fab"><button class="fab-btn" style="background:#1C3A6B" onclick="go('addEvent')">+</button></div>`;
+  }
+
+  // ========== VIEW: TILES (default home) ==========
+  // Compute counts
+  const counts={};
+  EV_CATEGORIES.forEach(c=>{counts[c.id]=0;});
+  activeEvents.forEach(ev=>{
+    const k=ev.category||'other';
+    if(counts[k]!==undefined)counts[k]++;
+    else counts.other++;
+  });
+  counts.past=pastOneoffs.length;
+
   return `
     <div style="background:var(--card);padding:14px 16px 12px;border-bottom:1px solid var(--row-border);position:sticky;top:0;z-index:10">
       <div style="font-size:26px;font-weight:800;color:var(--text)">Events</div>
@@ -2087,42 +2285,31 @@ function sEvents(){
 
       <!-- RECURRING IMPORT TOOLS -->
       <div class="sh" style="padding:0;margin-bottom:8px">RECURRING EVENTS</div>
-      <div style="display:grid;grid-template-columns:1fr 1fr;gap:10px;margin-bottom:18px">
+      <div style="display:grid;grid-template-columns:1fr 1fr;gap:10px;margin-bottom:22px">
         <div onclick="openComingSoon('spreadsheet')" style="background:var(--card);border:1px dashed var(--border);border-radius:14px;padding:14px;cursor:pointer;display:flex;flex-direction:column;gap:6px;min-height:96px">
           <div style="font-size:24px">📄</div>
           <div style="font-size:14px;font-weight:700;color:var(--text);line-height:1.25">Spreadsheet</div>
-          <div style="font-size:11px;color:var(--text-secondary);line-height:1.4">Download a template or upload your own to bulk-add recurring events.</div>
+          <div style="font-size:11px;color:var(--text-secondary);line-height:1.4">Download a template or upload your own.</div>
         </div>
         <div onclick="openComingSoon('fixtures')" style="background:var(--card);border:1px dashed var(--border);border-radius:14px;padding:14px;cursor:pointer;display:flex;flex-direction:column;gap:6px;min-height:96px">
           <div style="font-size:24px">🏊</div>
           <div style="font-size:14px;font-weight:700;color:var(--text);line-height:1.25">Sport Fixtures</div>
-          <div style="font-size:11px;color:var(--text-secondary);line-height:1.4">Import a season's worth from a URL or PDF.</div>
+          <div style="font-size:11px;color:var(--text-secondary);line-height:1.4">Import a season's worth from URL or PDF.</div>
         </div>
       </div>
 
-      ${activities.length>0?`
-        <!-- ACTIVITIES (recurring grouped by title) -->
-        <div class="sh" style="padding:0;margin-bottom:8px">ACTIVITIES <span style="color:var(--text-secondary);font-weight:500">· ${activities.length}</span></div>
-        <div style="display:grid;grid-template-columns:1fr 1fr;gap:10px;margin-bottom:18px">
-          ${activities.map(activityTile).join('')}
-        </div>
-      `:''}
-
-      ${upcoming.length>0?`
-        <!-- UPCOMING ONE-OFFS -->
-        <div class="sh" style="padding:0;margin-bottom:8px">UPCOMING ONE-OFFS <span style="color:var(--text-secondary);font-weight:500">· ${upcoming.length}</span></div>
-        <div class="card" style="margin-bottom:18px">
-          ${upcoming.map((ev,i)=>oneoffRow(ev,i,upcoming.length)).join('')}
-        </div>
-      `:''}
-
-      ${past.length>0?`
-        <!-- PAST ONE-OFFS -->
-        <div class="sh" style="padding:0;margin-bottom:8px">PAST <span style="color:var(--text-secondary);font-weight:500">· ${retentionForever?'all':'last '+retentionDays+' days'}</span></div>
-        <div class="card" style="margin-bottom:18px;opacity:0.85">
-          ${past.map((ev,i)=>oneoffRow(ev,i,past.length)).join('')}
-        </div>
-      `:''}
+      <!-- CATEGORY TILES -->
+      <div class="sh" style="padding:0;margin-bottom:10px">CATEGORIES</div>
+      <div style="display:grid;grid-template-columns:repeat(4,1fr);gap:14px 4px;margin-bottom:18px">
+        ${EV_CATEGORIES.map(c=>{
+          const count=counts[c.id]||0;
+          return `<div onclick="S.evView='category';S.evCategory='${c.id}';render()" style="display:flex;flex-direction:column;align-items:center;cursor:pointer;padding:4px 2px">
+            <div style="width:74px;height:74px;border-radius:37px;background:${c.color}18;border:3px solid ${c.color};display:flex;align-items:center;justify-content:center;font-size:30px;margin-bottom:6px;box-shadow:0 2px 8px ${c.color}22">${c.emoji}</div>
+            <div style="font-size:12px;font-weight:700;color:var(--text);text-align:center;line-height:1.15;max-width:90px">${c.label}</div>
+            <div style="font-size:10px;color:var(--text-secondary);font-weight:500;margin-top:1px">${count}</div>
+          </div>`;
+        }).join('')}
+      </div>
 
     </div>
     <div class="fab"><button class="fab-btn" style="background:#1C3A6B" onclick="go('addEvent')">+</button></div>`;
@@ -2939,6 +3126,25 @@ function sSettings(){
   +(()=>{const cur=(S.family&&Number.isFinite(S.family.pastEventsRetentionDays))?S.family.pastEventsRetentionDays:30;const opts=[{v:7,l:'7 days'},{v:14,l:'2 weeks'},{v:30,l:'30 days (default)'},{v:60,l:'2 months'},{v:90,l:'3 months'},{v:0,l:'Forever'}];return opts.map(o=>'<option value="'+o.v+'" '+(cur===o.v?'selected':'')+'>'+o.l+'</option>').join('');})()
   +'</select>'
   +'<button onclick="savePastRetention()" style="width:100%;margin-top:10px;padding:12px;border-radius:12px;background:#1C3A6B;border:none;color:#fff;font-size:14px;font-weight:600;cursor:pointer;font-family:inherit">Save</button>'
+  +'</div>'
+  +'</div>'
+  // Family Sports
+  +'<div class="sh" style="margin-bottom:6px">🏃 Family Sports</div>'
+  +'<div class="card" style="margin-bottom:12px">'
+  +'<div style="padding:14px 16px 10px">'
+  +'<div style="font-size:13px;color:#8E8E93;margin-bottom:10px;line-height:1.5">Sports your family plays. These appear as sub-tiles under <strong>Sport Games</strong> and <strong>Sport Training</strong> on the Events page.</div>'
+  +(()=>{
+    const sports=Array.isArray(S.family?.sports)?S.family.sports:[];
+    if(sports.length===0)return '<div style="font-size:12px;color:#8E8E93;font-style:italic;margin-bottom:8px">No sports added yet.</div>';
+    return '<div style="display:flex;flex-wrap:wrap;gap:6px;margin-bottom:10px">'+sports.map(s=>{
+      const safe=String(s).replace(/'/g,"\\'");
+      return '<div style="display:inline-flex;align-items:center;gap:6px;padding:6px 6px 6px 12px;border-radius:18px;background:#1C3A6B14;border:1px solid #1C3A6B22"><span style="font-size:13px;font-weight:600;color:#1C3A6B">'+s+'</span><button onclick="removeFamilySport(\''+safe+'\')" style="width:20px;height:20px;border-radius:10px;border:none;background:#1C3A6B22;color:#1C3A6B;font-size:14px;line-height:1;cursor:pointer;font-family:inherit;padding:0;display:flex;align-items:center;justify-content:center">×</button></div>';
+    }).join('')+'</div>';
+  })()
+  +'<div style="display:flex;gap:8px">'
+  +'<input class="input" id="set-family-sport-input" type="text" placeholder="e.g. Water Polo" style="flex:1" onkeydown="if(event.key===\'Enter\'){event.preventDefault();addFamilySport();}"/>'
+  +'<button onclick="addFamilySport()" style="padding:12px 16px;border-radius:10px;background:#1C3A6B;border:none;color:#fff;font-size:14px;font-weight:600;cursor:pointer;font-family:inherit">+ Add</button>'
+  +'</div>'
   +'</div>'
   +'</div>'
   +'<div class="sh" style="margin-bottom:6px">⏰ Daily Reminder</div>'
@@ -4299,6 +4505,24 @@ window.hSaveEvent=async()=>{
   const ef=S.ef;
   if(ef.freq==='once'&&!$('edate')?.value){if(err)err.textContent='Please select a date';return;}
   if(ef.freq!=='once'&&!Object.values(ef.days).some(v=>v)){if(err)err.textContent='Please select at least one day';return;}
+  // Category is compulsory now
+  if(!ef.category){if(err)err.textContent='Please pick a category';return;}
+  // Sport is compulsory when category is sport-*
+  let sportValue='';
+  if(ef.category==='sport-games'||ef.category==='sport-training'){
+    sportValue=($('ev-sport-input')?.value||ef.sport||'').trim();
+    if(!sportValue){if(err)err.textContent='Please specify which sport';return;}
+    // Also add to family.sports if not already there (auto-grow the list)
+    try{
+      const existing=Array.isArray(S.family?.sports)?S.family.sports:[];
+      const has=existing.some(s=>String(s).toLowerCase()===sportValue.toLowerCase());
+      if(!has&&S.familyId){
+        const next=[...existing,sportValue].sort();
+        await updateDoc(doc(db,'families',S.familyId),{sports:next});
+        if(S.family)S.family.sports=next;
+      }
+    }catch(e){}
+  }
   const dropRaw=$('edrop')?.value||'';
   const pickRaw=$('epick')?.value||'';
   const dropoff=dropRaw==='__other'?prompt('Enter drop-off person name:')||'':dropRaw;
@@ -4346,6 +4570,7 @@ window.hSaveEvent=async()=>{
       days:ef.freq!=='once'?{...ef.days}:{},
       time:buildTimeString(),
       category:ef.category||'',
+      sport:sportValue,
       location:$('eloc')?.value?.trim()||'',
       dropoff,pickup,
       packItems:[...ef.packItems],
@@ -4366,7 +4591,7 @@ window.hSaveEvent=async()=>{
         }
       }
     }
-    S.ef={freq:'once',days:{Mon:false,Tue:false,Wed:false,Thu:false,Fri:false,Sat:false,Sun:false},packItems:[],emoji:'📅',category:'',participantIds:[]};
+    S.ef={freq:'once',days:{Mon:false,Tue:false,Wed:false,Thu:false,Fri:false,Sat:false,Sun:false},packItems:[],emoji:'📅',category:'',sport:'',participantIds:[]};
     back();notify(isEdit?'Event updated! ✏️':'Event saved! 📅');
   }catch(ex){if(err)err.textContent=ex.message;}
 };
@@ -4952,6 +5177,38 @@ window.savePastRetention=async function(){
     render();
   }catch(e){notify('Save failed: '+(e.message||e),'⚠️');}
 };
+window.addFamilySport=async function(){
+  const inp=document.getElementById('set-family-sport-input');
+  const raw=inp?.value?.trim();
+  if(!raw){notify('Type a sport name first','⚠️');return;}
+  // Title-case first letter of each word for consistency
+  const sport=raw.replace(/\s+/g,' ').split(' ').map(w=>w.charAt(0).toUpperCase()+w.slice(1).toLowerCase()).join(' ');
+  const existing=Array.isArray(S.family?.sports)?S.family.sports:[];
+  if(existing.some(s=>String(s).toLowerCase()===sport.toLowerCase())){
+    notify(sport+' is already in your list','ℹ️');
+    if(inp)inp.value='';
+    return;
+  }
+  const next=[...existing,sport].sort();
+  try{
+    if(S.familyId)await updateDoc(doc(db,'families',S.familyId),{sports:next});
+    if(S.family)S.family.sports=next;
+    if(inp)inp.value='';
+    notify('Added '+sport+' 🏃','✅');
+    render();
+  }catch(e){notify('Save failed: '+(e.message||e),'⚠️');}
+};
+window.removeFamilySport=async function(sport){
+  const existing=Array.isArray(S.family?.sports)?S.family.sports:[];
+  const next=existing.filter(s=>s!==sport);
+  if(next.length===existing.length)return;
+  try{
+    if(S.familyId)await updateDoc(doc(db,'families',S.familyId),{sports:next});
+    if(S.family)S.family.sports=next;
+    notify('Removed '+sport,'🗑');
+    render();
+  }catch(e){notify('Save failed: '+(e.message||e),'⚠️');}
+};
 window.saveLocationSettings=async function(){
   const city=document.getElementById('set-city')?.value?.trim();
   const lat=document.getElementById('set-lat')?.value?.trim();
@@ -5224,7 +5481,7 @@ window.toggleNightMode=function(){
 };
 window.hSignOut=async()=>{
   S.unsubs.forEach(u=>u());S.unsubs=[];
-  Object.assign(S,{family:null,familyId:null,children:[],packing:{},events:[],assessments:[],groceries:[],gifts:[],dinners:[],playdates:[],contacts:[],mealIdeas:[],handoffs:[],reminders:[],screen:null,screenParams:{},tab:'today',morningMode:false,activeChild:null,fabOpen:false,notif:null,weather:null,evTab:'events',listTab:'menu',listFilter:'all',ef:{freq:'once',days:{Mon:false,Tue:false,Wed:false,Thu:false,Fri:false,Sat:false,Sun:false},packItems:[],emoji:'📅',category:'',participantIds:[]}});
+  Object.assign(S,{family:null,familyId:null,children:[],packing:{},events:[],assessments:[],groceries:[],gifts:[],dinners:[],playdates:[],contacts:[],mealIdeas:[],handoffs:[],reminders:[],screen:null,screenParams:{},tab:'today',morningMode:false,activeChild:null,fabOpen:false,notif:null,weather:null,evTab:'events',listTab:'menu',listFilter:'all',ef:{freq:'once',days:{Mon:false,Tue:false,Wed:false,Thu:false,Fri:false,Sat:false,Sun:false},packItems:[],emoji:'📅',category:'',sport:'',participantIds:[]}});
   await signOut(auth);
 };
 window.emailCodeInvite=function(){
