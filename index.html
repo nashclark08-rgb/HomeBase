@@ -2287,9 +2287,9 @@ function sEvents(){
       <!-- Quick add one-off -->
       <button onclick="go('addEvent')" style="width:100%;padding:14px;border-radius:14px;background:var(--navy);border:none;color:#fff;font-size:15px;font-weight:700;cursor:pointer;font-family:inherit;margin-bottom:18px;display:flex;align-items:center;justify-content:center;gap:6px;box-shadow:0 2px 8px rgba(28,58,107,0.15)">+ Add one-off event</button>
 
-      <!-- RECURRING IMPORT TOOLS -->
-      <div class="sh" style="padding:0;margin-bottom:8px">RECURRING EVENTS</div>
-      <div style="display:grid;grid-template-columns:1fr 1fr;gap:10px;margin-bottom:22px">
+      <!-- IMPORT TOOLS -->
+      <div class="sh" style="padding:0;margin-bottom:8px">IMPORT EVENTS</div>
+      <div style="display:grid;grid-template-columns:repeat(auto-fit,minmax(140px,1fr));gap:10px;margin-bottom:22px">
         <div onclick="go('spreadsheetImport')" style="background:var(--card);border:1px dashed var(--border);border-radius:14px;padding:14px;cursor:pointer;display:flex;flex-direction:column;gap:6px;min-height:96px">
           <div style="font-size:24px">📄</div>
           <div style="font-size:14px;font-weight:700;color:var(--text);line-height:1.25">Spreadsheet</div>
@@ -2298,7 +2298,12 @@ function sEvents(){
         <div onclick="go('fixturesImport')" style="background:var(--card);border:1px dashed var(--border);border-radius:14px;padding:14px;cursor:pointer;display:flex;flex-direction:column;gap:6px;min-height:96px">
           <div style="font-size:24px">🏊</div>
           <div style="font-size:14px;font-weight:700;color:var(--text);line-height:1.25">Sport Fixtures</div>
-          <div style="font-size:11px;color:var(--text-secondary);line-height:1.4">Import a season's worth from URL or PDF.</div>
+          <div style="font-size:11px;color:var(--text-secondary);line-height:1.4">Import from URL or PDF.</div>
+        </div>
+        <div onclick="go('emailImport')" style="background:var(--card);border:1px dashed var(--border);border-radius:14px;padding:14px;cursor:pointer;display:flex;flex-direction:column;gap:6px;min-height:96px">
+          <div style="font-size:24px">📧</div>
+          <div style="font-size:14px;font-weight:700;color:var(--text);line-height:1.25">From Email</div>
+          <div style="font-size:11px;color:var(--text-secondary);line-height:1.4">Paste a school email — auto-extract dates.</div>
         </div>
       </div>
 
@@ -3421,6 +3426,486 @@ window.commitFixturesImport=async function(){
   S.fixturePreview=null;
   S.fixtureImport=null;
   if(failed===0){notify('Imported '+success+' fixture'+(success===1?'':'s')+' ✅','📅');}
+  else{notify('Imported '+success+' / failed '+failed,'⚠️');}
+  S.screen=null;S.tab='events';S.evView='tiles';render();
+};
+
+// =================================================================
+// EMAIL → EVENT IMPORT — paste email, extract dates, bulk-create
+// =================================================================
+
+// Find every parseable date in a text and return positions + ISO date
+function findAllDates(text){
+  const results=[];
+  const seen=new Set();
+  // Patterns ordered most-specific to least
+  const patterns=[
+    /\b(\d{4}-\d{1,2}-\d{1,2})\b/g,                                      // ISO 2026-05-10
+    /\b(\d{1,2}[\/\-\.]\d{1,2}[\/\-\.]\d{2,4})\b/g,                       // 10/05/2026
+    /\b(?:mon|tue|wed|thu|fri|sat|sun)[a-z]*\.?\s+\d{1,2}(?:st|nd|rd|th)?\s+(?:jan|feb|mar|apr|may|jun|jul|aug|sep|oct|nov|dec)[a-z]*\.?(?:\s+\d{2,4})?/gi,  // "Sat 10 May 2026"
+    /\b\d{1,2}(?:st|nd|rd|th)?\s+(?:jan|feb|mar|apr|may|jun|jul|aug|sep|oct|nov|dec)[a-z]*\.?(?:\s+\d{2,4})?\b/gi,                                          // "10 May 2026"
+    /\b(?:jan|feb|mar|apr|may|jun|jul|aug|sep|oct|nov|dec)[a-z]*\.?\s+\d{1,2}(?:st|nd|rd|th)?(?:,?\s+\d{2,4})?/gi                                            // "May 10, 2026"
+  ];
+  for(const pat of patterns){
+    let m;
+    while((m=pat.exec(text))!==null){
+      const matched=m[0];
+      const d=parseLooseDate(matched);
+      if(d){
+        // Dedupe by position (don't double-count overlapping matches)
+        const key=m.index+'|'+d;
+        if(!seen.has(key)){
+          seen.add(key);
+          results.push({match:matched,index:m.index,date:d});
+        }
+      }
+    }
+  }
+  results.sort((a,b)=>a.index-b.index);
+  // Suppress matches that overlap or sit within ~5 chars of an earlier one (same date written two ways)
+  const filtered=[];
+  for(const r of results){
+    const last=filtered[filtered.length-1];
+    if(last&&r.date===last.date&&r.index<last.index+last.match.length+5)continue;
+    filtered.push(r);
+  }
+  return filtered;
+}
+
+// Find the sentence/line containing a position in the text
+function getContextAround(text,index,radius){
+  radius=radius||220;
+  const start=Math.max(0,index-radius);
+  const end=Math.min(text.length,index+radius);
+  // Try to extend to natural sentence boundaries
+  let s=start;
+  while(s>0&&!/[\n\.\!\?]/.test(text[s-1]))s--;
+  let e=end;
+  while(e<text.length&&!/[\n\.\!\?]/.test(text[e]))e++;
+  return text.slice(s,Math.min(e+1,text.length)).trim();
+}
+
+// Find the line containing a position in text
+function getLineContaining(text,index){
+  let start=index;
+  while(start>0&&text[start-1]!=='\n')start--;
+  let end=index;
+  while(end<text.length&&text[end]!=='\n')end++;
+  return {text:text.slice(start,end).trim(),start,end};
+}
+
+// Find the previous non-empty line above a given position (for heading lookups)
+function getPreviousNonEmptyLine(text,beforeIndex){
+  let i=beforeIndex-1;
+  // Skip newlines
+  while(i>0&&text[i]==='\n')i--;
+  if(i<=0)return '';
+  let lineEnd=i;
+  let lineStart=i;
+  while(lineStart>0&&text[lineStart-1]!=='\n')lineStart--;
+  return text.slice(lineStart,lineEnd+1).trim();
+}
+
+// Strip common email noise — signatures, disclaimers — to reduce false positives
+// Takes the full text and the date index so we can look BEFORE the date for sig markers
+function isLikelyNoiseContext(fullText,dateIndex,context){
+  // Lookback: the 250 chars before the date. If a signature marker sits in there,
+  // this date is probably in the signature itself (not a real event).
+  const lookback=fullText.slice(Math.max(0,dateIndex-250),dateIndex).toLowerCase();
+  if(/\b(?:kind regards|best regards|sincerely|yours faithfully|warm regards|yours truly|cheers)[\s\,]/.test(lookback))return true;
+  if(/\b(?:principal|deputy principal|head of school|head of (?:senior|junior|primary))\s*\n/i.test(lookback))return true;
+  // Footer/disclaimer markers
+  if(/this email (?:and any attachments|is intended|contains|may contain)/i.test(context))return true;
+  if(/unsubscribe|privacy policy|do not reply|noreply|no\-reply/i.test(context.toLowerCase()))return true;
+  // Email opening dates ("Sent: 15 May 2026")
+  if(/^(?:sent|date)[\:\s]+/i.test(context.trim()))return true;
+  return false;
+}
+
+// Extract a clean title from the LINE containing the date.
+// Strategy: strip date/time/time-range/location, clean up scaffolding, that's the title.
+// We deliberately AVOID over-aggressive sentence trimming — the user can edit in preview.
+function extractTitleFromContext(lineText,dateMatch,timeStr,locationStr){
+  // Cut at the first sentence-ending period EARLY so we don't process the next sentence
+  // (handles cases where multiple sentences live on one line)
+  let cleaned=lineText;
+  // Find first period that's followed by a space + capital letter (true sentence boundary, not abbreviation)
+  const sentenceCut=cleaned.match(/\.\s+[A-Z]/);
+  if(sentenceCut)cleaned=cleaned.slice(0,sentenceCut.index+1);
+  // Now process the (single sentence) cleaned line
+  cleaned=cleaned.replace(dateMatch,' ');
+  // Strip time RANGES first (before stripping the single time, which would break the range)
+  cleaned=cleaned.replace(/\bfrom\s+\d{1,2}(?::\d{2})?\s*(?:am|pm)?\s*(?:[\-\–\—]|to|until|till)\s*\d{1,2}(?::\d{2})?\s*(?:am|pm)?/gi,' ');
+  cleaned=cleaned.replace(/\b\d{1,2}(?::\d{2})?\s*(?:am|pm)\s*(?:[\-\–\—]|to|until|till)\s*\d{1,2}(?::\d{2})?\s*(?:am|pm)/gi,' ');
+  if(timeStr)cleaned=cleaned.replace(timeStr,' ');
+  cleaned=cleaned.replace(/\b\d{1,2}(?::\d{2})?\s*(?:am|pm)\b/gi,' ');
+  // Remove the detected location
+  if(locationStr&&locationStr.length>2){
+    const escaped=locationStr.replace(/[.*+?^${}()|[\]\\]/g,'\\$&');
+    cleaned=cleaned.replace(new RegExp('(?:^|\\s)(?:at|@|in)\\s+(?:the\\s+)?'+escaped+'\\b','gi'),' ');
+    cleaned=cleaned.replace(new RegExp('(?:^|\\s)(?:the\\s+)?'+escaped+'\\b','gi'),' ');
+  }
+  // Strip leading scaffolding
+  cleaned=cleaned.replace(/^[\-\*\u2022\u00b7•#\d\.\s,:]+/,'').trim();
+  cleaned=cleaned.replace(/^(?:reminder[:\s]*|note[:\s]*|fyi[:\s]*|please note that\s+|please be advised that\s+|just a (?:quick )?(?:reminder|note)(?:\s+that)?\s*)/gi,' ').trim();
+  cleaned=cleaned.replace(/^\s*that\s+(?:the\s+)?/i,' ').trim();
+  // Specific common scaffolding that survives
+  cleaned=cleaned.replace(/\b(?:will be held|will take place|takes place|is being held|is on|is at|is in|will run|will be on|will be at|will commence|will start|will end)\b/gi,' ');
+  // Iteratively strip dangling prepositions + connector words (loop a few times for chains)
+  for(let i=0;i<5;i++){
+    const before=cleaned;
+    cleaned=cleaned.replace(/\s+(?:on|at|from|by|until|in|to|of|for|the|departing|departs|leaving|happening)\s*(?:[,\.;]|$)/gi,' ');
+    cleaned=cleaned.replace(/\s+\.+/g,'.').replace(/^\s*\.+\s*/,'').replace(/\s+/g,' ').trim();
+    if(cleaned===before)break;
+  }
+  // Cut at remaining period
+  cleaned=cleaned.split(/[\.\;]/)[0].trim();
+  // Strip leading "The "
+  cleaned=cleaned.replace(/^the\s+/i,'');
+  // Trim trailing junk
+  cleaned=cleaned.replace(/[\,\—\–\-]\s*$/,'').replace(/\s+(?:and|or|with|for|to|at|on|in|is|are|will|of|the)\s*$/i,'').trim();
+  // Capitalise first letter
+  if(cleaned&&cleaned[0]&&cleaned[0]===cleaned[0].toLowerCase()){
+    cleaned=cleaned.charAt(0).toUpperCase()+cleaned.slice(1);
+  }
+  if(cleaned.length>80)cleaned=cleaned.slice(0,77)+'…';
+  return cleaned;
+}
+
+// Extract location from "at X" or "in (the) X" patterns within the line.
+// Accepts lowercase since "school oval" / "the gym" are valid locations.
+function extractLocationFromContext(lineText){
+  // "at School Hall" / "@ Pool" / "at the school oval"
+  const m=lineText.match(/(?:^|\s)(?:at|@)\s+((?:the\s+)?[\w'\-][\w'\-\s,]{1,60}?)(?:[\.\,\;]|\s+(?:on|from|until|with|please|will|is|—|–|-)\b|$)/);
+  if(m){
+    let loc=m[1].trim().replace(/[\s,]+$/,'').replace(/^the\s+/i,'');
+    // Reject if it's a time / a date / a name fragment
+    if(/^\d/.test(loc)||/(?:am|pm)$/i.test(loc))return '';
+    return loc;
+  }
+  // "in the Hall" / "in Room 5" / "in the gym"
+  const m2=lineText.match(/(?:^|\s)in\s+((?:the\s+)?[\w'\-][\w'\-\s,]{1,60}?)(?:[\.\,\;]|\s+(?:on|from|until|with|please|will|is|—|–|-)\b|$)/);
+  if(m2){
+    let loc=m2[1].trim().replace(/[\s,]+$/,'').replace(/^the\s+/i,'');
+    if(/^\d/.test(loc)||/(?:am|pm)$/i.test(loc))return '';
+    return loc;
+  }
+  return '';
+}
+
+// Main parser
+function parseEventsFromEmail(text){
+  if(!text||text.trim().length<10)return [];
+  const norm=text.replace(/\r\n?/g,'\n').replace(/[ \t]+/g,' ');
+  const dates=findAllDates(norm);
+  if(dates.length===0)return [];
+  const events=[];
+  const seenKeys=new Set();
+  for(const d of dates){
+    // Get JUST THE LINE containing the date — keeps each event tight
+    const line=getLineContaining(norm,d.index);
+    const lineText=line.text;
+    if(isLikelyNoiseContext(norm,d.index,lineText))continue;
+    // Time on the same line
+    const timeStr=parseLooseTime(lineText);
+    // Location on the same line (extract first so we can strip it from the title)
+    const location=extractLocationFromContext(lineText);
+    // Title from the line (with location passed in so it gets stripped)
+    let title=extractTitleFromContext(lineText,d.match,timeStr,location);
+    // If title is too short, look at the previous non-empty line for a heading
+    if(!title||title.length<4){
+      const prevLine=getPreviousNonEmptyLine(norm,line.start);
+      // Only use prev line if it's heading-like (short, doesn't end in punctuation that suggests sentence)
+      if(prevLine&&prevLine.length<70&&prevLine.length>3&&!prevLine.endsWith('.')){
+        title=prevLine.replace(/^(?:reminder[:\s]*|note[:\s]*|fyi[:\s]*)/i,'').trim();
+        title=title.replace(/[\:\,\—\–\-]\s*$/,'').trim();
+      }
+    }
+    if(!title||title.length<3)continue;
+    const notes=lineText.slice(0,400);
+    const key=d.date+'|'+title.toLowerCase();
+    if(seenKeys.has(key))continue;
+    seenKeys.add(key);
+    events.push({
+      id:Math.random().toString(36).slice(2,9),
+      title,date:d.date,time:timeStr,location,notes,
+      raw:lineText.slice(0,160)
+    });
+  }
+  return events;
+}
+
+// Reset email import state on screen open
+function ensureEmailImportState(){
+  if(!S.emailImport){
+    S.emailImport={
+      content:'',
+      defaultCategory:'school',
+      participantIds:[]
+    };
+  }
+}
+
+// === EMAIL HUB SCREEN ===
+function sEmailImport(){
+  ensureEmailImportState();
+  const ei=S.emailImport;
+  const allPeople=[
+    ...S.children.map(c=>({id:c.id,name:c.name,color:c.color||NAVY,photo:c.photoURL})),
+    ...members().map(m=>({id:m.uid,name:m.name,color:m.color||NAVY,photo:m.photoURL}))
+  ];
+
+  return `
+    <div style="min-height:100%;display:flex;flex-direction:column;background:var(--bg)">
+      <div style="background:var(--card);padding:14px 16px;display:flex;align-items:center;border-bottom:1px solid var(--row-border);position:sticky;top:0;z-index:10">
+        <button class="back-btn" onclick="back()">${bk()} Back</button>
+        <div style="flex:1;text-align:center;font-size:17px;font-weight:600">From Email</div>
+        <div style="width:60px"></div>
+      </div>
+      <div class="scroll-view" style="padding:18px 16px 80px;max-width:560px;margin:auto;width:100%">
+
+        <div style="text-align:center;margin-bottom:24px">
+          <div style="font-size:54px;margin-bottom:6px">📧</div>
+          <div style="font-size:20px;font-weight:800;color:var(--text);margin-bottom:6px">Paste an email, get events</div>
+          <div style="font-size:13px;color:var(--text-secondary);line-height:1.55">School newsletters, sports notices,<br>excursion notes — paste the body and HomeBase<br>finds every date and time mentioned.</div>
+        </div>
+
+        <!-- Step 1: Paste -->
+        <div style="background:var(--card);border-radius:14px;padding:18px;margin-bottom:14px;border:1px solid var(--row-border)">
+          <div style="display:flex;align-items:center;gap:10px;margin-bottom:10px">
+            <div style="width:28px;height:28px;border-radius:14px;background:var(--navy);color:#fff;display:flex;align-items:center;justify-content:center;font-size:14px;font-weight:800;flex-shrink:0">1</div>
+            <div style="font-size:15px;font-weight:700;color:var(--text)">Paste the email body</div>
+          </div>
+          <textarea id="ei-content" placeholder="Hi parents,&#10;&#10;Reminder that the Cross Country Carnival is on Friday 15 May at 9:30am at the school oval…" style="width:100%;min-height:180px;padding:12px;border-radius:10px;border:1px solid var(--border);background:var(--bg);font-family:inherit;font-size:13px;line-height:1.5;color:var(--text);resize:vertical;box-sizing:border-box" oninput="S.emailImport.content=this.value">${(ei.content||'').replace(/&/g,'&amp;').replace(/</g,'&lt;')}</textarea>
+        </div>
+
+        <!-- Step 2: Defaults -->
+        <div style="background:var(--card);border-radius:14px;padding:18px;margin-bottom:14px;border:1px solid var(--row-border)">
+          <div style="display:flex;align-items:center;gap:10px;margin-bottom:14px">
+            <div style="width:28px;height:28px;border-radius:14px;background:var(--navy);color:#fff;display:flex;align-items:center;justify-content:center;font-size:14px;font-weight:800;flex-shrink:0">2</div>
+            <div style="font-size:15px;font-weight:700;color:var(--text)">Quick defaults</div>
+          </div>
+          <div style="font-size:11px;color:var(--text-secondary);line-height:1.5;margin-bottom:10px">These apply to every event detected. You can override per event in the preview.</div>
+
+          <div style="font-size:12px;color:var(--text-secondary);margin-bottom:6px;font-weight:600">Default category</div>
+          <div style="display:flex;flex-wrap:wrap;gap:6px;margin-bottom:14px">
+            ${EV_CATEGORIES.filter(c=>c.id!=='past').map(c=>`<button onclick="S.emailImport.defaultCategory='${c.id}';render()" class="freq-btn ${ei.defaultCategory===c.id?'on':''}" style="padding:6px 10px;font-size:12px">${c.emoji} ${c.label}</button>`).join('')}
+          </div>
+
+          <div style="font-size:12px;color:var(--text-secondary);margin-bottom:6px;font-weight:600">Default participants</div>
+          <div style="display:flex;flex-wrap:wrap;gap:6px">
+            ${allPeople.map(p=>{
+              const isOn=ei.participantIds.includes(p.id);
+              return `<button onclick="toggleEmailPerson('${p.id}')" class="freq-btn ${isOn?'on':''}" style="padding:6px 10px;font-size:12px">${p.name.split(' ')[0]}</button>`;
+            }).join('')}
+          </div>
+          <div style="font-size:11px;color:var(--text-secondary);margin-top:8px;line-height:1.5">${ei.participantIds.length===0?'<em>None selected — events will be family-wide.</em>':''}</div>
+        </div>
+
+        <button onclick="parseEmailNow()" style="width:100%;padding:14px;border-radius:12px;background:var(--navy);border:none;color:#fff;font-size:15px;font-weight:700;cursor:pointer;font-family:inherit;margin-bottom:14px">🔍 Find events</button>
+
+        <details style="background:var(--card);border-radius:14px;padding:14px 18px;border:1px solid var(--row-border)">
+          <summary style="font-size:14px;font-weight:700;color:var(--text);cursor:pointer">💡 Tips for best results</summary>
+          <div style="font-size:12px;color:var(--text-secondary);line-height:1.6;margin-top:10px">
+            <div><strong>Paste plain text.</strong> Just the email body — strip out images and forwarded headers if you can.</div>
+            <div><strong>Review every result.</strong> Auto-extraction can miss context — the preview lets you fix titles, dates, and times before commit.</div>
+            <div><strong>It looks for dates first.</strong> Each date in the email becomes one event candidate. If the email has 5 dates, you'll see 5 events to review.</div>
+            <div><strong>Times are auto-detected</strong> when written like 9am, 9:00am, or 14:30 in the same paragraph as the date.</div>
+            <div><strong>Locations</strong> are detected from "at [Place]" or "in the [Place]" patterns.</div>
+          </div>
+        </details>
+
+      </div>
+    </div>`;
+}
+
+window.toggleEmailPerson=function(id){
+  const ei=S.emailImport;
+  if(!ei)return;
+  const i=ei.participantIds.indexOf(id);
+  if(i>=0)ei.participantIds.splice(i,1);
+  else ei.participantIds.push(id);
+  render();
+};
+
+window.parseEmailNow=function(){
+  const ei=S.emailImport;
+  if(!ei)return;
+  // Pull the live textarea value
+  const ta=document.getElementById('ei-content');
+  if(ta)ei.content=ta.value;
+  if(!ei.content||ei.content.trim().length<10){
+    notify('Paste an email first','⚠️');
+    return;
+  }
+  notify('Scanning…','🔍');
+  const events=parseEventsFromEmail(ei.content);
+  if(events.length===0){
+    notify('No dates found in that email. Try pasting again, or add events manually.','⚠️');
+    return;
+  }
+  S.emailPreview={events,sourceCategory:ei.defaultCategory,participantIds:[...ei.participantIds]};
+  go('emailPreview');
+};
+
+// === EMAIL PREVIEW SCREEN ===
+function sEmailPreview(){
+  const data=S.emailPreview;
+  if(!data){
+    return `
+      <div style="min-height:100%;display:flex;flex-direction:column;background:var(--bg)">
+        <div style="background:var(--card);padding:14px 16px;display:flex;align-items:center;border-bottom:1px solid var(--row-border)">
+          <button class="back-btn" onclick="back()">${bk()} Back</button>
+          <div style="flex:1;text-align:center;font-size:17px;font-weight:600">Preview</div>
+          <div style="width:60px"></div>
+        </div>
+        <div style="padding:60px 20px;text-align:center;color:var(--text-secondary)"><div style="font-size:14px">No events to preview.</div></div>
+      </div>`;
+  }
+
+  const events=data.events;
+  const validCount=events.filter(e=>e.title&&e.date&&!e._removed).length;
+  const cat=EV_CATEGORIES.find(c=>c.id===data.sourceCategory)||EV_CATEGORIES.find(c=>c.id==='other');
+  const participantNames=data.participantIds.map(id=>{
+    const c=S.children.find(x=>x.id===id);
+    if(c)return c.name.split(' ')[0];
+    const m=members().find(x=>x.uid===id);
+    return m?m.name.split(' ')[0]:'?';
+  });
+
+  const eventCard=ev=>{
+    if(ev._removed){
+      return `<div style="padding:10px 14px;opacity:0.5;display:flex;align-items:center;justify-content:space-between;border-bottom:1px solid var(--row-border)">
+        <div style="font-size:13px;color:var(--text-secondary);text-decoration:line-through">${ev.title||'(removed)'}</div>
+        <button onclick="restoreEmailEvent('${ev.id}')" style="font-size:11px;color:var(--navy);font-weight:600;border:none;background:none;cursor:pointer;font-family:inherit;text-decoration:underline">Undo</button>
+      </div>`;
+    }
+    const titleOk=!!(ev.title&&ev.title.trim());
+    const dateOk=!!ev.date;
+    return `<div style="padding:14px;border-bottom:1px solid var(--row-border);${(!titleOk||!dateOk)?'background:#FF3B3008':''}">
+      <div style="display:grid;grid-template-columns:auto 1fr;gap:8px 10px;align-items:center;margin-bottom:8px">
+        <span style="font-size:11px;color:var(--text-secondary);font-weight:600">TITLE</span>
+        <input type="text" value="${(ev.title||'').replace(/"/g,'&quot;')}" onchange="updateEmailEvent('${ev.id}','title',this.value)" style="padding:6px 10px;border-radius:8px;border:1px solid ${titleOk?'var(--border)':'#FF3B30'};font-size:13px;font-family:inherit;background:var(--card);color:var(--text);font-weight:600"/>
+
+        <span style="font-size:11px;color:var(--text-secondary);font-weight:600">DATE</span>
+        <input type="date" value="${ev.date||''}" onchange="updateEmailEvent('${ev.id}','date',this.value)" style="padding:6px 10px;border-radius:8px;border:1px solid ${dateOk?'var(--border)':'#FF3B30'};font-size:13px;font-family:inherit;background:var(--card);color:var(--text)"/>
+
+        <span style="font-size:11px;color:var(--text-secondary);font-weight:600">TIME</span>
+        <input type="text" value="${(ev.time||'').replace(/"/g,'&quot;')}" placeholder="(optional)" onchange="updateEmailEvent('${ev.id}','time',this.value)" style="padding:6px 10px;border-radius:8px;border:1px solid var(--border);font-size:13px;font-family:inherit;background:var(--card);color:var(--text)"/>
+
+        <span style="font-size:11px;color:var(--text-secondary);font-weight:600">@</span>
+        <input type="text" value="${(ev.location||'').replace(/"/g,'&quot;')}" placeholder="Location (optional)" onchange="updateEmailEvent('${ev.id}','location',this.value)" style="padding:6px 10px;border-radius:8px;border:1px solid var(--border);font-size:13px;font-family:inherit;background:var(--card);color:var(--text)"/>
+      </div>
+      <div style="display:flex;justify-content:space-between;align-items:center;margin-top:6px">
+        <div style="font-size:10px;color:var(--text-secondary);font-style:italic;flex:1;min-width:0;overflow:hidden;text-overflow:ellipsis;white-space:nowrap">${ev.raw?'Found in: "'+ev.raw.slice(0,80)+'…"':''}</div>
+        <button onclick="removeEmailEvent('${ev.id}')" style="font-size:11px;color:#FF3B30;font-weight:600;border:none;background:none;cursor:pointer;font-family:inherit;padding:4px 8px">Remove</button>
+      </div>
+    </div>`;
+  };
+
+  return `
+    <div style="min-height:100%;display:flex;flex-direction:column;background:var(--bg)">
+      <div style="background:var(--card);padding:14px 16px;display:flex;align-items:center;border-bottom:1px solid var(--row-border);position:sticky;top:0;z-index:10">
+        <button class="back-btn" onclick="S.emailPreview=null;back()">${bk()} Cancel</button>
+        <div style="flex:1;text-align:center;font-size:17px;font-weight:600">Preview Events</div>
+        <div style="width:60px"></div>
+      </div>
+
+      <div style="padding:14px 16px;background:var(--card);border-bottom:1px solid var(--row-border)">
+        <div style="display:flex;align-items:center;gap:10px;margin-bottom:6px">
+          <div style="width:38px;height:38px;border-radius:19px;background:${cat.color}18;border:2px solid ${cat.color};display:flex;align-items:center;justify-content:center;font-size:18px;flex-shrink:0">${cat.emoji}</div>
+          <div style="flex:1;min-width:0">
+            <div style="font-size:16px;font-weight:800;color:var(--text);line-height:1.2">${events.length} event${events.length===1?'':'s'} detected</div>
+            <div style="font-size:11px;color:var(--text-secondary)">Default category: ${cat.label}${participantNames.length?' · For: '+participantNames.join(', '):' · Family-wide'}</div>
+          </div>
+        </div>
+        <div style="font-size:11px;color:var(--text-secondary);line-height:1.4">Review each event before importing. Edit, remove, or commit.</div>
+      </div>
+
+      <div class="scroll-view" style="padding:0 0 100px;max-width:680px;margin:auto;width:100%">
+        ${events.length===0?'<div style="text-align:center;padding:60px 20px;color:var(--text-secondary);font-size:14px">No events.</div>':`
+          <div class="card" style="margin:14px 16px 0">
+            ${events.map(eventCard).join('')}
+          </div>
+        `}
+      </div>
+
+      <div style="position:fixed;bottom:0;left:0;right:0;background:var(--card);padding:12px 16px;border-top:1px solid var(--row-border);display:flex;gap:10px;max-width:680px;margin:auto;box-shadow:0 -2px 8px rgba(0,0,0,0.05)">
+        <button onclick="S.emailPreview=null;back()" style="flex:1;padding:13px;border-radius:12px;background:var(--bg);border:none;color:var(--text);font-size:14px;font-weight:700;cursor:pointer;font-family:inherit">Cancel</button>
+        <button id="commit-email-btn" onclick="commitEmailImport()" ${validCount===0?'disabled':''} style="flex:2;padding:13px;border-radius:12px;background:${validCount>0?'#34C759':'#C7C7CC'};border:none;color:#fff;font-size:14px;font-weight:700;cursor:${validCount>0?'pointer':'not-allowed'};font-family:inherit">Import ${validCount} event${validCount===1?'':'s'}</button>
+      </div>
+    </div>`;
+}
+
+window.updateEmailEvent=function(id,field,value){
+  const data=S.emailPreview;
+  if(!data)return;
+  const ev=data.events.find(x=>x.id===id);
+  if(!ev)return;
+  ev[field]=value;
+  if(field==='date'||field==='title')render();
+};
+window.removeEmailEvent=function(id){
+  const data=S.emailPreview;
+  if(!data)return;
+  const ev=data.events.find(x=>x.id===id);
+  if(ev){ev._removed=true;render();}
+};
+window.restoreEmailEvent=function(id){
+  const data=S.emailPreview;
+  if(!data)return;
+  const ev=data.events.find(x=>x.id===id);
+  if(ev){ev._removed=false;render();}
+};
+
+window.commitEmailImport=async function(){
+  const data=S.emailPreview;
+  if(!data){notify('Nothing to import','⚠️');return;}
+  if(!S.familyId){notify('No family loaded','⚠️');return;}
+  const valid=data.events.filter(e=>e.title&&e.date&&!e._removed);
+  if(valid.length===0){notify('No valid events to import','⚠️');return;}
+
+  const btn=document.getElementById('commit-email-btn');
+  if(btn){btn.disabled=true;btn.textContent='Importing…';}
+
+  // Build legacy fields from selected participants
+  let childId='',adultUid='';
+  if(data.participantIds.length===1){
+    const c=S.children.find(x=>x.id===data.participantIds[0]);
+    const m=members().find(x=>x.uid===data.participantIds[0]);
+    if(c)childId=data.participantIds[0];
+    else if(m)adultUid=data.participantIds[0];
+  }
+
+  const cat=EV_CATEGORIES.find(c=>c.id===data.sourceCategory)||{emoji:'📅'};
+  const emoji=cat.emoji||'📅';
+
+  let success=0;let failed=0;
+  for(const ev of valid){
+    try{
+      await fadd(['events'],{
+        title:(ev.title||'').trim(),
+        emoji,
+        participantIds:[...data.participantIds],childId,adultUid,
+        freq:'once',
+        date:ev.date,
+        startDate:'',endDate:'',
+        days:{Mon:false,Tue:false,Wed:false,Thu:false,Fri:false,Sat:false,Sun:false},
+        time:ev.time||'',
+        category:data.sourceCategory,
+        sport:'',
+        location:ev.location||'',
+        dropoff:'',pickup:'',
+        packItems:[],
+        notes:ev.notes||''
+      });
+      success++;
+    }catch(e){failed++;console.warn('Email event import failed',ev,e);}
+  }
+
+  S.emailPreview=null;
+  S.emailImport=null;
+  if(failed===0){notify('Imported '+success+' event'+(success===1?'':'s')+' ✅','📅');}
   else{notify('Imported '+success+' / failed '+failed,'⚠️');}
   S.screen=null;S.tab='events';S.evView='tiles';render();
 };
@@ -5118,7 +5603,8 @@ function render(){
       help:sHelp,privacy:sPrivacy,about:sAbout,
       personProfile:sPersonProfile,
       spreadsheetImport:sSpreadsheet,spreadsheetPreview:sSpreadsheetPreview,
-      fixturesImport:sFixturesImport,fixturesPreview:sFixturesPreview
+      fixturesImport:sFixturesImport,fixturesPreview:sFixturesPreview,
+      emailImport:sEmailImport,emailPreview:sEmailPreview
     };
     html=(map[S.screen]||sToday)();
   } else {
