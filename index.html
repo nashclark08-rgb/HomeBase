@@ -3327,7 +3327,14 @@ function sFixturesImport(){
 
           <div style="font-size:12px;color:var(--text-secondary);margin-bottom:6px;font-weight:600">📄 From a PDF</div>
           <input type="file" id="fi-pdf" accept=".pdf,application/pdf" style="display:none" onchange="handleFixturePdfUpload(this)"/>
-          <button onclick="document.getElementById('fi-pdf').click()" ${fi.busy?'disabled':''} style="width:100%;padding:13px;border-radius:12px;background:${fi.busy?'#8E8E93':(fi.useAI!==false?'#AF52DE':'#34C759')};border:none;color:#fff;font-size:14px;font-weight:700;cursor:${fi.busy?'wait':'pointer'};font-family:inherit">${fi.busy?'⏳ Working…':'Upload PDF'}</button>
+          <button onclick="document.getElementById('fi-pdf').click()" ${fi.busy?'disabled':''} style="width:100%;padding:13px;border-radius:12px;background:${fi.busy?'#8E8E93':(fi.useAI!==false?'#AF52DE':'#34C759')};border:none;color:#fff;font-size:14px;font-weight:700;cursor:${fi.busy?'wait':'pointer'};font-family:inherit;margin-bottom:12px">${fi.busy?'⏳ Working…':'Upload PDF'}</button>
+
+          ${fi.useAI!==false?`<div style="text-align:center;font-size:11px;color:var(--text-secondary);margin:6px 0">— or —</div>
+
+          <div style="font-size:12px;color:var(--text-secondary);margin-bottom:6px;font-weight:600">📷 From a screenshot or photo <span style="color:#AF52DE;font-weight:700">(AI only)</span></div>
+          <input type="file" id="fi-image" accept="image/png,image/jpeg,image/jpg,image/webp" style="display:none" onchange="handleFixtureImageUpload(this)"/>
+          <button onclick="document.getElementById('fi-image').click()" ${fi.busy?'disabled':''} style="width:100%;padding:13px;border-radius:12px;background:${fi.busy?'#8E8E93':'linear-gradient(135deg,#AF52DE,#5856D6)'};border:none;color:#fff;font-size:14px;font-weight:700;cursor:${fi.busy?'wait':'pointer'};font-family:inherit">${fi.busy?'⏳ Working…':'Upload Image'}</button>
+          <div style="font-size:11px;color:var(--text-secondary);margin-top:6px;line-height:1.4">Take a screenshot of any fixture page (NetballConnect, school site, Facebook post). AI reads it like a person.</div>`:''}
         </div>
 
         <details style="background:var(--card);border-radius:14px;padding:14px 18px;border:1px solid var(--row-border);margin-bottom:14px">
@@ -3541,6 +3548,95 @@ async function extractRawTextFromPDF(file){
   }
   return lines.join('\n');
 }
+
+// Compress + convert image file to base64 (data URL → strip prefix)
+// Resizes to max 1600px width to keep AI cost down + stay under 5MB Anthropic limit
+async function imageFileToBase64(file){
+  return new Promise((resolve,reject)=>{
+    const reader=new FileReader();
+    reader.onerror=()=>reject(new Error('Failed to read image'));
+    reader.onload=()=>{
+      const img=new Image();
+      img.onerror=()=>reject(new Error('Failed to decode image'));
+      img.onload=()=>{
+        // Resize if larger than 1600px on longest side — keeps aspect ratio
+        const MAX=1600;
+        let w=img.naturalWidth,h=img.naturalHeight;
+        if(w>MAX||h>MAX){
+          if(w>=h){h=Math.round(h*(MAX/w));w=MAX;}
+          else{w=Math.round(w*(MAX/h));h=MAX;}
+        }
+        const canvas=document.createElement('canvas');
+        canvas.width=w;canvas.height=h;
+        const ctx=canvas.getContext('2d');
+        ctx.fillStyle='#fff';ctx.fillRect(0,0,w,h); // white background for transparency
+        ctx.drawImage(img,0,0,w,h);
+        // Always output as JPEG @ 85% quality — much smaller than PNG, AI handles it fine
+        const dataUrl=canvas.toDataURL('image/jpeg',0.85);
+        const base64=dataUrl.split(',')[1];
+        resolve({base64,mediaType:'image/jpeg',width:w,height:h,sizeKB:Math.round(base64.length*0.75/1024)});
+      };
+      img.src=reader.result;
+    };
+    reader.readAsDataURL(file);
+  });
+}
+
+// Image upload flow — sends image to AI parser, gets fixtures back
+window.handleFixtureImageUpload=async function(input){
+  if(!input?.files?.[0])return;
+  const file=input.files[0];
+  const fi=S.fixtureImport;
+  const errMsg=validateFixtureSetup();
+  if(errMsg){notify(errMsg,'⚠️');input.value='';return;}
+  if(typeof httpsCallable==='undefined'||!functions){
+    notify('⚠️ Cloud functions not loaded — refresh the app','❌');return;
+  }
+  // AI mode required for image
+  if(fi.useAI===false){
+    notify('Image upload requires AI Parser mode','⚠️');input.value='';return;
+  }
+  fi.busy=true;render();
+  try{
+    notify('🤖 AI reading image…','📷');
+    console.log('[fixtures-image] Compressing image:',file.name,Math.round(file.size/1024),'KB');
+    const {base64,mediaType,width,height,sizeKB}=await imageFileToBase64(file);
+    console.log('[fixtures-image] Compressed to',sizeKB,'KB',width+'x'+height);
+
+    const aiCall=httpsCallable(functions,'parseFixturesWithAI');
+    const aiResp=await aiCall({
+      imageBase64:base64,
+      imageMediaType:mediaType,
+      sourceKind:'image',
+      sport:fi.sport,
+      myTeam:fi.myTeam||'',
+      familyId:S.familyId||''
+    });
+    const aiData=aiResp?.data||{};
+    const aiFixtures=Array.isArray(aiData.fixtures)?aiData.fixtures:[];
+    console.log('[fixtures-image] AI returned',aiFixtures.length,'fixtures');
+    fi.busy=false;
+    if(aiFixtures.length===0){
+      notify(fi.myTeam?('No fixtures found for "'+fi.myTeam+'" in image'):'No fixtures found in image','⚠️');
+      render();return;
+    }
+    const fixtures=aiFixtures.map(f=>({
+      date:f.date,time:f.time,opponent:f.opponent,venue:f.venue,
+      round:f.round||'',notes:f.notes||'',isHome:f.isHome,
+      raw:'AI: '+(f.round?f.round+' · ':'')+(f.opponent||'?')
+    }));
+    if(aiData.summary)notify(aiData.summary,'🤖');
+    S.fixturePreview={fixtures:fixtures.map(f=>({...f,id:Math.random().toString(36).slice(2,9)})),source:file.name+' (image)',sourceKind:'image',aiUsed:true};
+    go('fixturesPreview');
+  }catch(ex){
+    console.error('[fixtures-image] failed:',ex);
+    fi.busy=false;
+    notify('Image read failed: '+(ex.message||ex),'❌');
+    render();
+  }finally{
+    if(input)input.value='';
+  }
+};
 
 // === PREVIEW SCREEN ===
 function sFixturesPreview(){
