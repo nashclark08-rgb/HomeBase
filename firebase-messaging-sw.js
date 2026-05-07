@@ -3888,16 +3888,22 @@ function sEmailImport(){
           <div style="font-size:11px;color:var(--text-secondary);margin-top:8px;line-height:1.5">${ei.participantIds.length===0?'<em>None selected — events will be family-wide.</em>':''}</div>
         </div>
 
-        <button onclick="parseEmailNow()" style="width:100%;padding:14px;border-radius:12px;background:var(--navy);border:none;color:#fff;font-size:15px;font-weight:700;cursor:pointer;font-family:inherit;margin-bottom:14px">🔍 Find events</button>
+        <button onclick="parseEmailWithAI()" style="width:100%;padding:14px;border-radius:12px;background:linear-gradient(135deg,#AF52DE,#5856D6);border:none;color:#fff;font-size:15px;font-weight:700;cursor:pointer;font-family:inherit;margin-bottom:8px;box-shadow:0 4px 12px rgba(175,82,222,0.3)">🤖 Find events with AI</button>
+        <button onclick="parseEmailNow()" style="width:100%;padding:11px;border-radius:12px;background:transparent;border:1px solid var(--border);color:var(--text-secondary);font-size:13px;font-weight:600;cursor:pointer;font-family:inherit;margin-bottom:14px">🔍 Use basic parser instead</button>
+
+        <details style="background:var(--card);border-radius:14px;padding:14px 18px;border:1px solid var(--row-border);margin-bottom:14px">
+          <summary style="font-size:14px;font-weight:700;color:var(--text);cursor:pointer">🤖 What's the difference?</summary>
+          <div style="font-size:12px;color:var(--text-secondary);line-height:1.6;margin-top:10px">
+            <div><strong>AI parser</strong> reads the email like a person — handles odd formatting, picks up locations from context, generates clean titles. Costs ~$0.001 per email (paid by your Anthropic credit). Limit: 50 emails/day per family.</div>
+            <div style="margin-top:8px"><strong>Basic parser</strong> uses pattern matching. Free and instant, but misses things in messy emails.</div>
+          </div>
+        </details>
 
         <details style="background:var(--card);border-radius:14px;padding:14px 18px;border:1px solid var(--row-border)">
           <summary style="font-size:14px;font-weight:700;color:var(--text);cursor:pointer">💡 Tips for best results</summary>
           <div style="font-size:12px;color:var(--text-secondary);line-height:1.6;margin-top:10px">
             <div><strong>Paste plain text.</strong> Just the email body — strip out images and forwarded headers if you can.</div>
             <div><strong>Review every result.</strong> Auto-extraction can miss context — the preview lets you fix titles, dates, and times before commit.</div>
-            <div><strong>It looks for dates first.</strong> Each date in the email becomes one event candidate. If the email has 5 dates, you'll see 5 events to review.</div>
-            <div><strong>Times are auto-detected</strong> when written like 9am, 9:00am, or 14:30 in the same paragraph as the date.</div>
-            <div><strong>Locations</strong> are detected from "at [Place]" or "in the [Place]" patterns.</div>
           </div>
         </details>
 
@@ -3927,11 +3933,85 @@ window.parseEmailNow=function(){
   notify('Scanning…','🔍');
   const events=parseEventsFromEmail(ei.content);
   if(events.length===0){
-    notify('No dates found in that email. Try pasting again, or add events manually.','⚠️');
+    notify('No dates found in that email. Try the AI parser, or paste again.','⚠️');
     return;
   }
-  S.emailPreview={events,sourceCategory:ei.defaultCategory,participantIds:[...ei.participantIds]};
+  S.emailPreview={events,sourceCategory:ei.defaultCategory,participantIds:[...ei.participantIds],source:'basic'};
   go('emailPreview');
+};
+
+// Use Claude API (via cloud function) to parse emails. Much smarter than regex.
+window.parseEmailWithAI=async function(){
+  const ei=S.emailImport;
+  if(!ei)return;
+  const ta=document.getElementById('ei-content');
+  if(ta)ei.content=ta.value;
+  if(!ei.content||ei.content.trim().length<10){
+    notify('Paste an email first','⚠️');
+    return;
+  }
+  if(typeof httpsCallable==='undefined'||!functions){
+    notify('Cloud functions not loaded — refresh the app','❌');
+    return;
+  }
+
+  // Show full-screen "AI is reading…" overlay so user sees feedback
+  const overlay=document.createElement('div');
+  overlay.id='ai-parse-overlay';
+  overlay.style.cssText='position:fixed;inset:0;background:rgba(0,0,0,0.55);z-index:9999;display:flex;align-items:center;justify-content:center;padding:20px';
+  overlay.innerHTML='<div style="background:var(--card);border-radius:20px;padding:32px 28px;width:100%;max-width:340px;text-align:center;box-shadow:0 12px 48px rgba(0,0,0,0.3)">'
+    +'<div style="font-size:60px;margin-bottom:8px">🤖</div>'
+    +'<div style="font-size:18px;font-weight:800;color:var(--text);margin-bottom:6px">AI is reading…</div>'
+    +'<div style="font-size:13px;color:var(--text-secondary);margin-bottom:16px;line-height:1.5">Extracting events from your email — this usually takes 3-8 seconds</div>'
+    +'<div style="width:32px;height:32px;border:3px solid #AF52DE;border-top-color:transparent;border-radius:16px;animation:spin 0.8s linear infinite;margin:0 auto"></div>'
+    +'</div>';
+  document.body.appendChild(overlay);
+
+  try{
+    const callable=httpsCallable(functions,'parseEmailWithAI');
+    const resp=await callable({
+      emailText:ei.content,
+      familyId:S.familyId||'',
+      contextHint:'Default category preference is '+(ei.defaultCategory||'school')+'.'
+    });
+    const data=resp?.data||{};
+    const aiEvents=Array.isArray(data.events)?data.events:[];
+    overlay.remove();
+
+    if(aiEvents.length===0){
+      notify('AI didn\'t find any events. Try the basic parser, or check the email content.','⚠️');
+      return;
+    }
+
+    // Map AI events into our preview format. AI provides per-event category, so we
+    // honor that (don't force the default).
+    const events=aiEvents.map(ev=>({
+      id:Math.random().toString(36).slice(2,9),
+      title:ev.title||'',
+      date:ev.date||'',
+      time:ev.time||'',
+      endTime:ev.endTime||'',
+      location:ev.location||'',
+      notes:ev.notes||'',
+      category:ev.category||ei.defaultCategory||'school',
+      raw:'AI: '+(ev.title||'').slice(0,80)
+    }));
+
+    S.emailPreview={
+      events,
+      sourceCategory:ei.defaultCategory,
+      participantIds:[...ei.participantIds],
+      source:'ai',
+      usage:data.usage
+    };
+    notify('AI found '+aiEvents.length+' event'+(aiEvents.length===1?'':'s')+' ✨','🤖');
+    go('emailPreview');
+  }catch(ex){
+    overlay.remove();
+    const detail=ex?.message||ex?.code||String(ex);
+    console.error('[ai-parse] failed:',ex);
+    notify('AI parse failed: '+detail,'❌');
+  }
 };
 
 // === EMAIL PREVIEW SCREEN ===
@@ -3968,7 +4048,13 @@ function sEmailPreview(){
     }
     const titleOk=!!(ev.title&&ev.title.trim());
     const dateOk=!!ev.date;
+    const evCat=ev.category||data.sourceCategory||'school';
+    const evCatMeta=EV_CATEGORIES.find(c=>c.id===evCat)||EV_CATEGORIES.find(c=>c.id==='other');
     return `<div style="padding:14px;border-bottom:1px solid var(--row-border);${(!titleOk||!dateOk)?'background:#FF3B3008':''}">
+      <div style="display:flex;align-items:center;gap:8px;margin-bottom:10px">
+        <div style="background:${evCatMeta.color}18;border:1px solid ${evCatMeta.color}55;border-radius:14px;padding:4px 10px;font-size:11px;font-weight:700;color:${evCatMeta.color};display:inline-flex;align-items:center;gap:4px">${evCatMeta.emoji} ${evCatMeta.label}</div>
+        ${ev.endTime?`<div style="font-size:11px;color:var(--text-secondary)">⏱ ${ev.time||'?'} – ${ev.endTime}</div>`:''}
+      </div>
       <div style="display:grid;grid-template-columns:auto 1fr;gap:8px 10px;align-items:center;margin-bottom:8px">
         <span style="font-size:11px;color:var(--text-secondary);font-weight:600">TITLE</span>
         <input type="text" value="${(ev.title||'').replace(/"/g,'&quot;')}" onchange="updateEmailEvent('${ev.id}','title',this.value)" style="padding:6px 10px;border-radius:8px;border:1px solid ${titleOk?'var(--border)':'#FF3B30'};font-size:13px;font-family:inherit;background:var(--card);color:var(--text);font-weight:600"/>
@@ -3982,8 +4068,9 @@ function sEmailPreview(){
         <span style="font-size:11px;color:var(--text-secondary);font-weight:600">@</span>
         <input type="text" value="${(ev.location||'').replace(/"/g,'&quot;')}" placeholder="Location (optional)" onchange="updateEmailEvent('${ev.id}','location',this.value)" style="padding:6px 10px;border-radius:8px;border:1px solid var(--border);font-size:13px;font-family:inherit;background:var(--card);color:var(--text)"/>
       </div>
+      ${ev.notes?`<div style="font-size:11px;color:var(--text-secondary);line-height:1.5;background:var(--bg);border-radius:6px;padding:6px 8px;margin-bottom:8px">📝 ${ev.notes}</div>`:''}
       <div style="display:flex;justify-content:space-between;align-items:center;margin-top:6px">
-        <div style="font-size:10px;color:var(--text-secondary);font-style:italic;flex:1;min-width:0;overflow:hidden;text-overflow:ellipsis;white-space:nowrap">${ev.raw?'Found in: "'+ev.raw.slice(0,80)+'…"':''}</div>
+        <div style="font-size:10px;color:var(--text-secondary);font-style:italic;flex:1;min-width:0;overflow:hidden;text-overflow:ellipsis;white-space:nowrap">${ev.raw?(data.source==='ai'?'🤖 ':'')+ev.raw.slice(0,80):''}</div>
         <button onclick="removeEmailEvent('${ev.id}')" style="font-size:11px;color:#FF3B30;font-weight:600;border:none;background:none;cursor:pointer;font-family:inherit;padding:4px 8px">Remove</button>
       </div>
     </div>`;
@@ -4001,7 +4088,10 @@ function sEmailPreview(){
         <div style="display:flex;align-items:center;gap:10px;margin-bottom:6px">
           <div style="width:38px;height:38px;border-radius:19px;background:${cat.color}18;border:2px solid ${cat.color};display:flex;align-items:center;justify-content:center;font-size:18px;flex-shrink:0">${cat.emoji}</div>
           <div style="flex:1;min-width:0">
-            <div style="font-size:16px;font-weight:800;color:var(--text);line-height:1.2">${events.length} event${events.length===1?'':'s'} detected</div>
+            <div style="display:flex;align-items:center;gap:6px;margin-bottom:2px">
+              <div style="font-size:16px;font-weight:800;color:var(--text);line-height:1.2">${events.length} event${events.length===1?'':'s'} detected</div>
+              ${data.source==='ai'?'<span style="font-size:10px;font-weight:700;padding:2px 8px;border-radius:8px;background:linear-gradient(135deg,#AF52DE,#5856D6);color:#fff">🤖 AI</span>':data.source==='basic'?'<span style="font-size:10px;font-weight:700;padding:2px 8px;border-radius:8px;background:var(--text-secondary);color:#fff">BASIC</span>':''}
+            </div>
             <div style="font-size:11px;color:var(--text-secondary)">Default category: ${cat.label}${participantNames.length?' · For: '+participantNames.join(', '):' · Family-wide'}</div>
           </div>
         </div>
@@ -4063,22 +4153,25 @@ window.commitEmailImport=async function(){
     else if(m)adultUid=data.participantIds[0];
   }
 
-  const cat=EV_CATEGORIES.find(c=>c.id===data.sourceCategory)||{emoji:'📅'};
-  const emoji=cat.emoji||'📅';
-
   let success=0;let failed=0;
   for(const ev of valid){
+    // Determine category: per-event (from AI) preferred over default
+    const eventCat=ev.category||data.sourceCategory||'school';
+    const catMeta=EV_CATEGORIES.find(c=>c.id===eventCat)||{emoji:'📅'};
+    const eventEmoji=catMeta.emoji||'📅';
+    // Combine time + endTime into a range string if both provided
+    const timeStr=ev.endTime?(ev.time||'')+' – '+ev.endTime:(ev.time||'');
     try{
       await fadd(['events'],{
         title:(ev.title||'').trim(),
-        emoji,
+        emoji:eventEmoji,
         participantIds:[...data.participantIds],childId,adultUid,
         freq:'once',
         date:ev.date,
         startDate:'',endDate:'',
         days:{Mon:false,Tue:false,Wed:false,Thu:false,Fri:false,Sat:false,Sun:false},
-        time:ev.time||'',
-        category:data.sourceCategory,
+        time:timeStr,
+        category:eventCat,
         sport:'',
         location:ev.location||'',
         dropoff:'',pickup:'',
