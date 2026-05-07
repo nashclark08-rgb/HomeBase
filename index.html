@@ -1542,11 +1542,56 @@ function sToday(){
 
       <!-- REMINDERS for the day being viewed (now BELOW activities, ABOVE dinners) -->
       ${(()=>{
-        const dueReminders=(S.reminders||[]).filter(r=>{
+        // Compute birthday "virtual reminders" for anyone with a DOB ≤10 days away.
+        // These are NOT stored — re-computed each render. Mixed into the dueReminders list.
+        const birthdayReminders=[];
+        if(isViewToday){
+          const allPeople=[
+            ...S.children.map(c=>({id:c.id,name:c.name,color:c.color,photo:c.photoURL,dob:c.dob,kind:'child'})),
+            ...members().map(m=>({id:m.uid,name:m.name,color:m.color,photo:m.photoURL,dob:m.dob,kind:'adult'}))
+          ];
+          const today0=new Date();today0.setHours(0,0,0,0);
+          allPeople.forEach(p=>{
+            if(!p.dob)return;
+            const dobParts=String(p.dob).split('-');
+            if(dobParts.length!==3)return;
+            const bMonth=parseInt(dobParts[1],10)-1;
+            const bDay=parseInt(dobParts[2],10);
+            if(isNaN(bMonth)||isNaN(bDay))return;
+            // Compute next occurrence (this year if upcoming, next year if past)
+            const thisYear=today0.getFullYear();
+            let next=new Date(thisYear,bMonth,bDay);
+            next.setHours(0,0,0,0);
+            if(next<today0)next=new Date(thisYear+1,bMonth,bDay);
+            const daysAway=Math.round((next-today0)/86400000);
+            if(daysAway<0||daysAway>10)return; // ≤10 day window only
+            // Compute age they'll turn (DOB year is preserved)
+            const dobYear=parseInt(dobParts[0],10);
+            const ageThen=isNaN(dobYear)?null:(next.getFullYear()-dobYear);
+            const countdown=daysAway===0?'🎉 Today!':daysAway===1?'Tomorrow':'in '+daysAway+' days';
+            const firstName=p.name.split(' ')[0];
+            birthdayReminders.push({
+              _isBirthday:true,
+              id:'bday-'+p.id,
+              text:'🎂 '+firstName+"'s birthday"+(ageThen?' (turning '+ageThen+')':''),
+              date:fd(next),
+              daysAway,
+              countdown,
+              person:p,
+              tcol:p.color||NAVY,
+              forKeys:[p.kind+':'+p.id]
+            });
+          });
+        }
+
+        const realReminders=(S.reminders||[]).filter(r=>{
           if(r.done)return false;
           if(r.mode==='ongoing')return viewDateStr<=r.date;
           return r.date===viewDateStr;
-        }).sort((a,b)=>{
+        });
+
+        // Combined list, sorted by date (closest first). Birthdays sort with their next date.
+        const dueReminders=[...realReminders,...birthdayReminders].sort((a,b)=>{
           const da=a.date||'9999-12-31';
           const db=b.date||'9999-12-31';
           return da.localeCompare(db);
@@ -1555,6 +1600,23 @@ function sToday(){
         return `<div class="sh" style="margin-bottom:6px">⏰ Reminders</div>
         <div class="card" style="margin-bottom:14px">
           ${dueReminders.map((r,i)=>{
+            // Birthday rows render differently — no checkbox, no delete X, tappable to profile
+            if(r._isBirthday){
+              const p=r.person;
+              const profileParams=p.kind==='adult'?`{kind:'adult',uid:'${p.id}'}`:`{kind:'child',childId:'${p.id}'}`;
+              const badgeBg=r.daysAway===0?'#FF3B30':r.daysAway<=3?'#FF9500':r.tcol;
+              return `<div class="row" onclick="go('personProfile',${profileParams})" style="border-bottom:${i<dueReminders.length-1?'1px solid var(--row-border)':'none'};cursor:pointer;background:linear-gradient(90deg,${r.tcol}10,transparent)">
+                <div style="width:36px;height:36px;border-radius:18px;background:${r.tcol}18;border:2px solid ${r.tcol};display:flex;align-items:center;justify-content:center;font-size:18px;flex-shrink:0">🎂</div>
+                <div style="flex:1;min-width:0">
+                  <div style="font-size:15px;color:var(--text);font-weight:700">${r.text}</div>
+                  <div style="display:flex;align-items:center;gap:6px;margin-top:3px">
+                    <span style="font-size:11px;font-weight:700;padding:2px 8px;border-radius:8px;background:${badgeBg};color:#fff">${r.countdown}</span>
+                    <span style="font-size:11px;color:var(--text-secondary)">${new Date(r.date+'T12:00').toLocaleDateString('en-AU',{weekday:'short',day:'numeric',month:'short'})}</span>
+                  </div>
+                </div>
+                <span style="color:${r.tcol};font-size:18px;opacity:0.7">›</span>
+              </div>`;
+            }
             const keys=Array.isArray(r.forKeys)&&r.forKeys.length?r.forKeys:(r.childId?['child:'+r.childId]:r.adultUid?['adult:'+r.adultUid]:[]);
             const targets=keys.map(k=>{
               if(k.startsWith('child:'))return S.children.find(c=>c.id===k.slice(6));
@@ -1645,14 +1707,14 @@ function sToday(){
     </div>
 
     <div class="fab">
-      ${S.fabOpen?`<div class="fab-menu">
-        <button class="fab-item" onclick="S.fabOpen=false;render();openVoiceQuickAdd()" style="background:#FF3B30">🎤 Voice quick add</button>
-        <button class="fab-item" onclick="S.fabOpen=false;quickAddEvent()" style="background:#34C759">⚡ Quick Event</button>
-        <button class="fab-item" onclick="S.fabOpen=false;openGiftPicker()" style="background:#FF6B9D">🎁 Add Gift Idea</button>
-        <button class="fab-item" onclick="S.fabOpen=false;openHandoffPicker()" style="background:#FF9500">🚗 Log a hand-off</button>
-        <button class="fab-item" onclick="S.fabOpen=false;go('addReminder')" style="background:#AF52DE">⏰ Set a reminder</button>
+      <button class="fab-btn" aria-label="Voice command" style="background:linear-gradient(135deg,#FF3B30,#AF52DE);font-size:28px;width:64px;height:64px;border-radius:32px;box-shadow:0 6px 24px rgba(255,59,48,0.45)" onclick="openVoiceQuickAdd()" oncontextmenu="event.preventDefault();S.fabOpen=true;render();return false">🎤</button>
+      ${S.fabOpen?`<div class="fab-menu" style="position:absolute;bottom:80px;right:0">
+        <button class="fab-item" onclick="S.fabOpen=false;quickAddEvent()" style="background:#34C759">📅 Add event manually</button>
+        <button class="fab-item" onclick="S.fabOpen=false;go('addReminder')" style="background:#AF52DE">⏰ Reminder manually</button>
+        <button class="fab-item" onclick="S.fabOpen=false;openGiftPicker()" style="background:#FF6B9D">🎁 Gift idea</button>
+        <button class="fab-item" onclick="S.fabOpen=false;openHandoffPicker()" style="background:#FF9500">🚗 Hand-off</button>
+        <button class="fab-item" onclick="S.fabOpen=false;render()" style="background:#8E8E93">✕ Close</button>
       </div>`:''}
-      <button class="fab-btn" style="background:${S.fabOpen?'#636366':NAVY};transform:${S.fabOpen?'rotate(45deg)':'none'}" onclick="S.fabOpen=!S.fabOpen;render()">+</button>
     </div>`;
 }
 
@@ -9010,7 +9072,8 @@ window.openVoiceQuickAdd=function(){
     <div id="voice-state-icon" style="font-size:60px;margin-bottom:8px">🎤</div>
     <div id="voice-state-title" style="font-size:18px;font-weight:800;color:var(--text);margin-bottom:8px">Tap to start speaking</div>
     <div id="voice-state-hint" style="font-size:12px;color:var(--text-secondary);line-height:1.5;margin-bottom:18px;min-height:34px">
-      Try: "Buy carrots and milk" · "Remind me to call school tomorrow" · "Gift idea for Olivia: blue scarf"
+      🤖 AI handles everything. Try:<br>
+      "Netball training Tuesday 5pm at Lavington" · "Remind me to pay school fees Friday" · "Add milk and bread"
     </div>
     <button id="voice-start-btn" onclick="startVoiceCapture()" style="width:88px;height:88px;border-radius:44px;background:#FF3B30;border:none;color:#fff;font-size:32px;cursor:pointer;font-family:inherit;display:flex;align-items:center;justify-content:center;margin:0 auto 16px;box-shadow:0 4px 16px rgba(255,59,48,0.3)">🎤</button>
     <div id="voice-transcript" style="font-size:15px;color:var(--text);line-height:1.5;min-height:40px;background:var(--bg);border-radius:10px;padding:10px;margin-bottom:14px;display:none"></div>
@@ -9112,8 +9175,14 @@ function finishVoiceCapture(transcript){
     if(btnEl){btnEl.textContent='🎤';btnEl.style.background='#FF3B30';btnEl.onclick=function(){startVoiceCapture();};}
     return;
   }
+  // Bold mode: ALWAYS hand off to AI for intent parsing.
+  // Falls back to local regex parser if AI is unavailable or rate-limited.
+  routeVoiceViaAI(transcript);
+}
 
-  const intent=parseVoiceIntent(transcript);
+// AI-powered voice routing: send transcript to parseVoiceCommand cloud function,
+// then render confirmation UI for each intent the AI returned.
+async function routeVoiceViaAI(transcript){
   const iconEl=document.getElementById('voice-state-icon');
   const titleEl=document.getElementById('voice-state-title');
   const hintEl=document.getElementById('voice-state-hint');
@@ -9122,86 +9191,242 @@ function finishVoiceCapture(transcript){
   const actionsEl=document.getElementById('voice-actions');
 
   if(transcriptEl){
+    transcriptEl.style.display='block';
     transcriptEl.innerHTML='<div style="font-size:11px;color:var(--text-secondary);font-weight:600;margin-bottom:4px">YOU SAID</div>'+transcript;
   }
   if(btnEl)btnEl.style.display='none';
+  if(iconEl)iconEl.textContent='🤖';
+  if(titleEl)titleEl.textContent='Understanding…';
+  if(hintEl)hintEl.innerHTML='<div style="font-size:12px;color:var(--text-secondary)">AI is parsing your command</div>';
 
-  let actionsHTML='';
-  if(intent.kind==='gift'){
-    // Try to resolve the recipient to a family member by first-name match
-    const hint=(intent.recipientHint||'').toLowerCase();
-    const allPeople=[
-      ...S.children.map(c=>({id:c.id,name:c.name,color:c.color||'#1C3A6B'})),
-      ...members().map(m=>({id:m.uid,name:m.name,color:m.color||'#1C3A6B'}))
-    ];
-    const matches=allPeople.filter(p=>{
-      const fn=p.name.split(' ')[0].toLowerCase();
-      return fn===hint||p.name.toLowerCase()===hint||p.name.toLowerCase().includes(hint);
-    });
-    if(iconEl)iconEl.textContent='🎁';
-    if(titleEl)titleEl.textContent='Add gift idea?';
-    if(matches.length===1){
-      const recipient=matches[0];
-      // Single match — show idea preview + Private/Open save buttons
-      if(hintEl)hintEl.innerHTML='<div style="background:var(--bg);border-radius:8px;padding:8px 10px;margin:3px 0;color:var(--text);text-align:left">'+
-        '<div style="font-size:11px;color:var(--text-secondary);font-weight:600">FOR</div>'+
-        '<div style="font-size:14px;font-weight:700;margin-bottom:6px">'+recipient.name+'</div>'+
-        '<div style="font-size:11px;color:var(--text-secondary);font-weight:600">IDEA</div>'+
-        '<div style="font-size:14px;font-weight:600">'+intent.idea+'</div>'+
-        '</div>';
-      actionsHTML=`
-        <button onclick='saveVoiceGift(${JSON.stringify(recipient.id)},${JSON.stringify(intent.idea)},true)' style="flex:1;padding:13px;border-radius:12px;background:#FF9500;border:none;color:#fff;font-size:13px;font-weight:700;cursor:pointer;font-family:inherit">🔒 Save private</button>
-        <button onclick='saveVoiceGift(${JSON.stringify(recipient.id)},${JSON.stringify(intent.idea)},false)' style="flex:1;padding:13px;border-radius:12px;background:#FF6B9D;border:none;color:#fff;font-size:13px;font-weight:700;cursor:pointer;font-family:inherit">👀 Save open</button>`;
-    }else if(matches.length>1){
-      // Ambiguous — show buttons for each candidate
-      if(hintEl)hintEl.innerHTML='<div style="font-size:13px;color:var(--text);margin-bottom:6px">Idea: <strong>'+intent.idea+'</strong></div><div style="font-size:12px;color:var(--text-secondary)">Who is "'+intent.recipientHint+'"?</div>';
-      actionsHTML=matches.map(p=>`<button onclick='S._giftIdeaPending=${JSON.stringify({recipientId:p.id,idea:intent.idea})};showGiftPrivacyPicker()' style="flex:1;padding:13px;border-radius:12px;background:${p.color};border:none;color:#fff;font-size:13px;font-weight:700;cursor:pointer;font-family:inherit">${p.name.split(' ')[0]}</button>`).join('');
-    }else{
-      // No match — show all family members as picker
-      if(hintEl)hintEl.innerHTML='<div style="font-size:13px;color:var(--text);margin-bottom:8px">Idea: <strong>'+intent.idea+'</strong></div><div style="font-size:12px;color:var(--text-secondary);margin-bottom:6px">Couldn\'t find "'+intent.recipientHint+'". Pick recipient:</div>';
-      if(allPeople.length===0){
-        actionsHTML='<div style="flex:1;text-align:center;font-size:12px;color:var(--text-secondary);padding:10px">Add family members first</div>';
-      }else{
-        actionsHTML='<div style="flex:1;display:flex;flex-wrap:wrap;gap:6px">'+
-          allPeople.map(p=>`<button onclick='S._giftIdeaPending=${JSON.stringify({recipientId:p.id,idea:intent.idea})};showGiftPrivacyPicker()' style="padding:8px 12px;border-radius:10px;background:${p.color};border:none;color:#fff;font-size:12px;font-weight:700;cursor:pointer;font-family:inherit">${p.name.split(' ')[0]}</button>`).join('')+
-          '</div>';
-      }
+  // Pull people hints for the AI so it can match names
+  const peopleHints=[
+    ...S.children.map(c=>({name:c.name,kind:'child'})),
+    ...members().map(m=>({name:m.name,kind:'adult'}))
+  ];
+
+  // Try AI first
+  try{
+    if(typeof httpsCallable==='undefined'||!functions){
+      throw new Error('Cloud functions unavailable');
     }
-  }else if(intent.kind==='grocery'&&intent.items.length>0){
-    if(iconEl)iconEl.textContent='🛒';
-    if(titleEl)titleEl.textContent='Add to shopping list?';
-    if(hintEl)hintEl.innerHTML=intent.items.map(i=>'<div style="background:var(--bg);border-radius:8px;padding:6px 10px;margin:3px 0;font-weight:600;color:var(--text)">• '+i+'</div>').join('');
-    actionsHTML=`
-      <button onclick='saveVoiceGrocery(${JSON.stringify(intent.items)})' style="flex:2;padding:13px;border-radius:12px;background:#34C759;border:none;color:#fff;font-size:14px;font-weight:700;cursor:pointer;font-family:inherit">Add ${intent.items.length} item${intent.items.length===1?'':'s'}</button>
-      <button onclick="saveVoiceAsReminder(${JSON.stringify(transcript)})" style="flex:1;padding:13px;border-radius:12px;background:var(--bg);border:none;color:var(--text);font-size:13px;font-weight:600;cursor:pointer;font-family:inherit">Reminder?</button>`;
-  }else if(intent.kind==='reminder'){
-    const parsed=extractDateTimeFromPhrase(intent.raw);
-    if(iconEl)iconEl.textContent='⏰';
-    if(titleEl)titleEl.textContent='Save as reminder?';
-    if(hintEl)hintEl.innerHTML='<div style="background:var(--bg);border-radius:8px;padding:8px 10px;margin:3px 0;color:var(--text);text-align:left">'+
-      '<div style="font-weight:700;font-size:14px">'+(parsed.text||intent.raw)+'</div>'+
-      (parsed.date||parsed.time?'<div style="font-size:11px;color:var(--text-secondary);margin-top:3px">'+(parsed.date?'📅 '+parsed.date:'')+(parsed.date&&parsed.time?' · ':'')+(parsed.time?'⏰ '+parsed.time:'')+'</div>':'')+
-      '</div>';
-    const safeText=parsed.text||intent.raw;
-    const safeDate=parsed.date||fd(new Date());
-    actionsHTML=`<button onclick='saveVoiceReminder(${JSON.stringify(safeText)},${JSON.stringify(safeDate)})' style="flex:1;padding:13px;border-radius:12px;background:#AF52DE;border:none;color:#fff;font-size:14px;font-weight:700;cursor:pointer;font-family:inherit">Save reminder</button>`;
-  }else{
-    if(iconEl)iconEl.textContent='🤔';
+    const aiCall=httpsCallable(functions,'parseVoiceCommand');
+    const resp=await aiCall({
+      transcript,
+      familyId:S.familyId||'',
+      peopleHints
+    });
+    const data=resp?.data||{};
+    const intents=Array.isArray(data.intents)?data.intents:[];
+    console.log('[voice-ai] intents:',intents,'confidence:',data.confidence);
+    if(intents.length===0){
+      throw new Error('AI returned no intents');
+    }
+    renderVoiceIntentConfirmation(intents,data.summary,transcript);
+  }catch(e){
+    console.warn('[voice-ai] failed, falling back to local parser:',e);
+    // Fall back to old regex parser so user is never stuck
     if(titleEl)titleEl.textContent='Save it as…';
-    if(hintEl)hintEl.innerHTML='<em style="color:var(--text-secondary);font-size:12px">Couldn\'t auto-detect — pick one:</em>';
-    actionsHTML=`
-      <button onclick='saveVoiceAsReminder(${JSON.stringify(transcript)})' style="flex:1;padding:13px;border-radius:12px;background:#AF52DE;border:none;color:#fff;font-size:13px;font-weight:700;cursor:pointer;font-family:inherit">⏰ Reminder</button>
-      <button onclick='saveVoiceAsGroceryRaw(${JSON.stringify(transcript)})' style="flex:1;padding:13px;border-radius:12px;background:#34C759;border:none;color:#fff;font-size:13px;font-weight:700;cursor:pointer;font-family:inherit">🛒 Shopping</button>`;
+    if(hintEl)hintEl.innerHTML='<div style="font-size:11px;color:#FF9500;line-height:1.4">⚠️ AI unavailable — pick a destination:</div>';
+    if(actionsEl){
+      actionsEl.style.display='flex';
+      actionsEl.style.gap='8px';
+      actionsEl.style.marginTop='6px';
+      actionsEl.innerHTML=`
+        <button onclick='saveVoiceAsReminder(${JSON.stringify(transcript)})' style="flex:1;padding:13px;border-radius:12px;background:#AF52DE;border:none;color:#fff;font-size:13px;font-weight:700;cursor:pointer;font-family:inherit">⏰ Reminder</button>
+        <button onclick='saveVoiceAsGroceryRaw(${JSON.stringify(transcript)})' style="flex:1;padding:13px;border-radius:12px;background:#34C759;border:none;color:#fff;font-size:13px;font-weight:700;cursor:pointer;font-family:inherit">🛒 Shopping</button>
+        <button onclick="closeVoiceQuickAdd()" style="padding:13px;border-radius:12px;background:var(--bg);border:none;color:var(--text-secondary);font-size:13px;font-weight:600;cursor:pointer;font-family:inherit">Cancel</button>`;
+    }
+  }
+}
+
+// Render a list of intents with per-intent Approve/Skip controls
+function renderVoiceIntentConfirmation(intents,summary,transcript){
+  const iconEl=document.getElementById('voice-state-icon');
+  const titleEl=document.getElementById('voice-state-title');
+  const hintEl=document.getElementById('voice-state-hint');
+  const actionsEl=document.getElementById('voice-actions');
+  // Stash intents on window so onclick handlers can grab by index
+  window._voiceIntents=intents;
+
+  if(iconEl)iconEl.textContent='🤖';
+  if(titleEl)titleEl.textContent=intents.length===1?'Got it!':intents.length+' things to add';
+
+  // Render each intent as a preview card
+  const cards=intents.map((it,idx)=>{
+    let icon='📌',title='Item',details='';
+    if(it.type==='event'){
+      icon='📅';title=it.title||'Event';
+      const parts=[];
+      if(it.freq&&it.freq!=='once')parts.push(it.freq+(Array.isArray(it.days)&&it.days.length?' on '+it.days.join(', '):''));
+      if(it.date)parts.push(it.freq==='once'?new Date(it.date+'T12:00').toLocaleDateString('en-AU',{weekday:'short',day:'numeric',month:'short'}):'from '+it.date);
+      if(it.time)parts.push('⏰ '+it.time+(it.endTime?'–'+it.endTime:''));
+      if(it.location)parts.push('📍 '+it.location);
+      if(Array.isArray(it.participants)&&it.participants.length)parts.push('👥 '+it.participants.join(', '));
+      details=parts.join(' · ');
+    }else if(it.type==='reminder'){
+      icon='⏰';title=it.text||'Reminder';
+      const parts=[];
+      if(it.date)parts.push(it.mode==='ongoing'?'by '+it.date:'on '+it.date);
+      if(Array.isArray(it.forNames)&&it.forNames.length)parts.push('for '+it.forNames.join(', '));
+      details=parts.join(' · ')||'(no date)';
+    }else if(it.type==='grocery'){
+      icon='🛒';title='Shopping list';
+      const items=Array.isArray(it.items)?it.items:[];
+      details=items.map(i=>i.label+(i.quantity>1?' ×'+i.quantity:'')).join(', ');
+    }else if(it.type==='gift'){
+      icon='🎁';title='Gift idea: '+(it.idea||'—');
+      details='for '+(it.for||'?')+(it.occasion?' · '+it.occasion:'');
+    }else if(it.type==='dinner'){
+      icon='🍽️';title='Dinner: '+(it.meal||'—');
+      details=it.date?new Date(it.date+'T12:00').toLocaleDateString('en-AU',{weekday:'short',day:'numeric',month:'short'}):'';
+    }
+    return `<div style="background:var(--bg);border-radius:10px;padding:10px 12px;margin-bottom:6px;text-align:left;display:flex;align-items:flex-start;gap:10px">
+      <div style="font-size:20px;line-height:1;flex-shrink:0">${icon}</div>
+      <div style="flex:1;min-width:0">
+        <div style="font-size:13px;font-weight:700;color:var(--text)">${title}</div>
+        ${details?`<div style="font-size:11px;color:var(--text-secondary);margin-top:2px;line-height:1.4">${details}</div>`:''}
+      </div>
+    </div>`;
+  }).join('');
+
+  if(hintEl){
+    hintEl.style.minHeight='auto';
+    hintEl.innerHTML=cards+(summary?`<div style="font-size:10px;color:var(--text-secondary);font-style:italic;margin-top:6px">${summary}</div>`:'');
   }
 
   if(actionsEl){
     actionsEl.style.display='flex';
     actionsEl.style.gap='8px';
-    actionsEl.style.marginTop='6px';
-    actionsEl.innerHTML=actionsHTML+
-      '<button onclick="closeVoiceQuickAdd()" style="padding:13px;border-radius:12px;background:var(--bg);border:none;color:var(--text-secondary);font-size:13px;font-weight:600;cursor:pointer;font-family:inherit">Cancel</button>';
+    actionsEl.style.marginTop='10px';
+    actionsEl.innerHTML=`
+      <button onclick="saveAllVoiceIntents()" style="flex:2;padding:13px;border-radius:12px;background:#34C759;border:none;color:#fff;font-size:14px;font-weight:700;cursor:pointer;font-family:inherit">✓ Save all</button>
+      <button onclick="closeVoiceQuickAdd()" style="flex:1;padding:13px;border-radius:12px;background:var(--bg);border:none;color:var(--text-secondary);font-size:13px;font-weight:600;cursor:pointer;font-family:inherit">Cancel</button>`;
   }
 }
+
+// Save all the AI-extracted intents — events go to events, reminders to reminders, etc.
+window.saveAllVoiceIntents=async function(){
+  const intents=window._voiceIntents||[];
+  if(!intents.length){closeVoiceQuickAdd();return;}
+  let saved=0,failed=0;
+  const results=[];
+  for(const it of intents){
+    try{
+      if(it.type==='event'){
+        // Map participant names → IDs
+        const allPeople=[
+          ...S.children.map(c=>({id:c.id,name:c.name,kind:'child'})),
+          ...members().map(m=>({id:m.uid,name:m.name,kind:'adult'}))
+        ];
+        const participantIds=[];
+        if(Array.isArray(it.participants)){
+          it.participants.forEach(name=>{
+            const norm=String(name).toLowerCase().trim();
+            const match=allPeople.find(p=>p.name.split(' ')[0].toLowerCase()===norm||p.name.toLowerCase()===norm);
+            if(match)participantIds.push(match.id);
+          });
+        }
+        const evCat=it.category||'other';
+        const catMeta=EV_CATEGORIES.find(c=>c.id===evCat)||{emoji:'📅'};
+        const days={Mon:false,Tue:false,Wed:false,Thu:false,Fri:false,Sat:false,Sun:false};
+        if(it.freq&&it.freq!=='once'&&Array.isArray(it.days)){
+          it.days.forEach(d=>{if(days.hasOwnProperty(d))days[d]=true;});
+        }
+        const timeStr=it.time?(it.endTime?it.time+' – '+it.endTime:it.time):'';
+        await fadd(['events'],{
+          title:(it.title||'').trim(),
+          emoji:catMeta.emoji||'📅',
+          participantIds,childId:'',adultUid:'',
+          freq:it.freq||'once',
+          date:it.freq==='once'?(it.date||''):'',
+          startDate:it.freq!=='once'?(it.date||''):'',
+          endDate:it.endDate||'',
+          days,
+          time:timeStr,
+          category:evCat,
+          sport:'',
+          location:it.location||'',
+          dropoff:'',pickup:'',
+          packItems:[],
+          notes:it.notes||''
+        });
+        saved++;results.push('📅 '+it.title);
+      }else if(it.type==='reminder'){
+        const allPeople=[
+          ...S.children.map(c=>({id:c.id,name:c.name,kind:'child'})),
+          ...members().map(m=>({id:m.uid,name:m.name,kind:'adult'}))
+        ];
+        const forKeys=[];
+        if(Array.isArray(it.forNames)){
+          it.forNames.forEach(name=>{
+            const norm=String(name).toLowerCase().trim();
+            const match=allPeople.find(p=>p.name.split(' ')[0].toLowerCase()===norm||p.name.toLowerCase()===norm);
+            if(match)forKeys.push(match.kind+':'+match.id);
+          });
+        }
+        await fadd(['reminders'],{
+          text:(it.text||'').trim(),
+          date:it.date||'',
+          mode:it.mode||'ondate',
+          forKeys,
+          done:false,
+          createdBy:S.user?.uid||''
+        });
+        saved++;results.push('⏰ '+it.text);
+      }else if(it.type==='grocery'){
+        const items=Array.isArray(it.items)?it.items:[];
+        for(const i of items){
+          await fadd(['groceries'],{
+            label:(i.label||'').trim(),
+            quantity:Math.max(1,parseInt(i.quantity)||1),
+            checked:false,
+            addedToList:true,
+            createdAt:new Date()
+          });
+        }
+        if(items.length){saved+=items.length;results.push('🛒 '+items.length+' item'+(items.length===1?'':'s'));}
+      }else if(it.type==='gift'){
+        const allPeople=[
+          ...S.children.map(c=>({id:c.id,name:c.name})),
+          ...members().map(m=>({id:m.uid,name:m.name}))
+        ];
+        const norm=String(it.for||'').toLowerCase().trim();
+        const match=allPeople.find(p=>p.name.split(' ')[0].toLowerCase()===norm||p.name.toLowerCase()===norm);
+        if(match){
+          await fadd(['gifts'],{
+            recipientId:match.id,
+            idea:(it.idea||'').trim(),
+            occasion:it.occasion||'',
+            estimatedCost:it.estimatedCost||null,
+            isPrivate:false,
+            createdBy:S.user?.uid||'',
+            createdAt:new Date()
+          });
+          saved++;results.push('🎁 '+match.name.split(' ')[0]+': '+it.idea);
+        }else{failed++;}
+      }else if(it.type==='dinner'){
+        await fadd(['dinners'],{
+          meal:(it.meal||'').trim(),
+          date:it.date||fd(new Date()),
+          cook:it.cook||'',
+          createdAt:new Date()
+        });
+        saved++;results.push('🍽️ '+it.meal);
+      }
+    }catch(ex){
+      console.error('Failed to save intent',it,ex);
+      failed++;
+    }
+  }
+  closeVoiceQuickAdd();
+  if(failed===0){
+    notify('✅ '+results.join(' · '),'🤖');
+  }else{
+    notify('Saved '+saved+', '+failed+' failed','⚠️');
+  }
+};
+
 
 window.saveVoiceGrocery=async function(items){
   if(typeof items==='string'){try{items=JSON.parse(items);}catch(e){items=[items];}}
