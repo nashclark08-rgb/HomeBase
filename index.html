@@ -1639,13 +1639,6 @@ function sAddEvent(){
     <div class="scroll-view" style="padding:16px;max-width:560px;margin:auto;width:100%">
       <div style="display:flex;flex-direction:column;gap:14px">
         <input class="input" id="et" type="text" placeholder="Event title (e.g. Soccer Training)" value="${(ef.title||'').replace(/"/g,'&quot;')}"/>
-        
-        <div>
-          <div style="font-size:14px;font-weight:600;margin-bottom:8px">Icon</div>
-          <div style="display:flex;gap:6px;flex-wrap:wrap">
-            ${EMOJIS.map((e,i)=>`<button onclick="pickEmoji('${e}',${i})" id="ep${i}" style="width:40px;height:40px;border-radius:10px;border:${ef.emoji===e?'3px solid #1C3A6B':'3px solid transparent'};background:#F2F2F7;font-size:20px;cursor:pointer">${e}</button>`).join('')}
-          </div>
-        </div>
 
         <div>
           <div style="font-size:14px;font-weight:600;margin-bottom:8px">👨‍👩‍👧 Who's participating?</div>
@@ -1791,7 +1784,12 @@ function sCalendar(){
   const view=S.calView||'day'; // 'day' or 'week'
   const wStart=new Date(today);
   wStart.setDate(today.getDate()-today.getDay()+1+S.calWeekOffset*7);
-  const wDates=Array.from({length:7},(_,i)=>{const d=new Date(wStart);d.setDate(wStart.getDate()+i);return d;});
+  const allWDates=Array.from({length:7},(_,i)=>{const d=new Date(wStart);d.setDate(wStart.getDate()+i);return d;});
+  // For the CURRENT week, hide past days so the strip shrinks as the week progresses.
+  // Past/future weeks always show all 7 days.
+  const wDates=S.calWeekOffset===0
+    ? allWDates.filter(d=>fd(d)>=todayStr)
+    : allWDates;
   const sel=S.calDate||todayStr;
 
   // Helper: get events for a specific date
@@ -2354,24 +2352,24 @@ async function downloadEventTemplate(){
     const today=new Date();
     const dateStamp=fd(today);
 
-    const headers=['Title','Type','Sport','Frequency','Date','Days','Start Date','End Date','Time','Location','Drop-off','Pick-up','Participants','Notes'];
-    // Sample rows showing different scenarios
+    const headers=['Participants','Title','Type','Sport','Frequency','Date','Days','Start Date','End Date','Time','Location','Drop-off','Pick-up','Notes'];
+    // Sample rows showing different scenarios — Participants now first column
     const samples=[
-      ['Water Polo Training','Training','Water Polo','Weekly','','Mon,Wed','2026-05-06','2026-09-26','5:30pm – 6:30pm','GT Aquatics','Nash Clark','Olivia Clark','Alby','Bring goggles + cap'],
-      ['Water Polo · Round 1','Game','Water Polo','Once','2026-05-10','','','','9:00am – 10:00am','Albury Pool','Olivia Clark','Olivia Clark','Alby',''],
-      ['Cross Country Carnival','School','','Once','2026-05-15','','','','9:30am','School oval','Nash Clark','Nash Clark','Alby, Hattie','Wear sports uniform'],
-      ['Piano Lesson','Music','','Weekly','','Thu','2026-05-06','','4:00pm – 4:45pm','Mrs Smith\'s','Nash Clark','Nash Clark','Hattie','Bring sheet music'],
-      ['Dentist','Medical','','Once','2026-05-20','','','','3:30pm','Albury Dental','Olivia Clark','','Alby','Cleaning + check'],
+      ['Alby','Water Polo Training','Training','Water Polo','Weekly','','Mon,Wed','2026-05-06','2026-09-26','5:30pm – 6:30pm','GT Aquatics','Nash Clark','Olivia Clark','Bring goggles + cap'],
+      ['Alby','Water Polo · Round 1','Game','Water Polo','Once','2026-05-10','','','','9:00am – 10:00am','Albury Pool','Olivia Clark','Olivia Clark',''],
+      ['Alby, Hattie','Cross Country Carnival','School','','Once','2026-05-15','','','','9:30am','School oval','Nash Clark','Nash Clark','Wear sports uniform'],
+      ['Hattie','Piano Lesson','Music','','Weekly','','Thu','2026-05-06','','4:00pm – 4:45pm','Mrs Smith\'s','Nash Clark','Nash Clark','Bring sheet music'],
+      ['Alby','Dentist','Medical','','Once','2026-05-20','','','','3:30pm','Albury Dental','Olivia Clark','','Cleaning + check'],
       ['','','','','','','','','','','','','','']
     ];
 
     const rows=[headers,...samples];
     const ws=XLSX.utils.aoa_to_sheet(rows);
 
-    // Set column widths so it's readable when opened
+    // Column widths — Participants gets a wider column since it's now first
     ws['!cols']=[
-      {wch:24},{wch:10},{wch:14},{wch:11},{wch:11},{wch:14},{wch:11},{wch:11},
-      {wch:18},{wch:22},{wch:14},{wch:14},{wch:18},{wch:30}
+      {wch:18},{wch:24},{wch:10},{wch:14},{wch:11},{wch:11},{wch:14},{wch:11},{wch:11},
+      {wch:18},{wch:22},{wch:14},{wch:14},{wch:30}
     ];
 
     // Instructions sheet — leads with prominent family name
@@ -2915,13 +2913,35 @@ function parseLooseTime(s){
   return '';
 }
 
+// Page-footer / pagination noise to skip
+const FIXTURE_NOISE_PATTERNS=[
+  /^page\s+\d+\s+of\s+\d+$/i,
+  /^\d+\s*\/\s*\d+$/, // "1 / 13"
+  /^last\s+updated/i,
+  /^season\s+\d+/i,
+  /^round\s+\d+\s*$/i, // standalone round headers
+  /^sponsored\s+by/i,
+  /^©|copyright|all rights reserved/i,
+  /^view\s+all|^show\s+more|^load\s+more/i
+];
+function isFixtureNoise(s){
+  if(!s)return true;
+  const trimmed=String(s).trim();
+  if(trimmed.length<2)return true;
+  return FIXTURE_NOISE_PATTERNS.some(p=>p.test(trimmed));
+}
+
 // Parse an array of "cells" (strings) into a fixture object, or null if not a fixture.
-// Strategy: a fixture row must contain a parseable date.
-function parseRowAsFixture(cells){
+// myTeamName (optional): user's team name. When set, only rows containing this team
+// are returned, and the OTHER team in the row is treated as the opponent.
+function parseRowAsFixture(cells,myTeamName){
   if(!cells||cells.length<2)return null;
   // Skip totally empty
   const nonEmpty=cells.filter(c=>c&&c.trim());
   if(nonEmpty.length<2)return null;
+  // Filter noise rows (page numbers, copyright lines, etc.)
+  if(nonEmpty.every(isFixtureNoise))return null;
+  if(nonEmpty.some(c=>FIXTURE_NOISE_PATTERNS.some(p=>p.test(String(c).trim()))) && nonEmpty.length<=2)return null;
 
   // Find date-like cell
   let dateStr='';let dateIdx=-1;
@@ -2929,7 +2949,7 @@ function parseRowAsFixture(cells){
     const d=parseLooseDate(cells[i]);
     if(d){dateStr=d;dateIdx=i;break;}
   }
-  // Also try concatenating short adjacent cells (PDFs sometimes split "Sat" / "10" / "May" / "2026")
+  // Try concatenating short adjacent cells (PDFs sometimes split "Sat" / "10" / "May" / "2026")
   if(!dateStr){
     for(let i=0;i<cells.length-1;i++){
       const combined=cells[i]+' '+cells[i+1]+(cells[i+2]?' '+cells[i+2]:'')+(cells[i+3]?' '+cells[i+3]:'');
@@ -2940,12 +2960,54 @@ function parseRowAsFixture(cells){
   if(!dateStr)return null;
 
   // Find time-like cell
-  let timeStr='';
-  for(const cell of cells){
-    const t=parseLooseTime(cell);
-    if(t){timeStr=t;break;}
+  let timeStr='',timeIdx=-1;
+  for(let i=0;i<cells.length;i++){
+    const t=parseLooseTime(cells[i]);
+    if(t){timeStr=t;timeIdx=i;break;}
   }
 
+  // ── TEAM-AWARE PARSING (when user gave us their team name) ──
+  if(myTeamName&&myTeamName.trim()){
+    const fullTeamLower=myTeamName.toLowerCase().trim();
+    // Build a list of "tokens" to match — full string + any non-trivial words.
+    // E.g. "Hockey - Norths U14" → ['hockey - norths u14', 'hockey', 'norths', 'u14']
+    // This way the user can paste a verbose label but match the simple cell text.
+    const stopWords=new Set(['the','a','an','and','or','of','for','to','in','on','at','-','–','—','&','/','\\']);
+    const tokens=[fullTeamLower];
+    fullTeamLower.split(/[\s\-–—\/&]+/).forEach(t=>{
+      if(t&&t.length>=2&&!stopWords.has(t))tokens.push(t);
+    });
+    // Find any cell whose text contains any of our tokens
+    let myCellIdx=-1;
+    let matchedToken='';
+    for(let i=0;i<cells.length;i++){
+      const cellLow=(cells[i]||'').toLowerCase();
+      for(const tok of tokens){
+        if(cellLow.includes(tok)){myCellIdx=i;matchedToken=tok;break;}
+      }
+      if(myCellIdx>=0)break;
+    }
+    if(myCellIdx<0)return null; // doesn't involve this team — skip
+
+    // Find the OTHER team-like cell (not date, not time, not our team, not too short, not pure court name)
+    let opponent='';
+    let venue='';
+    for(let i=0;i<cells.length;i++){
+      if(i===dateIdx||i===timeIdx||i===myCellIdx)continue;
+      const c=(cells[i]||'').trim();
+      if(!c||c.length<2)continue;
+      if(isFixtureNoise(c))continue;
+      // Court/venue names are short with digits or "field/court/pitch"
+      const isVenueLike=/(?:court|field|pitch|oval|pool|gym|rink|diamond|park|centre|arena|complex|stadium|grounds?)/i.test(c)||/^[a-z]+\s*\d+$/i.test(c);
+      if(isVenueLike&&!venue){venue=c;continue;}
+      // Otherwise treat as opponent (first non-our-team team cell)
+      if(!opponent)opponent=c.replace(/^[\W_]+|[\W_]+$/g,'');
+    }
+    if(!opponent)return null; // need an opponent
+    return {date:dateStr,time:timeStr,opponent,venue,raw:cells.join(' | ')};
+  }
+
+  // ── GENERIC PARSING (no team name provided) ──
   // Find opponent
   let opponent='';
   // Pattern A: "vs Lions", "v. Lions", "v Lions"
@@ -2956,16 +3018,14 @@ function parseRowAsFixture(cells){
   // Pattern B: longest-looking name cell that isn't date/time/venue keyword
   if(!opponent){
     const candidates=cells.filter((c,i)=>{
-      if(i===dateIdx)return false;
+      if(i===dateIdx||i===timeIdx)return false;
       if(!c||c.trim().length<3)return false;
-      if(parseLooseTime(c)===c.trim())return false;
+      if(isFixtureNoise(c))return false;
       if(/^(home|away|bye|round|game|match|fixture|tba|tbd)$/i.test(c.trim()))return false;
       return true;
     });
-    // Prefer one that doesn't contain venue keywords
-    const teamLikely=candidates.find(c=>!/(?:pool|court|field|oval|park|centre|center|stadium|gym|complex|arena|grounds|ground|club\s+house|sports\s+ground)/i.test(c));
+    const teamLikely=candidates.find(c=>!/(?:pool|court|field|oval|park|centre|center|stadium|gym|complex|arena|grounds|club\s+house|sports\s+ground)/i.test(c));
     opponent=teamLikely||candidates[0]||'';
-    // Trim weird trailing/leading punctuation
     opponent=opponent.replace(/^[\W_]+|[\W_]+$/g,'');
   }
 
@@ -2983,7 +3043,7 @@ function parseRowAsFixture(cells){
 }
 
 // Parse fixtures from raw HTML. Walks tables + lists.
-function parseFixturesFromHTML(html){
+function parseFixturesFromHTML(html,myTeamName){
   const parser=new DOMParser();
   const doc=parser.parseFromString(html,'text/html');
   const fixtures=[];
@@ -2995,7 +3055,7 @@ function parseFixturesFromHTML(html){
     const rows=table.querySelectorAll('tr');
     for(const tr of rows){
       const cells=[...tr.querySelectorAll('td,th')].map(td=>(td.textContent||'').replace(/\s+/g,' ').trim());
-      const f=parseRowAsFixture(cells);
+      const f=parseRowAsFixture(cells,myTeamName);
       if(f){
         const key=f.date+'|'+f.time+'|'+f.opponent;
         if(!seen.has(key)){seen.add(key);fixtures.push(f);}
@@ -3011,7 +3071,7 @@ function parseFixturesFromHTML(html){
       const text=(b.textContent||'').replace(/\s*\n\s*/g,'\n').trim();
       const lines=text.split('\n').map(l=>l.trim()).filter(Boolean);
       // Treat lines as cells
-      const f=parseRowAsFixture(lines);
+      const f=parseRowAsFixture(lines,myTeamName);
       if(f){
         const key=f.date+'|'+f.time+'|'+f.opponent;
         if(!seen.has(key)){seen.add(key);fixtures.push(f);}
@@ -3023,7 +3083,7 @@ function parseFixturesFromHTML(html){
 }
 
 // Parse fixtures from a PDF file. Uses positional Y-coordinate grouping into lines.
-async function parseFixturesFromPDF(file){
+async function parseFixturesFromPDF(file,myTeamName){
   await loadPDFJS();
   const buf=await file.arrayBuffer();
   const pdf=await window.pdfjsLib.getDocument({data:buf}).promise;
@@ -3062,7 +3122,7 @@ async function parseFixturesFromPDF(file){
       // Now also try whole-line as one string + split on multi-space
       const wholeLine=cells.join('  ');
       const altCells=wholeLine.split(/\s{2,}|\t+/).map(s=>s.trim()).filter(Boolean);
-      const f=parseRowAsFixture(altCells.length>cells.length?altCells:cells)||parseRowAsFixture([wholeLine]);
+      const f=parseRowAsFixture(altCells.length>cells.length?altCells:cells,myTeamName)||parseRowAsFixture([wholeLine],myTeamName);
       if(f){
         const key=f.date+'|'+f.time+'|'+f.opponent;
         if(!seen.has(key)){seen.add(key);fixtures.push(f);}
@@ -3073,7 +3133,7 @@ async function parseFixturesFromPDF(file){
 }
 
 // Fetch a URL via cloud function (bypasses CORS) and parse fixtures from the HTML
-async function fetchAndParseFixturesFromURL(url){
+async function fetchAndParseFixturesFromURL(url,myTeamName){
   let resp;
   try{
     const callable=httpsCallable(functions,'fetchSportFixtures');
@@ -3087,8 +3147,13 @@ async function fetchAndParseFixturesFromURL(url){
   }
   const html=resp?.data?.html;
   if(!html)throw new Error('No HTML returned from URL');
-  const fixtures=parseFixturesFromHTML(html);
-  if(fixtures.length===0)throw new Error('Didn\'t spot any fixtures on that page. The page might use an unusual format — try copying the fixtures into the spreadsheet template instead.');
+  const fixtures=parseFixturesFromHTML(html,myTeamName);
+  if(fixtures.length===0){
+    if(myTeamName){
+      throw new Error('No fixtures found containing team "'+myTeamName+'". Check the spelling, or clear the team field to see all fixtures.');
+    }
+    throw new Error('Didn\'t spot any fixtures on that page. The page might use an unusual format — try copying the fixtures into the spreadsheet template instead.');
+  }
   return fixtures;
 }
 
@@ -3096,9 +3161,20 @@ async function fetchAndParseFixturesFromURL(url){
 function sFixturesImport(){
   // Initialise import state if not already there
   if(!S.fixtureImport){
+    // Pre-fill team name if we have one for the most recently used sport (or first family sport)
+    const familyTeams=S.family?.sportTeams||{};
+    const familySports=Array.isArray(S.family?.sports)?S.family.sports:[];
+    let initSport='';
+    let initTeam='';
+    // If only one family sport with a team, pre-select it
+    if(familySports.length===1&&familyTeams[familySports[0]]){
+      initSport=familySports[0];
+      initTeam=familyTeams[initSport];
+    }
     S.fixtureImport={
       type:'sport-games', // 'sport-games' or 'sport-training'
-      sport:'',
+      sport:initSport,
+      myTeam:initTeam, // e.g. "Norths" — used to filter rows + identify opponent
       participantIds:[],
       url:'',
       busy:false
@@ -3138,8 +3214,12 @@ function sFixturesImport(){
           </div>
 
           <div style="font-size:12px;color:var(--text-secondary);margin-bottom:6px;font-weight:600">Sport <span style="color:#FF3B30">*</span></div>
-          ${familySports.length>0?`<div style="display:flex;flex-wrap:wrap;gap:6px;margin-bottom:8px">${familySports.map(s=>{const safe=s.replace(/'/g,"\\'");return `<button onclick="S.fixtureImport.sport='${safe}';document.getElementById('fi-sport-input').value='${safe}';render()" class="freq-btn ${fi.sport===s?'on':''}" style="padding:6px 12px;font-size:12px">${s}</button>`;}).join('')}</div>`:''}
+          ${familySports.length>0?`<div style="display:flex;flex-wrap:wrap;gap:6px;margin-bottom:8px">${familySports.map(s=>{const safe=s.replace(/'/g,"\\'");return `<button onclick="pickFixtureSport('${safe}')" class="freq-btn ${fi.sport===s?'on':''}" style="padding:6px 12px;font-size:12px">${s}</button>`;}).join('')}</div>`:''}
           <input class="input" id="fi-sport-input" type="text" placeholder="e.g. Water Polo" value="${(fi.sport||'').replace(/"/g,'&quot;')}" oninput="S.fixtureImport.sport=this.value" style="margin-bottom:14px"/>
+
+          <div style="font-size:12px;color:var(--text-secondary);margin-bottom:6px;font-weight:600">My team <span style="color:var(--text-secondary);font-weight:500">(filters fixtures + finds opponent)</span></div>
+          <input class="input" id="fi-team-input" type="text" placeholder="e.g. Norths, Albury Lions, U14 Boys" value="${(fi.myTeam||'').replace(/"/g,'&quot;')}" oninput="S.fixtureImport.myTeam=this.value" style="margin-bottom:6px"/>
+          <div style="font-size:11px;color:var(--text-secondary);margin-bottom:14px;line-height:1.4">💡 Save team names per sport in <a onclick="setTab('settings')" style="color:var(--navy);font-weight:600;cursor:pointer;text-decoration:underline">Settings → Family Sports</a> to skip this step next time.</div>
 
           <div style="font-size:12px;color:var(--text-secondary);margin-bottom:6px;font-weight:600">Who's playing? <span style="color:#FF3B30">*</span></div>
           <div style="display:flex;flex-wrap:wrap;gap:6px">
@@ -3159,15 +3239,20 @@ function sFixturesImport(){
 
           <div style="font-size:12px;color:var(--text-secondary);margin-bottom:6px;font-weight:600">📎 From a URL (Revolutionise, school site, etc.)</div>
           <div style="display:flex;gap:8px;margin-bottom:14px">
-            <input class="input" id="fi-url-input" type="url" placeholder="https://..." value="${(fi.url||'').replace(/"/g,'&quot;')}" oninput="S.fixtureImport.url=this.value" style="flex:1"/>
-            <button onclick="handleFixtureUrlFetch()" ${fi.busy?'disabled':''} style="padding:12px 18px;border-radius:10px;background:#1C3A6B;border:none;color:#fff;font-size:14px;font-weight:700;cursor:${fi.busy?'wait':'pointer'};font-family:inherit;flex-shrink:0;${fi.busy?'opacity:0.7':''}">${fi.busy?'…':'Fetch'}</button>
+            <input class="input" id="fi-url-input" type="url" placeholder="https://..." value="${(fi.url||'').replace(/"/g,'&quot;')}" oninput="S.fixtureImport.url=this.value" style="flex:1" ${fi.busy?'disabled':''}/>
+            <button onclick="handleFixtureUrlFetch()" ${fi.busy?'disabled':''} style="padding:12px 18px;border-radius:10px;background:${fi.busy?'#8E8E93':'#1C3A6B'};border:none;color:#fff;font-size:14px;font-weight:700;cursor:${fi.busy?'wait':'pointer'};font-family:inherit;flex-shrink:0;min-width:80px">${fi.busy?'⏳':'Fetch'}</button>
           </div>
+
+          ${fi.busy?`<div style="background:#1C3A6B14;border:1px solid #1C3A6B33;border-radius:10px;padding:12px;margin-bottom:14px;display:flex;align-items:center;gap:10px">
+            <div style="width:18px;height:18px;border:2px solid #1C3A6B;border-top-color:transparent;border-radius:9px;animation:spin 0.8s linear infinite;flex-shrink:0"></div>
+            <div style="font-size:13px;color:#1C3A6B;font-weight:600;line-height:1.4">Working on it… this can take 5–15 seconds for big fixture lists</div>
+          </div>`:''}
 
           <div style="text-align:center;font-size:11px;color:var(--text-secondary);margin:6px 0">— or —</div>
 
           <div style="font-size:12px;color:var(--text-secondary);margin-bottom:6px;font-weight:600">📄 From a PDF</div>
           <input type="file" id="fi-pdf" accept=".pdf,application/pdf" style="display:none" onchange="handleFixturePdfUpload(this)"/>
-          <button onclick="document.getElementById('fi-pdf').click()" ${fi.busy?'disabled':''} style="width:100%;padding:13px;border-radius:12px;background:#34C759;border:none;color:#fff;font-size:14px;font-weight:700;cursor:${fi.busy?'wait':'pointer'};font-family:inherit;${fi.busy?'opacity:0.7':''}">${fi.busy?'Reading…':'Upload PDF'}</button>
+          <button onclick="document.getElementById('fi-pdf').click()" ${fi.busy?'disabled':''} style="width:100%;padding:13px;border-radius:12px;background:${fi.busy?'#8E8E93':'#34C759'};border:none;color:#fff;font-size:14px;font-weight:700;cursor:${fi.busy?'wait':'pointer'};font-family:inherit">${fi.busy?'⏳ Working…':'Upload PDF'}</button>
         </div>
 
         <details style="background:var(--card);border-radius:14px;padding:14px 18px;border:1px solid var(--row-border);margin-bottom:14px">
@@ -3186,6 +3271,15 @@ function sFixturesImport(){
 }
 
 // Toggle a person in the fixture import
+// Pick a sport for fixture import — auto-fills the team name from family settings
+window.pickFixtureSport=function(sport){
+  if(!S.fixtureImport)return;
+  S.fixtureImport.sport=sport;
+  const teams=S.family?.sportTeams||{};
+  if(teams[sport])S.fixtureImport.myTeam=teams[sport];
+  render();
+};
+
 window.toggleFixturePerson=function(id){
   const fi=S.fixtureImport;
   if(!fi)return;
@@ -3202,6 +3296,8 @@ function validateFixtureSetup(){
   // Pull live values from inputs (in case user typed since last render)
   const sportInput=document.getElementById('fi-sport-input');
   if(sportInput)fi.sport=sportInput.value.trim();
+  const teamInput=document.getElementById('fi-team-input');
+  if(teamInput)fi.myTeam=teamInput.value.trim();
   const urlInput=document.getElementById('fi-url-input');
   if(urlInput)fi.url=urlInput.value.trim();
   if(!fi.sport)return 'Please pick or type a sport';
@@ -3211,22 +3307,38 @@ function validateFixtureSetup(){
 
 window.handleFixtureUrlFetch=async function(){
   const fi=S.fixtureImport;
+  // FIRST — show immediate visual feedback that the click registered
+  notify('Tap registered — checking inputs…','⏳');
   const errMsg=validateFixtureSetup();
-  if(errMsg){notify(errMsg,'⚠️');return;}
+  if(errMsg){notify('⚠️ '+errMsg,'⚠️');return;}
   if(!fi.url||!/^https?:\/\//.test(fi.url)){
-    notify('Please paste a valid URL starting with http(s)://','⚠️');
+    notify('⚠️ URL must start with http:// or https://','⚠️');
+    return;
+  }
+  // Make sure we have a cloud function reference
+  if(typeof httpsCallable==='undefined'||!functions){
+    notify('⚠️ Cloud functions not loaded — refresh the app','❌');
     return;
   }
   fi.busy=true;render();
+  notify(fi.myTeam?('Fetching fixtures for '+fi.myTeam+'…'):'Fetching fixtures…','🌐');
   try{
-    notify('Fetching fixtures…','🌐');
-    const fixtures=await fetchAndParseFixturesFromURL(fi.url);
+    console.log('[fixtures] Calling cloud function for URL:',fi.url,'team:',fi.myTeam);
+    const fixtures=await fetchAndParseFixturesFromURL(fi.url,fi.myTeam);
+    console.log('[fixtures] Parsed',fixtures.length,'fixtures');
     fi.busy=false;
+    if(fixtures.length===0){
+      notify('No fixtures found' +(fi.myTeam?' for "'+fi.myTeam+'"':''),'⚠️');
+      render();
+      return;
+    }
     S.fixturePreview={fixtures:fixtures.map(f=>({...f,id:Math.random().toString(36).slice(2,9)})),source:fi.url,sourceKind:'url'};
     go('fixturesPreview');
   }catch(ex){
+    console.error('[fixtures] URL fetch failed:',ex);
     fi.busy=false;
-    notify(ex.message||String(ex),'❌');
+    const detail=ex?.message||ex?.code||String(ex);
+    notify('❌ '+detail,'❌');
     render();
   }
 };
@@ -3239,11 +3351,15 @@ window.handleFixturePdfUpload=async function(input){
   if(errMsg){notify(errMsg,'⚠️');input.value='';return;}
   fi.busy=true;render();
   try{
-    notify('Reading PDF…','📄');
-    const fixtures=await parseFixturesFromPDF(file);
+    notify(fi.myTeam?('Reading PDF for '+fi.myTeam+'…'):'Reading PDF…','📄');
+    const fixtures=await parseFixturesFromPDF(file,fi.myTeam);
     fi.busy=false;
     if(fixtures.length===0){
-      notify('Didn\'t spot any fixtures in this PDF. Try the spreadsheet template instead.','⚠️');
+      if(fi.myTeam){
+        notify('No fixtures found containing team "'+fi.myTeam+'". Check the spelling, or clear the team field to see all fixtures.','⚠️');
+      }else{
+        notify('Didn\'t spot any fixtures in this PDF. Try the spreadsheet template instead.','⚠️');
+      }
       render();
       return;
     }
@@ -3286,21 +3402,36 @@ function sFixturesPreview(){
       </div>`;
     }
     const dateOk=!!f.date;
+    // Build a live preview title — sport vs opponent (or sport · venue if no opponent)
+    const opponentText=(f.opponent||'').trim();
+    const titleText=opponentText
+      ? fi.sport+' vs '+opponentText
+      : (f.venue?fi.sport+' · '+f.venue:fi.sport);
     return `<div style="padding:14px;border-bottom:1px solid var(--row-border);${!dateOk?'background:#FF3B3008':''}">
-      <div style="display:grid;grid-template-columns:auto 1fr;gap:8px 10px;align-items:center;margin-bottom:8px">
+      <!-- DATE + TIME -->
+      <div style="display:grid;grid-template-columns:auto 1fr auto 1fr;gap:8px 8px;align-items:center;margin-bottom:10px">
         <span style="font-size:11px;color:var(--text-secondary);font-weight:600">DATE</span>
-        <input type="date" value="${f.date||''}" onchange="updateFixture('${f.id}','date',this.value)" style="padding:6px 10px;border-radius:8px;border:1px solid ${dateOk?'var(--border)':'#FF3B30'};font-size:13px;font-family:inherit;background:var(--card);color:var(--text)"/>
-
+        <input type="date" value="${f.date||''}" onchange="updateFixture('${f.id}','date',this.value)" style="padding:6px 8px;border-radius:8px;border:1px solid ${dateOk?'var(--border)':'#FF3B30'};font-size:12px;font-family:inherit;background:var(--card);color:var(--text);min-width:0"/>
         <span style="font-size:11px;color:var(--text-secondary);font-weight:600">TIME</span>
-        <input type="text" value="${(f.time||'').replace(/"/g,'&quot;')}" placeholder="e.g. 9:00am" onchange="updateFixture('${f.id}','time',this.value)" style="padding:6px 10px;border-radius:8px;border:1px solid var(--border);font-size:13px;font-family:inherit;background:var(--card);color:var(--text)"/>
+        <input type="text" value="${(f.time||'').replace(/"/g,'&quot;')}" placeholder="9:00am" onchange="updateFixture('${f.id}','time',this.value)" style="padding:6px 8px;border-radius:8px;border:1px solid var(--border);font-size:12px;font-family:inherit;background:var(--card);color:var(--text);min-width:0"/>
+      </div>
 
+      <!-- TITLE (auto-built, prominent, large + bold) -->
+      <div style="background:var(--bg);border-radius:10px;padding:10px 12px;margin-bottom:10px;border-left:3px solid var(--navy)">
+        <div style="font-size:10px;color:var(--text-secondary);font-weight:600;letter-spacing:0.5px;margin-bottom:2px">TITLE</div>
+        <div style="font-size:17px;font-weight:800;color:var(--text);line-height:1.25">${titleText}</div>
+      </div>
+
+      <!-- vs + @ -->
+      <div style="display:grid;grid-template-columns:auto 1fr;gap:8px 10px;align-items:center">
         <span style="font-size:11px;color:var(--text-secondary);font-weight:600">vs</span>
-        <input type="text" value="${(f.opponent||'').replace(/"/g,'&quot;')}" placeholder="Opponent" onchange="updateFixture('${f.id}','opponent',this.value)" style="padding:6px 10px;border-radius:8px;border:1px solid var(--border);font-size:13px;font-family:inherit;background:var(--card);color:var(--text)"/>
+        <input type="text" value="${(f.opponent||'').replace(/"/g,'&quot;')}" placeholder="Opponent team" onchange="updateFixture('${f.id}','opponent',this.value)" style="padding:6px 10px;border-radius:8px;border:1px solid var(--border);font-size:13px;font-family:inherit;background:var(--card);color:var(--text)"/>
 
         <span style="font-size:11px;color:var(--text-secondary);font-weight:600">@</span>
         <input type="text" value="${(f.venue||'').replace(/"/g,'&quot;')}" placeholder="Venue" onchange="updateFixture('${f.id}','venue',this.value)" style="padding:6px 10px;border-radius:8px;border:1px solid var(--border);font-size:13px;font-family:inherit;background:var(--card);color:var(--text)"/>
       </div>
-      <div style="display:flex;justify-content:space-between;align-items:center;margin-top:6px">
+
+      <div style="display:flex;justify-content:space-between;align-items:center;margin-top:8px">
         <div style="font-size:10px;color:var(--text-secondary);font-style:italic;flex:1;min-width:0;overflow:hidden;text-overflow:ellipsis;white-space:nowrap">${f.raw?'From: '+f.raw.slice(0,80):''}</div>
         <button onclick="removeFixture('${f.id}')" style="font-size:11px;color:#FF3B30;font-weight:600;border:none;background:none;cursor:pointer;font-family:inherit;padding:4px 8px">Remove</button>
       </div>
@@ -3349,8 +3480,8 @@ window.updateFixture=function(id,field,value){
   const f=data.fixtures.find(x=>x.id===id);
   if(!f)return;
   f[field]=value;
-  // No re-render needed for input typing — only date may change validity, so re-render once user changes that
-  if(field==='date')render();
+  // Re-render so the auto-built title and date validity update live
+  if(field==='date'||field==='opponent'||field==='venue')render();
 };
 window.removeFixture=function(id){
   const data=S.fixturePreview;
@@ -3574,22 +3705,24 @@ function extractTitleFromContext(lineText,dateMatch,timeStr,locationStr){
 }
 
 // Extract location from "at X" or "in (the) X" patterns within the line.
-// Accepts lowercase since "school oval" / "the gym" are valid locations.
+// Prefers locations that contain venue keywords or are clearly venue-shaped names.
 function extractLocationFromContext(lineText){
+  const VENUE_KEYWORDS=/(?:hall|pool|court|field|oval|park|centre|center|stadium|gym|complex|arena|grounds?|club|library|theatre|theater|chapel|auditorium|room|building|showgrounds?|aquatics|sports\s+ground|pavillion)/i;
   // "at School Hall" / "@ Pool" / "at the school oval"
   const m=lineText.match(/(?:^|\s)(?:at|@)\s+((?:the\s+)?[\w'\-][\w'\-\s,]{1,60}?)(?:[\.\,\;]|\s+(?:on|from|until|with|please|will|is|—|–|-)\b|$)/);
   if(m){
     let loc=m[1].trim().replace(/[\s,]+$/,'').replace(/^the\s+/i,'');
-    // Reject if it's a time / a date / a name fragment
     if(/^\d/.test(loc)||/(?:am|pm)$/i.test(loc))return '';
-    return loc;
+    // Must contain a venue keyword OR be clearly a proper noun (multi-capitalized words)
+    if(VENUE_KEYWORDS.test(loc)||/^[A-Z][\w\-]+(\s+[A-Z][\w\-]+){0,4}$/.test(loc))return loc;
+    // Very short single-word lowercase locations are usually false positives ("PE uniform")
   }
   // "in the Hall" / "in Room 5" / "in the gym"
   const m2=lineText.match(/(?:^|\s)in\s+((?:the\s+)?[\w'\-][\w'\-\s,]{1,60}?)(?:[\.\,\;]|\s+(?:on|from|until|with|please|will|is|—|–|-)\b|$)/);
   if(m2){
     let loc=m2[1].trim().replace(/[\s,]+$/,'').replace(/^the\s+/i,'');
     if(/^\d/.test(loc)||/(?:am|pm)$/i.test(loc))return '';
-    return loc;
+    if(VENUE_KEYWORDS.test(loc)||/^[A-Z][\w\-]+(\s+[A-Z][\w\-]+){0,4}$/.test(loc))return loc;
   }
   return '';
 }
@@ -3598,6 +3731,25 @@ function extractLocationFromContext(lineText){
 function parseEventsFromEmail(text){
   if(!text||text.trim().length<10)return [];
   const norm=text.replace(/\r\n?/g,'\n').replace(/[ \t]+/g,' ');
+  // Build a line-index for adjacent-line lookups
+  const allLines=norm.split('\n');
+  const lineStartIdx=[];
+  let cumLen=0;
+  for(const ln of allLines){
+    lineStartIdx.push(cumLen);
+    cumLen+=ln.length+1; // +1 for newline
+  }
+  function lineNumberAt(charIdx){
+    // Find which line contains charIdx
+    for(let i=lineStartIdx.length-1;i>=0;i--){
+      if(charIdx>=lineStartIdx[i])return i;
+    }
+    return 0;
+  }
+  function getLineText(lineNum){
+    return (lineNum>=0&&lineNum<allLines.length)?allLines[lineNum]:'';
+  }
+
   const dates=findAllDates(norm);
   if(dates.length===0)return [];
   const events=[];
@@ -3607,22 +3759,55 @@ function parseEventsFromEmail(text){
     const line=getLineContaining(norm,d.index);
     const lineText=line.text;
     if(isLikelyNoiseContext(norm,d.index,lineText))continue;
-    // Time on the same line
-    const timeStr=parseLooseTime(lineText);
-    // Location on the same line (extract first so we can strip it from the title)
-    const location=extractLocationFromContext(lineText);
-    // Title from the line (with location passed in so it gets stripped)
+
+    // Look at current + ONE next line (not two — too greedy) for time/location
+    // Only consult next line if current line has no time AND no location
+    const lineNum=lineNumberAt(d.index);
+    const sameLineTime=parseLooseTime(lineText);
+    const sameLineLocation=extractLocationFromContext(lineText);
+    let timeStr=sameLineTime;
+    let location=sameLineLocation;
+    if(!timeStr||!location){
+      const nextLine=getLineText(lineNum+1);
+      // Skip the next line if it looks like a different event (starts with a date or bullet)
+      const nextLineStartsEvent=nextLine&&(/^\s*(?:[\-\*\u2022•]|[A-Z][a-zA-Z\s]+:|\d{1,2}[\/\-\.])/.test(nextLine)||findAllDates(nextLine).length>0);
+      if(nextLine&&!nextLineStartsEvent){
+        if(!timeStr)timeStr=parseLooseTime(nextLine);
+        if(!location)location=extractLocationFromContext(nextLine);
+      }
+    }
+
+    // Title: try the line containing the date first
     let title=extractTitleFromContext(lineText,d.match,timeStr,location);
-    // If title is too short, look at the previous non-empty line for a heading
+    // If title is too short/empty, look at the previous non-empty line for a heading
     if(!title||title.length<4){
       const prevLine=getPreviousNonEmptyLine(norm,line.start);
-      // Only use prev line if it's heading-like (short, doesn't end in punctuation that suggests sentence)
-      if(prevLine&&prevLine.length<70&&prevLine.length>3&&!prevLine.endsWith('.')){
+      if(prevLine&&prevLine.length<90&&prevLine.length>3&&!prevLine.endsWith('.')){
         title=prevLine.replace(/^(?:reminder[:\s]*|note[:\s]*|fyi[:\s]*)/i,'').trim();
         title=title.replace(/[\:\,\—\–\-]\s*$/,'').trim();
       }
     }
     if(!title||title.length<3)continue;
+    // FALLBACK LOCATION EXTRACTION: if no location yet, look for a trailing "venue-like" token
+    // in a comma-separated list (handles "X: date, time, school hall" format)
+    if(!location){
+      const VENUE_KW=/(hall|pool|court|field|oval|park|centre|center|stadium|gym|complex|arena|grounds?|club|library|theatre|theater|chapel|auditorium|building|showgrounds?|aquatics)/i;
+      // Look at trailing comma-separated parts of the title
+      const parts=title.split(/\s*,\s*/);
+      for(let i=parts.length-1;i>=0;i--){
+        if(VENUE_KW.test(parts[i])){
+          location=parts[i].trim();
+          // Remove that part from title
+          parts.splice(i,1);
+          title=parts.join(', ').trim();
+          break;
+        }
+      }
+    }
+    // Final cleanup of title — strip leading/trailing colons, commas, dashes, and double-commas
+    title=title.replace(/^[\,\s\:\-]+/,'').replace(/[\,\s\:]+$/,'').replace(/,\s*,/g,',').replace(/\s+/g,' ').trim();
+    if(!title||title.length<3)continue;
+
     const notes=lineText.slice(0,400);
     const key=d.date+'|'+title.toLowerCase();
     if(seenKeys.has(key))continue;
@@ -3703,16 +3888,22 @@ function sEmailImport(){
           <div style="font-size:11px;color:var(--text-secondary);margin-top:8px;line-height:1.5">${ei.participantIds.length===0?'<em>None selected — events will be family-wide.</em>':''}</div>
         </div>
 
-        <button onclick="parseEmailNow()" style="width:100%;padding:14px;border-radius:12px;background:var(--navy);border:none;color:#fff;font-size:15px;font-weight:700;cursor:pointer;font-family:inherit;margin-bottom:14px">🔍 Find events</button>
+        <button onclick="parseEmailWithAI()" style="width:100%;padding:14px;border-radius:12px;background:linear-gradient(135deg,#AF52DE,#5856D6);border:none;color:#fff;font-size:15px;font-weight:700;cursor:pointer;font-family:inherit;margin-bottom:8px;box-shadow:0 4px 12px rgba(175,82,222,0.3)">🤖 Find events with AI</button>
+        <button onclick="parseEmailNow()" style="width:100%;padding:11px;border-radius:12px;background:transparent;border:1px solid var(--border);color:var(--text-secondary);font-size:13px;font-weight:600;cursor:pointer;font-family:inherit;margin-bottom:14px">🔍 Use basic parser instead</button>
+
+        <details style="background:var(--card);border-radius:14px;padding:14px 18px;border:1px solid var(--row-border);margin-bottom:14px">
+          <summary style="font-size:14px;font-weight:700;color:var(--text);cursor:pointer">🤖 What's the difference?</summary>
+          <div style="font-size:12px;color:var(--text-secondary);line-height:1.6;margin-top:10px">
+            <div><strong>AI parser</strong> reads the email like a person — handles odd formatting, picks up locations from context, generates clean titles. Costs ~$0.001 per email (paid by your Anthropic credit). Limit: 50 emails/day per family.</div>
+            <div style="margin-top:8px"><strong>Basic parser</strong> uses pattern matching. Free and instant, but misses things in messy emails.</div>
+          </div>
+        </details>
 
         <details style="background:var(--card);border-radius:14px;padding:14px 18px;border:1px solid var(--row-border)">
           <summary style="font-size:14px;font-weight:700;color:var(--text);cursor:pointer">💡 Tips for best results</summary>
           <div style="font-size:12px;color:var(--text-secondary);line-height:1.6;margin-top:10px">
             <div><strong>Paste plain text.</strong> Just the email body — strip out images and forwarded headers if you can.</div>
             <div><strong>Review every result.</strong> Auto-extraction can miss context — the preview lets you fix titles, dates, and times before commit.</div>
-            <div><strong>It looks for dates first.</strong> Each date in the email becomes one event candidate. If the email has 5 dates, you'll see 5 events to review.</div>
-            <div><strong>Times are auto-detected</strong> when written like 9am, 9:00am, or 14:30 in the same paragraph as the date.</div>
-            <div><strong>Locations</strong> are detected from "at [Place]" or "in the [Place]" patterns.</div>
           </div>
         </details>
 
@@ -3742,11 +3933,85 @@ window.parseEmailNow=function(){
   notify('Scanning…','🔍');
   const events=parseEventsFromEmail(ei.content);
   if(events.length===0){
-    notify('No dates found in that email. Try pasting again, or add events manually.','⚠️');
+    notify('No dates found in that email. Try the AI parser, or paste again.','⚠️');
     return;
   }
-  S.emailPreview={events,sourceCategory:ei.defaultCategory,participantIds:[...ei.participantIds]};
+  S.emailPreview={events,sourceCategory:ei.defaultCategory,participantIds:[...ei.participantIds],source:'basic'};
   go('emailPreview');
+};
+
+// Use Claude API (via cloud function) to parse emails. Much smarter than regex.
+window.parseEmailWithAI=async function(){
+  const ei=S.emailImport;
+  if(!ei)return;
+  const ta=document.getElementById('ei-content');
+  if(ta)ei.content=ta.value;
+  if(!ei.content||ei.content.trim().length<10){
+    notify('Paste an email first','⚠️');
+    return;
+  }
+  if(typeof httpsCallable==='undefined'||!functions){
+    notify('Cloud functions not loaded — refresh the app','❌');
+    return;
+  }
+
+  // Show full-screen "AI is reading…" overlay so user sees feedback
+  const overlay=document.createElement('div');
+  overlay.id='ai-parse-overlay';
+  overlay.style.cssText='position:fixed;inset:0;background:rgba(0,0,0,0.55);z-index:9999;display:flex;align-items:center;justify-content:center;padding:20px';
+  overlay.innerHTML='<div style="background:var(--card);border-radius:20px;padding:32px 28px;width:100%;max-width:340px;text-align:center;box-shadow:0 12px 48px rgba(0,0,0,0.3)">'
+    +'<div style="font-size:60px;margin-bottom:8px">🤖</div>'
+    +'<div style="font-size:18px;font-weight:800;color:var(--text);margin-bottom:6px">AI is reading…</div>'
+    +'<div style="font-size:13px;color:var(--text-secondary);margin-bottom:16px;line-height:1.5">Extracting events from your email — this usually takes 3-8 seconds</div>'
+    +'<div style="width:32px;height:32px;border:3px solid #AF52DE;border-top-color:transparent;border-radius:16px;animation:spin 0.8s linear infinite;margin:0 auto"></div>'
+    +'</div>';
+  document.body.appendChild(overlay);
+
+  try{
+    const callable=httpsCallable(functions,'parseEmailWithAI');
+    const resp=await callable({
+      emailText:ei.content,
+      familyId:S.familyId||'',
+      contextHint:'Default category preference is '+(ei.defaultCategory||'school')+'.'
+    });
+    const data=resp?.data||{};
+    const aiEvents=Array.isArray(data.events)?data.events:[];
+    overlay.remove();
+
+    if(aiEvents.length===0){
+      notify('AI didn\'t find any events. Try the basic parser, or check the email content.','⚠️');
+      return;
+    }
+
+    // Map AI events into our preview format. AI provides per-event category, so we
+    // honor that (don't force the default).
+    const events=aiEvents.map(ev=>({
+      id:Math.random().toString(36).slice(2,9),
+      title:ev.title||'',
+      date:ev.date||'',
+      time:ev.time||'',
+      endTime:ev.endTime||'',
+      location:ev.location||'',
+      notes:ev.notes||'',
+      category:ev.category||ei.defaultCategory||'school',
+      raw:'AI: '+(ev.title||'').slice(0,80)
+    }));
+
+    S.emailPreview={
+      events,
+      sourceCategory:ei.defaultCategory,
+      participantIds:[...ei.participantIds],
+      source:'ai',
+      usage:data.usage
+    };
+    notify('AI found '+aiEvents.length+' event'+(aiEvents.length===1?'':'s')+' ✨','🤖');
+    go('emailPreview');
+  }catch(ex){
+    overlay.remove();
+    const detail=ex?.message||ex?.code||String(ex);
+    console.error('[ai-parse] failed:',ex);
+    notify('AI parse failed: '+detail,'❌');
+  }
 };
 
 // === EMAIL PREVIEW SCREEN ===
@@ -3783,7 +4048,13 @@ function sEmailPreview(){
     }
     const titleOk=!!(ev.title&&ev.title.trim());
     const dateOk=!!ev.date;
+    const evCat=ev.category||data.sourceCategory||'school';
+    const evCatMeta=EV_CATEGORIES.find(c=>c.id===evCat)||EV_CATEGORIES.find(c=>c.id==='other');
     return `<div style="padding:14px;border-bottom:1px solid var(--row-border);${(!titleOk||!dateOk)?'background:#FF3B3008':''}">
+      <div style="display:flex;align-items:center;gap:8px;margin-bottom:10px">
+        <div style="background:${evCatMeta.color}18;border:1px solid ${evCatMeta.color}55;border-radius:14px;padding:4px 10px;font-size:11px;font-weight:700;color:${evCatMeta.color};display:inline-flex;align-items:center;gap:4px">${evCatMeta.emoji} ${evCatMeta.label}</div>
+        ${ev.endTime?`<div style="font-size:11px;color:var(--text-secondary)">⏱ ${ev.time||'?'} – ${ev.endTime}</div>`:''}
+      </div>
       <div style="display:grid;grid-template-columns:auto 1fr;gap:8px 10px;align-items:center;margin-bottom:8px">
         <span style="font-size:11px;color:var(--text-secondary);font-weight:600">TITLE</span>
         <input type="text" value="${(ev.title||'').replace(/"/g,'&quot;')}" onchange="updateEmailEvent('${ev.id}','title',this.value)" style="padding:6px 10px;border-radius:8px;border:1px solid ${titleOk?'var(--border)':'#FF3B30'};font-size:13px;font-family:inherit;background:var(--card);color:var(--text);font-weight:600"/>
@@ -3797,8 +4068,9 @@ function sEmailPreview(){
         <span style="font-size:11px;color:var(--text-secondary);font-weight:600">@</span>
         <input type="text" value="${(ev.location||'').replace(/"/g,'&quot;')}" placeholder="Location (optional)" onchange="updateEmailEvent('${ev.id}','location',this.value)" style="padding:6px 10px;border-radius:8px;border:1px solid var(--border);font-size:13px;font-family:inherit;background:var(--card);color:var(--text)"/>
       </div>
+      ${ev.notes?`<div style="font-size:11px;color:var(--text-secondary);line-height:1.5;background:var(--bg);border-radius:6px;padding:6px 8px;margin-bottom:8px">📝 ${ev.notes}</div>`:''}
       <div style="display:flex;justify-content:space-between;align-items:center;margin-top:6px">
-        <div style="font-size:10px;color:var(--text-secondary);font-style:italic;flex:1;min-width:0;overflow:hidden;text-overflow:ellipsis;white-space:nowrap">${ev.raw?'Found in: "'+ev.raw.slice(0,80)+'…"':''}</div>
+        <div style="font-size:10px;color:var(--text-secondary);font-style:italic;flex:1;min-width:0;overflow:hidden;text-overflow:ellipsis;white-space:nowrap">${ev.raw?(data.source==='ai'?'🤖 ':'')+ev.raw.slice(0,80):''}</div>
         <button onclick="removeEmailEvent('${ev.id}')" style="font-size:11px;color:#FF3B30;font-weight:600;border:none;background:none;cursor:pointer;font-family:inherit;padding:4px 8px">Remove</button>
       </div>
     </div>`;
@@ -3816,7 +4088,10 @@ function sEmailPreview(){
         <div style="display:flex;align-items:center;gap:10px;margin-bottom:6px">
           <div style="width:38px;height:38px;border-radius:19px;background:${cat.color}18;border:2px solid ${cat.color};display:flex;align-items:center;justify-content:center;font-size:18px;flex-shrink:0">${cat.emoji}</div>
           <div style="flex:1;min-width:0">
-            <div style="font-size:16px;font-weight:800;color:var(--text);line-height:1.2">${events.length} event${events.length===1?'':'s'} detected</div>
+            <div style="display:flex;align-items:center;gap:6px;margin-bottom:2px">
+              <div style="font-size:16px;font-weight:800;color:var(--text);line-height:1.2">${events.length} event${events.length===1?'':'s'} detected</div>
+              ${data.source==='ai'?'<span style="font-size:10px;font-weight:700;padding:2px 8px;border-radius:8px;background:linear-gradient(135deg,#AF52DE,#5856D6);color:#fff">🤖 AI</span>':data.source==='basic'?'<span style="font-size:10px;font-weight:700;padding:2px 8px;border-radius:8px;background:var(--text-secondary);color:#fff">BASIC</span>':''}
+            </div>
             <div style="font-size:11px;color:var(--text-secondary)">Default category: ${cat.label}${participantNames.length?' · For: '+participantNames.join(', '):' · Family-wide'}</div>
           </div>
         </div>
@@ -3878,22 +4153,25 @@ window.commitEmailImport=async function(){
     else if(m)adultUid=data.participantIds[0];
   }
 
-  const cat=EV_CATEGORIES.find(c=>c.id===data.sourceCategory)||{emoji:'📅'};
-  const emoji=cat.emoji||'📅';
-
   let success=0;let failed=0;
   for(const ev of valid){
+    // Determine category: per-event (from AI) preferred over default
+    const eventCat=ev.category||data.sourceCategory||'school';
+    const catMeta=EV_CATEGORIES.find(c=>c.id===eventCat)||{emoji:'📅'};
+    const eventEmoji=catMeta.emoji||'📅';
+    // Combine time + endTime into a range string if both provided
+    const timeStr=ev.endTime?(ev.time||'')+' – '+ev.endTime:(ev.time||'');
     try{
       await fadd(['events'],{
         title:(ev.title||'').trim(),
-        emoji,
+        emoji:eventEmoji,
         participantIds:[...data.participantIds],childId,adultUid,
         freq:'once',
         date:ev.date,
         startDate:'',endDate:'',
         days:{Mon:false,Tue:false,Wed:false,Thu:false,Fri:false,Sat:false,Sun:false},
-        time:ev.time||'',
-        category:data.sourceCategory,
+        time:timeStr,
+        category:eventCat,
         sport:'',
         location:ev.location||'',
         dropoff:'',pickup:'',
@@ -4724,21 +5002,28 @@ function sSettings(){
   +'<button onclick="savePastRetention()" style="width:100%;margin-top:10px;padding:12px;border-radius:12px;background:#1C3A6B;border:none;color:#fff;font-size:14px;font-weight:600;cursor:pointer;font-family:inherit">Save</button>'
   +'</div>'
   +'</div>'
-  // Family Sports
-  +'<div class="sh" style="margin-bottom:6px">🏃 Family Sports</div>'
+  // Family Sports + Teams
+  +'<div class="sh" style="margin-bottom:6px">🏃 Family Sports & Teams</div>'
   +'<div class="card" style="margin-bottom:12px">'
   +'<div style="padding:14px 16px 10px">'
-  +'<div style="font-size:13px;color:#8E8E93;margin-bottom:10px;line-height:1.5">Sports your family plays. These appear as sub-tiles under <strong>Sport Games</strong> and <strong>Sport Training</strong> on the Events page.</div>'
+  +'<div style="font-size:13px;color:#8E8E93;margin-bottom:12px;line-height:1.5">Sports your family plays + the team name for each. Team names get pre-filled when importing fixtures.</div>'
   +(()=>{
     const sports=Array.isArray(S.family?.sports)?S.family.sports:[];
-    if(sports.length===0)return '<div style="font-size:12px;color:#8E8E93;font-style:italic;margin-bottom:8px">No sports added yet.</div>';
-    return '<div style="display:flex;flex-wrap:wrap;gap:6px;margin-bottom:10px">'+sports.map(s=>{
-      const safe=String(s).replace(/'/g,"\\'");
-      return '<div style="display:inline-flex;align-items:center;gap:6px;padding:6px 6px 6px 12px;border-radius:18px;background:#1C3A6B14;border:1px solid #1C3A6B22"><span style="font-size:13px;font-weight:600;color:#1C3A6B">'+s+'</span><button onclick="removeFamilySport(\''+safe+'\')" style="width:20px;height:20px;border-radius:10px;border:none;background:#1C3A6B22;color:#1C3A6B;font-size:14px;line-height:1;cursor:pointer;font-family:inherit;padding:0;display:flex;align-items:center;justify-content:center">×</button></div>';
+    const teams=S.family?.sportTeams||{};
+    if(sports.length===0)return '<div style="font-size:12px;color:#8E8E93;font-style:italic;margin-bottom:12px;padding:8px;background:#F2F2F7;border-radius:8px">No sports added yet. Add one below to get started.</div>';
+    return '<div style="display:flex;flex-direction:column;gap:10px;margin-bottom:14px">'+sports.map(s=>{
+      const safe=String(s).replace(/'/g,"\\'").replace(/"/g,'&quot;');
+      const teamName=teams[s]||'';
+      const safeTeam=String(teamName).replace(/"/g,'&quot;');
+      return '<div style="background:#F8F9FB;border:1px solid #1C3A6B22;border-radius:12px;padding:12px;display:flex;align-items:center;gap:10px">'
+        +'<div style="font-size:14px;font-weight:700;color:#1C1C1E;flex-shrink:0;min-width:90px">'+s+'</div>'
+        +'<input class="input" id="set-team-'+safe+'" type="text" placeholder="Team name (e.g. Norths)" value="'+safeTeam+'" onchange="updateSportTeam(\''+safe+'\',this.value)" style="flex:1;font-size:13px;padding:8px 10px;background:#fff"/>'
+        +'<button onclick="removeFamilySport(\''+safe+'\')" style="width:28px;height:28px;border-radius:14px;border:none;background:#FF3B3022;color:#FF3B30;font-size:16px;line-height:1;cursor:pointer;font-family:inherit;padding:0;display:flex;align-items:center;justify-content:center;flex-shrink:0">×</button>'
+        +'</div>';
     }).join('')+'</div>';
   })()
   +'<div style="display:flex;gap:8px">'
-  +'<input class="input" id="set-family-sport-input" type="text" placeholder="e.g. Water Polo" style="flex:1" onkeydown="if(event.key===\'Enter\'){event.preventDefault();addFamilySport();}"/>'
+  +'<input class="input" id="set-family-sport-input" type="text" placeholder="Add a sport (e.g. Water Polo)" style="flex:1" onkeydown="if(event.key===\'Enter\'){event.preventDefault();addFamilySport();}"/>'
   +'<button onclick="addFamilySport()" style="padding:12px 16px;border-radius:10px;background:#1C3A6B;border:none;color:#fff;font-size:14px;font-weight:600;cursor:pointer;font-family:inherit">+ Add</button>'
   +'</div>'
   +'</div>'
@@ -6078,10 +6363,15 @@ window.toggleParticipant=function(id){
 };
 window.toggleCategory=function(catId){
   S.ef.category=S.ef.category===catId?'':catId;
-  ['school','sport','music','social','medical','other'].forEach(c=>{
-    const btn=document.getElementById('cat-'+c);
-    if(btn)btn.classList.toggle('on',S.ef.category===c);
-  });
+  // Auto-set emoji from category metadata so users don't have to pick it manually
+  if(S.ef.category){
+    const cat=EV_CATEGORIES.find(c=>c.id===S.ef.category);
+    if(cat)S.ef.emoji=cat.emoji;
+  }else{
+    S.ef.emoji='📅';
+  }
+  // Re-render so the sport sub-picker appears/disappears as needed
+  render();
 };
 function buildTimeString(){
   const hs=document.getElementById('etime-h-start')?.value;
@@ -6158,8 +6448,17 @@ window.hSaveEvent=async()=>{
       if(c)childId=participantIds[0];
       else if(a)adultUid=participantIds[0];
     }
+    // Pick emoji: sport-specific if it's a sport category, else category emoji
+    let saveEmoji=ef.emoji||'📅';
+    if((ef.category==='sport-games'||ef.category==='sport-training')&&sportValue){
+      saveEmoji=SPORT_EMOJI[sportValue.toLowerCase().trim()]||(ef.category==='sport-games'?'🏆':'🏃');
+    }else if(ef.category){
+      const cat=EV_CATEGORIES.find(c=>c.id===ef.category);
+      if(cat)saveEmoji=cat.emoji;
+    }
+
     const eventData={
-      title,emoji:ef.emoji||'📅',
+      title,emoji:saveEmoji,
       participantIds,
       childId,adultUid,
       freq:ef.freq,
@@ -6774,6 +7073,20 @@ window.savePastRetention=async function(){
     if(S.family)S.family.pastEventsRetentionDays=v;
     notify('✅ Saved','📜');
     render();
+  }catch(e){notify('Save failed: '+(e.message||e),'⚠️');}
+};
+// Save the team name for a specific sport (e.g. "Hockey" -> "Norths")
+window.updateSportTeam=async function(sport,teamName){
+  if(!S.familyId)return;
+  const trimmed=String(teamName||'').trim();
+  const existing=S.family?.sportTeams||{};
+  const next={...existing};
+  if(trimmed)next[sport]=trimmed;
+  else delete next[sport];
+  try{
+    await updateDoc(doc(db,'families',S.familyId),{sportTeams:next});
+    if(S.family)S.family.sportTeams=next;
+    notify(trimmed?'Team saved 🏃':'Team cleared','✅');
   }catch(e){notify('Save failed: '+(e.message||e),'⚠️');}
 };
 window.addFamilySport=async function(){
@@ -7595,8 +7908,20 @@ function parseVoiceIntent(transcript){
   if(!text)return {kind:'empty'};
   const low=text.toLowerCase();
 
+  // Gift idea intents (tested first since they have specific keywords)
+  // "gift idea for olivia: blue scarf"  /  "birthday present for alby blue headphones"
+  // Recipient is captured as a single word (or "for X: " for two-word names)
+  let m=low.match(/^(?:add\s+)?(?:a\s+)?(?:birthday\s+|christmas\s+|xmas\s+)?(?:gift|present)(?:\s+idea)?\s+(?:for|to)\s+(\w+)\s*[:,\-]\s*(.+)/);
+  if(m&&m[2]&&m[2].trim().length>1){
+    return {kind:'gift',recipientHint:m[1].trim(),idea:m[2].trim(),phrase:text};
+  }
+  m=low.match(/^(?:add\s+)?(?:a\s+)?(?:birthday\s+|christmas\s+|xmas\s+)?(?:gift|present)(?:\s+idea)?\s+(?:for|to)\s+(\w+)\s+(.+)/);
+  if(m&&m[2]&&m[2].trim().length>1){
+    return {kind:'gift',recipientHint:m[1].trim(),idea:m[2].trim(),phrase:text};
+  }
+
   // Shopping list intents
-  let m=low.match(/^(?:shopping list|grocery list|groceries|shop)\s*[:,]?\s*(.+)/);
+  m=low.match(/^(?:shopping list|grocery list|groceries|shop)\s*[:,]?\s*(.+)/);
   if(m){
     const items=m[1].split(/\s*(?:,|\band\b)\s*/i).map(s=>s.trim()).filter(s=>s.length>0);
     return {kind:'grocery',items,phrase:text};
@@ -7692,7 +8017,7 @@ window.openVoiceQuickAdd=function(){
     <div id="voice-state-icon" style="font-size:60px;margin-bottom:8px">🎤</div>
     <div id="voice-state-title" style="font-size:18px;font-weight:800;color:var(--text);margin-bottom:8px">Tap to start speaking</div>
     <div id="voice-state-hint" style="font-size:12px;color:var(--text-secondary);line-height:1.5;margin-bottom:18px;min-height:34px">
-      Try: "Buy carrots and milk" · "Remind me to call school tomorrow" · "Note to self check the mail"
+      Try: "Buy carrots and milk" · "Remind me to call school tomorrow" · "Gift idea for Olivia: blue scarf"
     </div>
     <button id="voice-start-btn" onclick="startVoiceCapture()" style="width:88px;height:88px;border-radius:44px;background:#FF3B30;border:none;color:#fff;font-size:32px;cursor:pointer;font-family:inherit;display:flex;align-items:center;justify-content:center;margin:0 auto 16px;box-shadow:0 4px 16px rgba(255,59,48,0.3)">🎤</button>
     <div id="voice-transcript" style="font-size:15px;color:var(--text);line-height:1.5;min-height:40px;background:var(--bg);border-radius:10px;padding:10px;margin-bottom:14px;display:none"></div>
@@ -7809,7 +8134,47 @@ function finishVoiceCapture(transcript){
   if(btnEl)btnEl.style.display='none';
 
   let actionsHTML='';
-  if(intent.kind==='grocery'&&intent.items.length>0){
+  if(intent.kind==='gift'){
+    // Try to resolve the recipient to a family member by first-name match
+    const hint=(intent.recipientHint||'').toLowerCase();
+    const allPeople=[
+      ...S.children.map(c=>({id:c.id,name:c.name,color:c.color||'#1C3A6B'})),
+      ...members().map(m=>({id:m.uid,name:m.name,color:m.color||'#1C3A6B'}))
+    ];
+    const matches=allPeople.filter(p=>{
+      const fn=p.name.split(' ')[0].toLowerCase();
+      return fn===hint||p.name.toLowerCase()===hint||p.name.toLowerCase().includes(hint);
+    });
+    if(iconEl)iconEl.textContent='🎁';
+    if(titleEl)titleEl.textContent='Add gift idea?';
+    if(matches.length===1){
+      const recipient=matches[0];
+      // Single match — show idea preview + Private/Open save buttons
+      if(hintEl)hintEl.innerHTML='<div style="background:var(--bg);border-radius:8px;padding:8px 10px;margin:3px 0;color:var(--text);text-align:left">'+
+        '<div style="font-size:11px;color:var(--text-secondary);font-weight:600">FOR</div>'+
+        '<div style="font-size:14px;font-weight:700;margin-bottom:6px">'+recipient.name+'</div>'+
+        '<div style="font-size:11px;color:var(--text-secondary);font-weight:600">IDEA</div>'+
+        '<div style="font-size:14px;font-weight:600">'+intent.idea+'</div>'+
+        '</div>';
+      actionsHTML=`
+        <button onclick='saveVoiceGift(${JSON.stringify(recipient.id)},${JSON.stringify(intent.idea)},true)' style="flex:1;padding:13px;border-radius:12px;background:#FF9500;border:none;color:#fff;font-size:13px;font-weight:700;cursor:pointer;font-family:inherit">🔒 Save private</button>
+        <button onclick='saveVoiceGift(${JSON.stringify(recipient.id)},${JSON.stringify(intent.idea)},false)' style="flex:1;padding:13px;border-radius:12px;background:#FF6B9D;border:none;color:#fff;font-size:13px;font-weight:700;cursor:pointer;font-family:inherit">👀 Save open</button>`;
+    }else if(matches.length>1){
+      // Ambiguous — show buttons for each candidate
+      if(hintEl)hintEl.innerHTML='<div style="font-size:13px;color:var(--text);margin-bottom:6px">Idea: <strong>'+intent.idea+'</strong></div><div style="font-size:12px;color:var(--text-secondary)">Who is "'+intent.recipientHint+'"?</div>';
+      actionsHTML=matches.map(p=>`<button onclick='S._giftIdeaPending=${JSON.stringify({recipientId:p.id,idea:intent.idea})};showGiftPrivacyPicker()' style="flex:1;padding:13px;border-radius:12px;background:${p.color};border:none;color:#fff;font-size:13px;font-weight:700;cursor:pointer;font-family:inherit">${p.name.split(' ')[0]}</button>`).join('');
+    }else{
+      // No match — show all family members as picker
+      if(hintEl)hintEl.innerHTML='<div style="font-size:13px;color:var(--text);margin-bottom:8px">Idea: <strong>'+intent.idea+'</strong></div><div style="font-size:12px;color:var(--text-secondary);margin-bottom:6px">Couldn\'t find "'+intent.recipientHint+'". Pick recipient:</div>';
+      if(allPeople.length===0){
+        actionsHTML='<div style="flex:1;text-align:center;font-size:12px;color:var(--text-secondary);padding:10px">Add family members first</div>';
+      }else{
+        actionsHTML='<div style="flex:1;display:flex;flex-wrap:wrap;gap:6px">'+
+          allPeople.map(p=>`<button onclick='S._giftIdeaPending=${JSON.stringify({recipientId:p.id,idea:intent.idea})};showGiftPrivacyPicker()' style="padding:8px 12px;border-radius:10px;background:${p.color};border:none;color:#fff;font-size:12px;font-weight:700;cursor:pointer;font-family:inherit">${p.name.split(' ')[0]}</button>`).join('')+
+          '</div>';
+      }
+    }
+  }else if(intent.kind==='grocery'&&intent.items.length>0){
     if(iconEl)iconEl.textContent='🛒';
     if(titleEl)titleEl.textContent='Add to shopping list?';
     if(hintEl)hintEl.innerHTML=intent.items.map(i=>'<div style="background:var(--bg);border-radius:8px;padding:6px 10px;margin:3px 0;font-weight:600;color:var(--text)">• '+i+'</div>').join('');
@@ -7848,19 +8213,47 @@ function finishVoiceCapture(transcript){
 window.saveVoiceGrocery=async function(items){
   if(typeof items==='string'){try{items=JSON.parse(items);}catch(e){items=[items];}}
   if(!items||!items.length){closeVoiceQuickAdd();return;}
-  if(!S.familyId){notify('No family loaded','⚠️');return;}
+  if(!S.familyId){notify('No family loaded — open the app fully first','⚠️');return;}
+  if(!S.user||!S.user.uid){notify('Not signed in','⚠️');return;}
+
+  // Show "saving" feedback in the modal so user sees progress
+  const titleEl=document.getElementById('voice-state-title');
+  const hintEl=document.getElementById('voice-state-hint');
+  const actionsEl=document.getElementById('voice-actions');
+  if(titleEl)titleEl.textContent='Saving…';
+  if(hintEl)hintEl.innerHTML='<div style="font-size:12px;color:var(--text-secondary)">Adding '+items.length+' item'+(items.length===1?'':'s')+' to shopping list…</div>';
+  if(actionsEl)actionsEl.innerHTML='';
+
   let saved=0;
+  const errors=[];
   for(const item of items){
     const trimmed=String(item).trim();
     if(!trimmed)continue;
     try{
       const label=trimmed.charAt(0).toUpperCase()+trimmed.slice(1);
-      await fadd(['groceries'],{label,checked:false});
+      // EXACT same shape as hAddGrocery (which works) — addedToList:true is what makes it
+      // appear on the shopping list (not just in the frequents bank).
+      await fadd(['groceries'],{label,quantity:1,isFrequent:false,addedToList:true,checked:false});
       saved++;
-    }catch(e){}
+    }catch(e){
+      console.error('[voice-grocery] save failed for',item,e);
+      errors.push((item||'?')+': '+(e.message||e.code||'unknown error'));
+    }
   }
-  notify('Added '+saved+' item'+(saved===1?'':'s')+' to shopping list 🛒','✅');
-  closeVoiceQuickAdd();
+
+  if(saved>0&&errors.length===0){
+    notify('Added '+saved+' item'+(saved===1?'':'s')+' to shopping list 🛒','✅');
+    closeVoiceQuickAdd();
+  }else if(saved>0&&errors.length>0){
+    if(titleEl)titleEl.textContent='Saved '+saved+', '+errors.length+' failed';
+    if(hintEl)hintEl.innerHTML='<div style="font-size:12px;color:#FF3B30;text-align:left;background:#FF3B3014;border-radius:8px;padding:8px;line-height:1.5">'+errors.join('<br>')+'</div>';
+    if(actionsEl)actionsEl.innerHTML='<button onclick="closeVoiceQuickAdd()" style="flex:1;padding:13px;border-radius:12px;background:var(--bg);border:none;color:var(--text);font-size:13px;font-weight:600;cursor:pointer;font-family:inherit">Close</button>';
+  }else{
+    // All failed
+    if(titleEl)titleEl.textContent='Save failed';
+    if(hintEl)hintEl.innerHTML='<div style="font-size:12px;color:#FF3B30;text-align:left;background:#FF3B3014;border-radius:8px;padding:8px;line-height:1.5">'+(errors.length?errors.join('<br>'):'Unknown error — check the console for details.')+'</div>';
+    if(actionsEl)actionsEl.innerHTML='<button onclick="closeVoiceQuickAdd()" style="flex:1;padding:13px;border-radius:12px;background:var(--bg);border:none;color:var(--text);font-size:13px;font-weight:600;cursor:pointer;font-family:inherit">Close</button>';
+  }
 };
 
 window.saveVoiceReminder=async function(text,date){
@@ -7890,6 +8283,52 @@ window.saveVoiceAsReminder=async function(text){
 window.saveVoiceAsGroceryRaw=async function(text){
   if(!text||!text.trim()){closeVoiceQuickAdd();return;}
   await window.saveVoiceGrocery([text.trim()]);
+};
+
+// Save a gift idea from voice
+window.saveVoiceGift=async function(recipientId,idea,isPrivate){
+  if(!recipientId||!idea){closeVoiceQuickAdd();return;}
+  if(!S.familyId){notify('No family loaded','⚠️');return;}
+  try{
+    const cleanIdea=idea.charAt(0).toUpperCase()+idea.slice(1);
+    await fadd(['gifts'],{
+      recipientId,
+      label:cleanIdea,
+      price:null,
+      occasion:'birthday',
+      isPrivate:!!isPrivate,
+      createdBy:S.user?.uid||''
+    });
+    notify('Gift idea saved 🎁'+(isPrivate?' (private)':''),'✅');
+  }catch(e){
+    notify('Save failed: '+(e.message||e),'❌');
+  }
+  closeVoiceQuickAdd();
+};
+
+// Show private/open picker for ambiguous gift recipient choice
+window.showGiftPrivacyPicker=function(){
+  const pending=S._giftIdeaPending;
+  if(!pending){closeVoiceQuickAdd();return;}
+  const allPeople=[...S.children.map(c=>({id:c.id,name:c.name})),...members().map(m=>({id:m.uid,name:m.name}))];
+  const recipient=allPeople.find(p=>p.id===pending.recipientId);
+  if(!recipient){closeVoiceQuickAdd();return;}
+  const iconEl=document.getElementById('voice-state-icon');
+  const titleEl=document.getElementById('voice-state-title');
+  const hintEl=document.getElementById('voice-state-hint');
+  const actionsEl=document.getElementById('voice-actions');
+  if(iconEl)iconEl.textContent='🎁';
+  if(titleEl)titleEl.textContent='Private or open?';
+  if(hintEl)hintEl.innerHTML='<div style="background:var(--bg);border-radius:8px;padding:8px 10px;color:var(--text);text-align:left">'+
+    '<div style="font-size:13px"><strong>'+pending.idea+'</strong> for <strong>'+recipient.name+'</strong></div>'+
+    '<div style="font-size:11px;color:var(--text-secondary);margin-top:4px">Private = only you see it. Open = '+recipient.name.split(' ')[0]+' can see it too.</div>'+
+    '</div>';
+  if(actionsEl){
+    actionsEl.innerHTML=
+      `<button onclick='saveVoiceGift(${JSON.stringify(pending.recipientId)},${JSON.stringify(pending.idea)},true)' style="flex:1;padding:13px;border-radius:12px;background:#FF9500;border:none;color:#fff;font-size:13px;font-weight:700;cursor:pointer;font-family:inherit">🔒 Private</button>`+
+      `<button onclick='saveVoiceGift(${JSON.stringify(pending.recipientId)},${JSON.stringify(pending.idea)},false)' style="flex:1;padding:13px;border-radius:12px;background:#FF6B9D;border:none;color:#fff;font-size:13px;font-weight:700;cursor:pointer;font-family:inherit">👀 Open</button>`+
+      '<button onclick="closeVoiceQuickAdd()" style="padding:13px;border-radius:12px;background:var(--bg);border:none;color:var(--text-secondary);font-size:13px;font-weight:600;cursor:pointer;font-family:inherit">Cancel</button>';
+  }
 };
 
 // "Coming soon" placeholder modal for the recurring-import buttons
