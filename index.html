@@ -1418,7 +1418,7 @@ function sToday(){
         // Total event count across all pending bundles
         const totalEvents=pending.reduce((sum,p)=>sum+(Array.isArray(p.events)?p.events.length:0),0);
         return `<div class="sh" style="margin-bottom:6px">📥 New from Email</div>
-        <div onclick="go('inboxReview')" class="card" style="margin-bottom:14px;cursor:pointer;background:linear-gradient(135deg,#AF52DE,#5856D6);color:#fff;border:none;padding:0;overflow:hidden">
+        <div onclick="openInboxReview()" class="card" style="margin-bottom:14px;cursor:pointer;background:linear-gradient(135deg,#AF52DE,#5856D6);color:#fff;border:none;padding:0;overflow:hidden">
           <div style="padding:14px 16px;display:flex;align-items:center;gap:12px">
             <div style="width:42px;height:42px;border-radius:21px;background:rgba(255,255,255,0.22);display:flex;align-items:center;justify-content:center;font-size:22px;flex-shrink:0">🤖</div>
             <div style="flex:1;min-width:0">
@@ -4407,6 +4407,8 @@ window.commitEmailImport=async function(){
 
 // === INBOX REVIEW SCREEN — pending events from forwarded emails ===
 function sInboxReview(){
+  console.log('[sInboxReview] entry. pending count:',(S.pendingEmails||[]).length);
+  try{
   const pending=Array.isArray(S.pendingEmails)?S.pendingEmails:[];
 
   if(pending.length===0){
@@ -4430,7 +4432,15 @@ function sInboxReview(){
     const conf=bundle.confidence||'medium';
     const confColor=conf==='high'?'#34C759':conf==='medium'?'#FF9500':'#8E8E93';
     const confLabel=conf==='high'?'High':conf==='medium'?'Medium':'Low';
-    const dateStr=bundle.sourceReceivedAt?.toDate?.toLocaleDateString('en-AU',{day:'numeric',month:'short'})||'';
+    // Convert Firestore Timestamp to JS Date safely
+    let dateStr='';
+    try{
+      const d=bundle.sourceReceivedAt;
+      if(d){
+        const jsDate=typeof d.toDate==='function'?d.toDate():(d instanceof Date?d:new Date(d));
+        if(!isNaN(jsDate))dateStr=jsDate.toLocaleDateString('en-AU',{day:'numeric',month:'short'});
+      }
+    }catch(e){console.warn('date parse failed',e);}
 
     return `<div class="card" style="margin:0 16px 14px;overflow:hidden">
       <!-- HEADER: source email info -->
@@ -4499,6 +4509,22 @@ function sInboxReview(){
       ${pending.map(bundleCard).join('')}
     </div>
   </div>`;
+  }catch(err){
+    console.error('[inboxReview] render failed:',err);
+    return `<div style="min-height:100%;display:flex;flex-direction:column;background:var(--bg)">
+      <div style="background:var(--card);padding:14px 16px;display:flex;align-items:center;border-bottom:1px solid var(--row-border)">
+        <button class="back-btn" onclick="back()">${bk()} Back</button>
+        <div style="flex:1;text-align:center;font-size:17px;font-weight:600">📥 Inbox</div>
+        <div style="width:60px"></div>
+      </div>
+      <div style="padding:40px 24px;text-align:center">
+        <div style="font-size:48px;margin-bottom:12px">⚠️</div>
+        <div style="font-size:16px;font-weight:700;color:var(--text);margin-bottom:8px">Couldn't render inbox</div>
+        <div style="font-size:12px;color:#FF3B30;background:#FF3B3014;border-radius:8px;padding:10px;margin:0 auto;max-width:320px;text-align:left;font-family:Menlo,monospace;line-height:1.5;white-space:pre-wrap;word-break:break-word">${(err&&err.message?err.message:String(err)).slice(0,400)}</div>
+        <div style="font-size:11px;color:var(--text-secondary);margin-top:12px">Open browser DevTools → Console for full stack trace</div>
+      </div>
+    </div>`;
+  }
 }
 
 // Approve a single event in a pending bundle — saves to events, removes from bundle
@@ -4641,6 +4667,7 @@ window.dismissBundle=async function(bundleId){
 
 // === INBOX SETUP SCREEN — show forwarding address + instructions ===
 function sInboxSetup(){
+  try{
   // Prefer the friendly inbound address; fall back to Postmark address if DNS not set up
   const friendly=S.family?.inboundAddress||'';
   const postmark=S.family?.postmarkInboundAddress||'';
@@ -4755,6 +4782,10 @@ function sInboxSetup(){
 
     </div>
   </div>`;
+  }catch(err){
+    console.error('[inboxSetup] render failed:',err);
+    return `<div style="padding:40px 24px;text-align:center"><div style="font-size:48px;margin-bottom:12px">⚠️</div><div style="font-size:16px;font-weight:700;color:var(--text);margin-bottom:8px">Couldn't render setup</div><div style="font-size:12px;color:#FF3B30">${(err&&err.message?err.message:String(err)).slice(0,300)}</div></div>`;
+  }
 }
 
 // Copy the inbound address to clipboard
@@ -8961,6 +8992,21 @@ window.openComingSoon=function(kind){
 };
 
 window.go=go;window.back=back;window.setTab=setTab;window.render=render;window.S=S;
+// Diagnostic wrapper for inbox review — logs everything so we can debug
+window.openInboxReview=function(){
+  try{
+    console.log('[openInboxReview] starting. S exists?',!!window.S,'pendingEmails:',(window.S&&window.S.pendingEmails)||'undefined');
+    if(!window.S){console.error('[openInboxReview] S is undefined — app state broken');return;}
+    window.S.screen='inboxReview';
+    window.S.fabOpen=false;
+    console.log('[openInboxReview] State set. Calling render…');
+    if(typeof render==='function'){render();console.log('[openInboxReview] render() called successfully');}
+    else{console.error('[openInboxReview] render is not a function:',typeof render);}
+  }catch(e){
+    console.error('[openInboxReview] EXCEPTION:',e);
+    alert('Inbox open failed: '+(e.message||e)+'\n\nSee browser console for details.');
+  }
+};
 
 // Load persisted settings
 try{
