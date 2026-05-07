@@ -222,7 +222,51 @@ const NAVY='#1C3A6B';
 // Currently set to Vercel default because app.ourhomebase.com.au DNS isn't resolving.
 // Once that subdomain is configured properly in Vercel, change to 'https://app.ourhomebase.com.au'.
 const APP_URL='https://home-base-orcin.vercel.app';
-const COLORS=['#007AFF','#34C759','#FF9500','#FF6B9D','#AF52DE','#FF3B30','#5856D6','#00C7BE'];
+// Curated 36-colour palette — organised by hue (reds → oranges → yellows → greens → blues → purples → neutrals).
+// All chosen for high contrast against white backgrounds + good distinguishability between family members.
+const COLORS=[
+  // Reds + Pinks
+  '#FF3B30','#E74C3C','#C0392B','#FF6B6B','#FF6B9D','#E91E63',
+  // Oranges + Yellows
+  '#FF9500','#FF7043','#F39C12','#FFB300','#FBC02D','#F1C40F',
+  // Greens
+  '#34C759','#27AE60','#16A085','#52BE80','#1ABC9C','#00C7BE',
+  // Blues
+  '#007AFF','#1C3A6B','#3498DB','#2980B9','#5DADE2','#5856D6',
+  // Purples
+  '#AF52DE','#9B59B6','#8E44AD','#7B2CBF','#BB6BD9','#D26BD9',
+  // Neutrals (warm + cool)
+  '#8E8E93','#5A5A5C','#A0826D','#7F8C8D','#34495E','#2C3E50'
+];
+// Render a swatch grid colour picker with curated palette + custom hex input.
+// `idPrefix` — DOM id prefix for buttons (e.g. 'col', 'efc'). Must be unique per usage.
+// `selected` — currently selected hex string.
+// `onPick`   — JS expression run on swatch tap. Use 'HEX' as placeholder, replaced with the colour.
+//              e.g. "pickColor('HEX')" or "document.getElementById('ef-color').value='HEX';refreshSwatches()"
+function renderColourGrid(idPrefix,selected,onPick){
+  const norm=(s)=>String(s||'').trim().toLowerCase();
+  const sel=norm(selected);
+  const isCustom=!!sel&&!COLORS.some(c=>norm(c)===sel);
+  const swatches=COLORS.map((c,i)=>{
+    const isSel=norm(c)===sel;
+    const handler=onPick.replace(/HEX/g,c);
+    return `<button type="button" onclick="${handler}" id="${idPrefix}${i}" aria-label="Colour ${c}" style="width:38px;height:38px;border-radius:19px;background:${c};border:${isSel?'3px solid #1C1C1E':'2px solid #E5E5EA'};cursor:pointer;padding:0;display:flex;align-items:center;justify-content:center">${isSel?'<span style="color:#fff;font-size:16px;line-height:1;text-shadow:0 1px 2px rgba(0,0,0,0.4)">✓</span>':''}</button>`;
+  }).join('');
+  const customId=idPrefix+'-custom';
+  // The custom input handler — use this.value as the colour
+  const customHandler=onPick.replace(/'HEX'/g,'this.value').replace(/"HEX"/g,'this.value').replace(/HEX/g,"'+this.value+'");
+  const customSwatch=isCustom
+    ? `<button type="button" id="${idPrefix}-csw" aria-label="Custom colour" style="width:38px;height:38px;border-radius:19px;background:${selected};border:3px solid #1C1C1E;cursor:default;padding:0;display:flex;align-items:center;justify-content:center"><span style="color:#fff;font-size:16px;line-height:1;text-shadow:0 1px 2px rgba(0,0,0,0.4)">✓</span></button>`
+    : '';
+  return `<div style="display:flex;flex-wrap:wrap;gap:8px;justify-content:flex-start;margin-bottom:8px">${swatches}${customSwatch}</div>
+    <details style="margin-top:6px">
+      <summary style="font-size:12px;color:#1C3A6B;cursor:pointer;font-weight:600;display:inline-block;padding:4px 0;list-style:none">🎨 More colours…</summary>
+      <div style="display:flex;align-items:center;gap:10px;margin-top:8px;background:#F2F2F7;border-radius:10px;padding:10px">
+        <input type="color" id="${customId}" value="${isCustom?selected:'#1C3A6B'}" oninput="${customHandler}" style="width:48px;height:40px;border:none;border-radius:8px;cursor:pointer;padding:0;background:transparent"/>
+        <span style="font-size:12px;color:#5A5A5C;line-height:1.4">Pick any colour from the rainbow.</span>
+      </div>
+    </details>`;
+}
 const DAYNAMES=['Sunday','Monday','Tuesday','Wednesday','Thursday','Friday','Saturday'];
 const DAYSH=['Sun','Mon','Tue','Wed','Thu','Fri','Sat'];
 const MONTHS=['Jan','Feb','Mar','Apr','May','Jun','Jul','Aug','Sep','Oct','Nov','Dec'];
@@ -979,9 +1023,7 @@ function sAddChild(){
         <input class="input" id="cyear" type="text" placeholder="Year / Grade (e.g. Year 4)"/>
         <input class="input" id="cschool" type="text" placeholder="School name"/>
         <div style="font-size:15px;font-weight:600;color:#1C1C1E;margin-top:4px">Profile colour</div>
-        <div style="display:flex;gap:10px;flex-wrap:wrap">
-          ${COLORS.map((c,i)=>`<button onclick="pickColor('${c}')" id="col${i}" style="width:44px;height:44px;border-radius:22px;background:${c};border:${i===0?'4px solid #1C1C1E':'4px solid transparent'};cursor:pointer"></button>`).join('')}
-        </div>
+        <div id="ccolor-grid">${renderColourGrid('col',COLORS[0],"pickColor('HEX')")}</div>
         <input type="hidden" id="ccolor" value="${COLORS[0]}"/>
         <div id="cerr" class="err"></div>
         <button class="primary-btn" onclick="hAddChild()">Add Child</button>
@@ -1090,9 +1132,7 @@ function sEditChild(){
         <input class="input" id="cyear" type="text" placeholder="Year" value="${child.year||''}"/>
         <input class="input" id="cschool" type="text" placeholder="School" value="${child.school||''}"/>
         <div style="font-size:15px;font-weight:600;margin-top:4px">Profile colour</div>
-        <div style="display:flex;gap:10px;flex-wrap:wrap">
-          ${COLORS.map((c,i)=>`<button onclick="pickColor('${c}')" id="col${i}" style="width:44px;height:44px;border-radius:22px;background:${c};border:${c===child.color?'4px solid #1C1C1E':'4px solid transparent'};cursor:pointer"></button>`).join('')}
-        </div>
+        <div id="ccolor-grid">${renderColourGrid('col',child.color||COLORS[0],"pickColor('HEX')")}</div>
         <input type="hidden" id="ccolor" value="${child.color||COLORS[0]}"/>
         <div id="cerr" class="err"></div>
         <button class="primary-btn" onclick="hSaveEditChild('${child.id}')">Save Changes</button>
@@ -1116,9 +1156,7 @@ function sEditFamily(){
         <input class="input" id="ef-name" type="text" placeholder="Your name" value="${m.name||''}"/>
         <input class="input" id="ef-fname" type="text" placeholder="Family name" value="${S.family.name||''}"/>
         <div style="font-size:15px;font-weight:600;margin-top:4px">Your colour</div>
-        <div style="display:flex;gap:10px;flex-wrap:wrap">
-          ${COLORS.map((c,i)=>`<button onclick="document.getElementById('ef-color').value='${c}';document.querySelectorAll('[id^=efc]').forEach(b=>b.style.border='4px solid transparent');document.getElementById('efc${i}').style.border='4px solid #1C1C1E'" id="efc${i}" style="width:44px;height:44px;border-radius:22px;background:${c};border:${c===m.color?'4px solid #1C1C1E':'4px solid transparent'};cursor:pointer"></button>`).join('')}
-        </div>
+        <div id="ef-color-grid">${renderColourGrid('efc',m.color||NAVY,"pickColorTo('ef-color','ef-color-grid','efc','HEX')")}</div>
         <input type="hidden" id="ef-color" value="${m.color||NAVY}"/>
         <div id="eferr" class="err"></div>
         <button class="primary-btn" onclick="hSaveEditFamily()">Save Changes</button>
@@ -1159,9 +1197,7 @@ function sAddCaregiver(){
         </select>
         <input class="input" id="ac-email" type="email" placeholder="Email (optional - for invites)"/>
         <div style="font-size:15px;font-weight:600;margin-top:4px">Profile colour</div>
-        <div style="display:flex;gap:10px;flex-wrap:wrap">
-          ${COLORS.map((c,i)=>`<button onclick="document.getElementById('ac-color').value='${c}';document.querySelectorAll('[id^=acc]').forEach(b=>b.style.border='4px solid transparent');document.getElementById('acc${i}').style.border='4px solid #1C1C1E'" id="acc${i}" style="width:44px;height:44px;border-radius:22px;background:${c};border:${i===0?'4px solid #1C1C1E':'4px solid transparent'};cursor:pointer"></button>`).join('')}
-        </div>
+        <div id="ac-color-grid">${renderColourGrid('acc',COLORS[0],"pickColorTo('ac-color','ac-color-grid','acc','HEX')")}</div>
         <input type="hidden" id="ac-color" value="${COLORS[0]}"/>
         <div style="background:#F2F2F7;border-radius:10px;padding:14px;font-size:13px;color:#1C1C1E;line-height:1.5">
           <div style="font-weight:700;margin-bottom:8px">📨 How they'll join</div>
@@ -1210,9 +1246,7 @@ function sEditCaregiver(){
         ${isMe?`<input class="input" id="ec-fname" type="text" placeholder="Family name" value="${S.family?.name||''}"/>
         <div style="font-size:12px;color:#8E8E93;margin-top:-6px;padding-left:4px">Family name (only you can edit)</div>`:''}
         <div style="font-size:15px;font-weight:600;margin-top:4px">Profile colour</div>
-        <div style="display:flex;gap:10px;flex-wrap:wrap">
-          ${COLORS.map((c,i)=>`<button onclick="document.getElementById('ec-color').value='${c}';document.querySelectorAll('[id^=ecc]').forEach(b=>b.style.border='4px solid transparent');document.getElementById('ecc${i}').style.border='4px solid #1C1C1E'" id="ecc${i}" style="width:44px;height:44px;border-radius:22px;background:${c};border:${c===m.color?'4px solid #1C1C1E':'4px solid transparent'};cursor:pointer"></button>`).join('')}
-        </div>
+        <div id="ec-color-grid">${renderColourGrid('ecc',m.color||NAVY,"pickColorTo('ec-color','ec-color-grid','ecc','HEX')")}</div>
         <input type="hidden" id="ec-color" value="${m.color||NAVY}"/>
         <div id="ecerr" class="err"></div>
         <button class="primary-btn" onclick="hSaveCaregiver('${uid}')">Save Changes</button>
@@ -1495,14 +1529,8 @@ function sToday(){
             ${otherEvs.map((ev,i)=>renderRow(ev,i,otherEvs)).join('')}
           </div>`;
         }
-        // If both empty - show single "nothing scheduled" message
-        if(schoolEvs.length===0&&otherEvs.length===0){
-          const dayWord=(S.dayOffset===0||!S.dayOffset)?'today':(S.dayOffset===1?'tomorrow':'this day');
-          html+=`<div class="sh" style="margin-bottom:6px">📅 ${(()=>{const o=S.dayOffset||0;return o===0?"Today's Activities":o===1?"Tomorrow's Activities":o===-1?"Yesterday's Activities":DAYNAMES[viewDateObj.getDay()]+"'s Activities";})()}</div>
-          <div class="card" style="margin-bottom:14px">
-            <div class="row" style="color:#8E8E93;font-size:14px;justify-content:center">Nothing scheduled ${dayWord} 🎉</div>
-          </div>`;
-        }
+        // If both empty — hide the activities section completely (no heading, no card)
+        // (Previously showed "Nothing scheduled today 🎉" — now hidden per UX preference)
         return html;
       })()}
 
@@ -1512,6 +1540,10 @@ function sToday(){
           if(r.done)return false;
           if(r.mode==='ongoing')return viewDateStr<=r.date;
           return r.date===viewDateStr;
+        }).sort((a,b)=>{
+          const da=a.date||'9999-12-31';
+          const db=b.date||'9999-12-31';
+          return da.localeCompare(db);
         });
         if(dueReminders.length===0)return '';
         return `<div class="sh" style="margin-bottom:6px">⏰ Reminders</div>
@@ -2143,7 +2175,7 @@ function sEvents(){
 
   // Active events = recurring + one-offs from today onward
   const isPastOneoff=ev=>(!ev.freq||ev.freq==='once')&&ev.date&&ev.date<todayStr;
-  const activeEvents=S.events.filter(ev=>!isPastOneoff(ev));
+  const activeEvents=S.events.filter(ev=>!isPastOneoff(ev)).sort(eventChronoCmp);
   const pastOneoffs=S.events.filter(ev=>isPastOneoff(ev)&&(retentionForever||ev.date>=cutoffStr))
     .sort((a,b)=>(b.date||'').localeCompare(a.date||''));
 
@@ -4946,10 +4978,44 @@ function renderEventRow(ev,isLast,isPast){
 }
 
 // Generic category-filtered events view (used for Work)
+// Comparator: sorts events chronologically by NEXT occurrence (closest date first).
+// One-off events use ev.date. Recurring events compute their next occurrence from today.
+// Events with no resolvable date sort last.
+function eventChronoCmp(a,b){
+  const tNow=Date.now();
+  const next=(ev)=>{
+    if(!ev.freq||ev.freq==='once'){
+      if(!ev.date)return Infinity;
+      const t=new Date(ev.date+'T'+(ev.time?'00':'12')+':00:00').getTime();
+      return t;
+    }
+    // For recurring: find the next occurrence today/onward, falling back to start date
+    if(!ev.days)return ev.startDate?new Date(ev.startDate+'T12:00').getTime():Infinity;
+    const start=ev.startDate?new Date(ev.startDate+'T00:00').getTime():tNow;
+    const end=ev.endDate?new Date(ev.endDate+'T23:59').getTime():Infinity;
+    if(tNow>end)return Infinity; // already finished
+    const baseT=Math.max(tNow,start);
+    // Walk forward up to 14 days to find the next active day
+    for(let i=0;i<14;i++){
+      const d=new Date(baseT+i*86400000);
+      const dn=DAYSH[d.getDay()];
+      if(ev.days[dn]){
+        if(ev.freq==='fortnightly'){
+          const wks=Math.floor((d.getTime()-start)/(7*86400000));
+          if(wks%2!==0)continue;
+        }
+        return d.getTime();
+      }
+    }
+    return start;
+  };
+  return next(a)-next(b);
+}
+
 function sCategoryEvents(tabBar,catKey,headerLabel){
   const todayStr=fd(new Date());
   const evs=S.events.filter(ev=>(ev.category||'')===catKey&&!((!ev.freq||ev.freq==='once')&&ev.date&&ev.date<todayStr))
-    .sort((a,b)=>(a.title||'').localeCompare(b.title||''));
+    .sort(eventChronoCmp);
   return `
     <div style="background:var(--card);padding:14px 16px 0;border-bottom:1px solid var(--row-border);position:sticky;top:0;z-index:10">
       <div style="font-size:26px;font-weight:800;color:var(--text)">Events</div>
@@ -4968,7 +5034,7 @@ function sGeneralEvents(tabBar){
   const todayStr=fd(new Date());
   const generalCats=['','other','social','medical'];
   const evs=S.events.filter(ev=>generalCats.includes(ev.category||'')&&!((!ev.freq||ev.freq==='once')&&ev.date&&ev.date<todayStr))
-    .sort((a,b)=>(a.title||'').localeCompare(b.title||''));
+    .sort(eventChronoCmp);
   return `
     <div style="background:var(--card);padding:14px 16px 0;border-bottom:1px solid var(--row-border);position:sticky;top:0;z-index:10">
       <div style="font-size:26px;font-weight:800;color:var(--text)">Events</div>
@@ -5945,6 +6011,10 @@ function sPersonProfile(){
           if(r.done)return false; // hide ticked-off reminders (Nash request)
           if(r.mode==='ongoing')return viewDateStr<=r.date;
           return r.date===viewDateStr;
+        }).sort((a,b)=>{
+          const da=a.date||'9999-12-31';
+          const db=b.date||'9999-12-31';
+          return da.localeCompare(db);
         });
         if(personReminders.length===0)return '';
         return `<div class="sh" style="padding:0 16px;margin-bottom:6px">⏰ ${dayLabel}'s Reminders</div>
@@ -6853,7 +6923,17 @@ window.hAddChild=async()=>{
     S.activeChild=null;back();notify(name+' added! 🎉');
   }catch(ex){if(err)err.textContent=ex.message;}
 };
-window.pickColor=c=>{$('ccolor').value=c;COLORS.forEach((col,i)=>{const el=$('col'+i);if(el)el.style.border=(col===c?'4px solid #1C1C1E':'4px solid transparent');});};
+window.pickColor=c=>{const inp=$('ccolor');if(inp)inp.value=c;const grid=$('ccolor-grid');if(grid)grid.innerHTML=renderColourGrid('col',c,"pickColor('HEX')");};
+// Generic colour picker handler — sets a hidden input AND re-renders its grid container.
+// inputId: id of the hidden input holding the chosen value.
+// gridId:  id of the div wrapping the colour grid.
+// prefix:  unique idPrefix used by renderColourGrid for swatch IDs.
+// hex:     the chosen colour.
+window.pickColorTo=function(inputId,gridId,prefix,hex){
+  const inp=document.getElementById(inputId);if(inp)inp.value=hex;
+  const grid=document.getElementById(gridId);
+  if(grid)grid.innerHTML=renderColourGrid(prefix,hex,"pickColorTo('"+inputId+"','"+gridId+"','"+prefix+"','HEX')");
+};
 window.hSaveEditChild=async function(childId){
   const name=document.getElementById('cname')?.value?.trim();
   const dob=document.getElementById('cdob')?.value;
