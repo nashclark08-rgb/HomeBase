@@ -1586,7 +1586,14 @@ function sToday(){
 
         const realReminders=(S.reminders||[]).filter(r=>{
           if(r.done)return false;
+          // ongoing = "by this date" — show on every day from today UP TO the deadline
           if(r.mode==='ongoing')return viewDateStr<=r.date;
+          // ondate (or no mode) = "on this date"
+          // When viewing TODAY, also surface OVERDUE undone reminders (date < today)
+          // so a reminder created yesterday but missed still appears today.
+          if(isViewToday){
+            return !r.date||r.date<=viewDateStr;
+          }
           return r.date===viewDateStr;
         });
 
@@ -9615,10 +9622,14 @@ window.saveAllVoiceIntents=async function(){
             }
           });
         }
+        // Normalise mode — Today filter only knows 'ondate' and 'ongoing'.
+        // AI sometimes returns 'anytime'; treat that as 'ondate' so the reminder still shows up.
+        let normalisedMode=it.mode||'ondate';
+        if(normalisedMode!=='ondate'&&normalisedMode!=='ongoing')normalisedMode='ondate';
         const reminderDoc={
           text:(it.text||'').trim(),
           date:it.date||fd(new Date()),
-          mode:it.mode||'ondate',
+          mode:normalisedMode,
           forKeys,
           childId,
           adultUid,
