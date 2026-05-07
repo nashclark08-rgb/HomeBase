@@ -9545,13 +9545,19 @@ function renderVoiceIntentConfirmation(intents,summary,transcript){
 // Save all the AI-extracted intents — events go to events, reminders to reminders, etc.
 window.saveAllVoiceIntents=async function(){
   const intents=window._voiceIntents||[];
+  console.log('[voice-save] starting with',intents.length,'intents:',JSON.parse(JSON.stringify(intents)));
   if(!intents.length){closeVoiceQuickAdd();return;}
+  if(!S.familyId){
+    notify('No family loaded — cannot save','⚠️');
+    console.error('[voice-save] S.familyId is empty');
+    return;
+  }
   let saved=0,failed=0;
-  const results=[];
+  const results=[],errors=[];
   for(const it of intents){
     try{
+      console.log('[voice-save] processing',it.type,it);
       if(it.type==='event'){
-        // Map participant names → IDs
         const allPeople=[
           ...S.children.map(c=>({id:c.id,name:c.name,kind:'child'})),
           ...members().map(m=>({id:m.uid,name:m.name,kind:'adult'}))
@@ -9571,7 +9577,7 @@ window.saveAllVoiceIntents=async function(){
           it.days.forEach(d=>{if(days.hasOwnProperty(d))days[d]=true;});
         }
         const timeStr=it.time?(it.endTime?it.time+' – '+it.endTime:it.time):'';
-        await fadd(['events'],{
+        const ref=await fadd(['events'],{
           title:(it.title||'').trim(),
           emoji:catMeta.emoji||'📅',
           participantIds,childId:'',adultUid:'',
@@ -9582,12 +9588,13 @@ window.saveAllVoiceIntents=async function(){
           days,
           time:timeStr,
           category:evCat,
-          sport:'',
+          sport:it.sport||'',
           location:it.location||'',
           dropoff:'',pickup:'',
           packItems:[],
           notes:it.notes||''
         });
+        console.log('[voice-save] event saved id=',ref?.id);
         saved++;results.push('📅 '+it.title);
       }else if(it.type==='reminder'){
         const allPeople=[
@@ -9595,35 +9602,49 @@ window.saveAllVoiceIntents=async function(){
           ...members().map(m=>({id:m.uid,name:m.name,kind:'adult'}))
         ];
         const forKeys=[];
+        let childId='',adultUid='';
         if(Array.isArray(it.forNames)){
           it.forNames.forEach(name=>{
             const norm=String(name).toLowerCase().trim();
             const match=allPeople.find(p=>p.name.split(' ')[0].toLowerCase()===norm||p.name.toLowerCase()===norm);
-            if(match)forKeys.push(match.kind+':'+match.id);
+            if(match){
+              forKeys.push(match.kind+':'+match.id);
+              // Backwards-compat: also write the legacy single-target field
+              if(match.kind==='adult'&&!adultUid)adultUid=match.id;
+              if(match.kind==='child'&&!childId)childId=match.id;
+            }
           });
         }
-        await fadd(['reminders'],{
+        const reminderDoc={
           text:(it.text||'').trim(),
-          date:it.date||'',
+          date:it.date||fd(new Date()),
           mode:it.mode||'ondate',
           forKeys,
+          childId,
+          adultUid,
+          notes:'',
           done:false,
           createdBy:S.user?.uid||''
-        });
+        };
+        const ref=await fadd(['reminders'],reminderDoc);
+        console.log('[voice-save] reminder saved id=',ref?.id,'doc=',reminderDoc);
         saved++;results.push('⏰ '+it.text);
       }else if(it.type==='grocery'){
         const items=Array.isArray(it.items)?it.items:[];
         for(const i of items){
-          await fadd(['groceries'],{
+          const ref=await fadd(['groceries'],{
             label:(i.label||'').trim(),
             quantity:Math.max(1,parseInt(i.quantity)||1),
+            isFrequent:false,
             checked:false,
-            addedToList:true,
-            createdAt:new Date()
+            addedToList:true
           });
+          console.log('[voice-save] grocery saved id=',ref?.id,'label=',i.label);
         }
         if(items.length){saved+=items.length;results.push('🛒 '+items.length+' item'+(items.length===1?'':'s'));}
       }else if(it.type==='gift'){
+        // Gift schema fix: use `label` (not `idea`) and `price` (not `estimatedCost`)
+        // to match what sGifts and sPersonProfile read.
         const allPeople=[
           ...S.children.map(c=>({id:c.id,name:c.name})),
           ...members().map(m=>({id:m.uid,name:m.name}))
@@ -9631,36 +9652,53 @@ window.saveAllVoiceIntents=async function(){
         const norm=String(it.for||'').toLowerCase().trim();
         const match=allPeople.find(p=>p.name.split(' ')[0].toLowerCase()===norm||p.name.toLowerCase()===norm);
         if(match){
-          await fadd(['gifts'],{
+          const ref=await fadd(['gifts'],{
             recipientId:match.id,
-            idea:(it.idea||'').trim(),
+            label:(it.idea||'').trim(),
+            price:typeof it.estimatedCost==='number'?it.estimatedCost:null,
             occasion:it.occasion||'',
-            estimatedCost:it.estimatedCost||null,
             isPrivate:false,
-            createdBy:S.user?.uid||'',
-            createdAt:new Date()
+            createdBy:S.user?.uid||''
           });
+          console.log('[voice-save] gift saved id=',ref?.id,'recipient=',match.name,'label=',it.idea);
           saved++;results.push('🎁 '+match.name.split(' ')[0]+': '+it.idea);
-        }else{failed++;}
+        }else{
+          console.warn('[voice-save] gift recipient not matched:',it.for);
+          failed++;errors.push('No match for "'+it.for+'"');
+        }
       }else if(it.type==='dinner'){
-        await fadd(['dinners'],{
+        const dinnerDate=it.date||fd(new Date());
+        // Replace existing dinner for same date — same behaviour as manual dinner save
+        const existing=S.dinners.find(d=>d.date===dinnerDate);
+        if(existing){
+          try{await fdel(['dinners',existing.id]);}catch(e){console.warn('Failed to remove existing dinner',e);}
+        }
+        const ref=await fadd(['dinners'],{
+          date:dinnerDate,
           meal:(it.meal||'').trim(),
-          date:it.date||fd(new Date()),
           cook:it.cook||'',
-          createdAt:new Date()
+          notes:''
         });
+        console.log('[voice-save] dinner saved id=',ref?.id);
         saved++;results.push('🍽️ '+it.meal);
+      }else{
+        console.warn('[voice-save] unknown intent type:',it.type);
+        failed++;errors.push('Unknown type: '+it.type);
       }
     }catch(ex){
-      console.error('Failed to save intent',it,ex);
+      console.error('[voice-save] failed for intent',it,ex);
       failed++;
+      errors.push((it.type||'?')+': '+(ex.message||ex));
     }
   }
+  console.log('[voice-save] done. saved=',saved,'failed=',failed,'errors=',errors);
   closeVoiceQuickAdd();
   if(failed===0){
     notify('✅ '+results.join(' · '),'🤖');
+  }else if(saved>0){
+    notify('Saved '+saved+', '+failed+' failed: '+errors.join('; '),'⚠️');
   }else{
-    notify('Saved '+saved+', '+failed+' failed','⚠️');
+    notify('All failed: '+errors.join('; '),'❌');
   }
 };
 
