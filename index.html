@@ -1309,6 +1309,8 @@ function sToday(){
   // Family-wide events for selected day
   const todayFamilyEvs=S.events.filter(ev=>{
     if(!ev.freq||ev.freq==='once')return ev.date===viewDateStr;
+    // Honour explicit skipped dates for this recurring event
+    if(Array.isArray(ev.skipDates)&&ev.skipDates.includes(viewDateStr))return false;
     const start=new Date((ev.startDate||ev.date||viewDateStr)+'T12:00');
     const end=ev.endDate?new Date(ev.endDate+'T12:00'):null;
     const now=viewDateObj;
@@ -1321,10 +1323,14 @@ function sToday(){
     }
     return true;
   }).filter(ev=>{
-    // When viewing today, hide events that have already finished.
-    // Other days: show everything (so you can review yesterday or plan tomorrow).
+    // When viewing today, hide events with an EXPLICIT end time that has already passed.
+    // For events without an explicit end time (e.g. "7:30 AM" only), always show — we
+    // can't accurately know when they finish, so keep them visible all day.
     if(!isViewToday)return true;
     if(!ev.time)return true; // no time set → show all day
+    // Only hide if the time string contains an explicit end (e.g. "9-10am", "3:30pm – 4:30pm")
+    const hasExplicitEnd=/\s*(?:to|-|–|—|until|till)\s+/i.test(String(ev.time));
+    if(!hasExplicitEnd)return true; // start-only times always show
     const range=parseTimeRange(ev.time);
     if(!range)return true; // unparseable → show
     const nowMins=new Date().getHours()*60+new Date().getMinutes();
@@ -1817,7 +1823,7 @@ function sAddEvent(){
         <!-- Category tags (COMPULSORY) -->
         <div>
           <div style="font-size:14px;font-weight:600;margin-bottom:8px">🏷 Category <span style="color:#FF3B30">*</span></div>
-          ${(S.ef.category==='school-event'||S.ef.category==='school-subject'||S.ef.category==='school')?`<div style="background:var(--navy-soft);border:1px solid var(--navy);border-radius:10px;padding:10px 14px;margin-bottom:10px;display:flex;align-items:center;justify-content:space-between"><span style="font-size:13px;font-weight:600;color:var(--navy)">Filed under: ${CAT_LABELS[S.ef.category]||S.ef.category}</span><button type="button" onclick="S.ef.category='';render()" style="background:none;border:none;color:var(--navy);font-size:12px;font-weight:600;cursor:pointer;font-family:inherit;text-decoration:underline">Change</button></div>`:''}
+          ${(S.ef.category==='school-event'||S.ef.category==='school-subject'||S.ef.category==='school')?`<div style="background:var(--navy-soft);border:1px solid var(--navy);border-radius:10px;padding:10px 14px;margin-bottom:10px;display:flex;align-items:center;justify-content:space-between"><span style="font-size:13px;font-weight:600;color:var(--navy)">Filed under: ${CAT_LABELS[S.ef.category]||S.ef.category}</span><button type="button" onclick="captureEventFormToState();S.ef.category='';render()" style="background:none;border:none;color:var(--navy);font-size:12px;font-weight:600;cursor:pointer;font-family:inherit;text-decoration:underline">Change</button></div>`:''}
           <div style="display:flex;gap:8px;flex-wrap:wrap">
             ${[
               {id:'sport-games',label:'🏆 Sport Games'},
@@ -1835,7 +1841,7 @@ function sAddEvent(){
             const currentSport=S.ef.sport||'';
             return `<div style="margin-top:14px;padding:12px;background:var(--bg);border-radius:10px;border:1px solid var(--border)">
               <div style="font-size:13px;font-weight:700;color:var(--text);margin-bottom:6px">Which sport? <span style="color:#FF3B30">*</span></div>
-              ${familySports.length===0?`<div style="font-size:12px;color:var(--text-secondary);line-height:1.5;margin-bottom:8px">No sports added yet. <a onclick="setTab('settings')" style="color:var(--navy);font-weight:600;cursor:pointer;text-decoration:underline">Add some in Settings</a> or type one below.</div>`:`<div style="display:flex;gap:6px;flex-wrap:wrap;margin-bottom:8px">${familySports.map(s=>{const safe=s.replace(/'/g,"\\'");return `<button type="button" onclick="S.ef.sport='${safe}';document.getElementById('ev-sport-input').value='${safe}';render()" class="freq-btn ${currentSport===s?'on':''}" style="padding:6px 12px;font-size:12px">${s}</button>`;}).join('')}</div>`}
+              ${familySports.length===0?`<div style="font-size:12px;color:var(--text-secondary);line-height:1.5;margin-bottom:8px">No sports added yet. <a onclick="setTab('settings')" style="color:var(--navy);font-weight:600;cursor:pointer;text-decoration:underline">Add some in Settings</a> or type one below.</div>`:`<div style="display:flex;gap:6px;flex-wrap:wrap;margin-bottom:8px">${familySports.map(s=>{const safe=s.replace(/'/g,"\\'");return `<button type="button" onclick="captureEventFormToState();S.ef.sport='${safe}';document.getElementById('ev-sport-input').value='${safe}';render()" class="freq-btn ${currentSport===s?'on':''}" style="padding:6px 12px;font-size:12px">${s}</button>`;}).join('')}</div>`}
               <input class="input" id="ev-sport-input" type="text" placeholder="Type a sport (e.g. Water Polo)" value="${(currentSport||'').replace(/"/g,'&quot;')}" oninput="S.ef.sport=this.value" style="font-size:14px"/>
             </div>`;
           })():''}
@@ -1895,6 +1901,7 @@ function sCalendar(){
   function eventsOnDate(ds){
     return S.events.filter(ev=>{
       if(!ev.freq||ev.freq==='once')return ev.date===ds;
+      if(Array.isArray(ev.skipDates)&&ev.skipDates.includes(ds))return false;
       const start=new Date((ev.startDate||ev.date||ds)+'T12:00');
       const end=ev.endDate?new Date(ev.endDate+'T12:00'):null;
       const d=new Date(ds+'T12:00');
@@ -7178,7 +7185,30 @@ window.toggleParticipant=function(id){
   btn.style.color=on?'#fff':colour;
   btn.innerHTML=(on?'✓ ':'')+name;
 };
+// Capture all Add Event form field values into S.ef so they survive a re-render.
+// Called before any change that triggers render() (category toggle, freq change, etc.)
+function captureEventFormToState(){
+  const ef=S.ef;
+  if(!ef)return;
+  const get=(id)=>document.getElementById(id);
+  const v=(id)=>get(id)?.value;
+  if(get('et'))ef.title=v('et')||'';
+  if(get('edate'))ef.date=v('edate')||'';
+  if(get('estartdate'))ef.startDate=v('estartdate')||'';
+  if(get('eenddate'))ef.endDate=v('eenddate')||'';
+  if(get('eloc'))ef.location=v('eloc')||'';
+  if(get('enotes'))ef.notes=v('enotes')||'';
+  if(get('edrop'))ef.dropoff=v('edrop')||'';
+  if(get('epick'))ef.pickup=v('epick')||'';
+  // Build time string from the time selects if present
+  try{
+    const builtTime=typeof buildTimeString==='function'?buildTimeString():'';
+    if(builtTime||get('etime-h-start'))ef.time=builtTime;
+  }catch(e){/* ignore */}
+}
 window.toggleCategory=function(catId){
+  // CRITICAL: capture user-typed fields BEFORE re-render so they survive
+  captureEventFormToState();
   S.ef.category=S.ef.category===catId?'':catId;
   // Auto-set emoji from category metadata so users don't have to pick it manually
   if(S.ef.category){
@@ -7357,14 +7387,123 @@ window.dEvent=async id=>{
     showUndoToast(ev.title+' deleted','event');
   }catch(ex){notify('Delete failed: '+(ex.message||ex),'⚠️');}
 };
-// Delete event from the modal — shows confirmation, then closes modal + deletes
+// Delete event from the modal — for one-off events, simple confirm + delete.
+// For recurring events (weekly/fortnightly), offer choice: this occurrence only OR whole series.
 window.deleteEventFromModal=async function(id){
   const ev=S.events.find(x=>x.id===id);
   if(!ev)return;
-  const ok=confirm('Delete "'+ev.title+'"?\n\nThis cannot be undone (except via the Undo toast).');
-  if(!ok)return;
+  const isRecurring=ev.freq&&ev.freq!=='once';
+
+  if(!isRecurring){
+    // Simple one-off delete
+    const ok=confirm('Delete "'+ev.title+'"?\n\nThis cannot be undone (except via the Undo toast).');
+    if(!ok)return;
+    closeEventModal();
+    await window.dEvent(id);
+    return;
+  }
+
+  // Recurring — show modal with two options
   closeEventModal();
+  showRecurringDeleteSheet(ev);
+};
+
+// Bottom sheet asking how to delete a recurring event
+function showRecurringDeleteSheet(ev){
+  const overlay=document.createElement('div');
+  overlay.id='recurring-delete-overlay';
+  overlay.style.cssText='position:fixed;inset:0;background:rgba(0,0,0,0.45);z-index:9999;display:flex;align-items:flex-end;justify-content:center;animation:hbFadeIn 0.18s ease-out';
+  if(!document.getElementById('hbPickerKeyframes')){
+    const st=document.createElement('style');st.id='hbPickerKeyframes';
+    st.textContent='@keyframes hbFadeIn{from{opacity:0}to{opacity:1}}@keyframes hbSlideUp{from{transform:translateY(20px);opacity:0}to{transform:translateY(0);opacity:1}}';
+    document.head.appendChild(st);
+  }
+  const closeSheet=()=>{const m=document.getElementById('recurring-delete-overlay');if(m)m.remove();};
+  overlay.onclick=function(e){if(e.target===overlay)closeSheet();};
+
+  const sheet=document.createElement('div');
+  sheet.style.cssText='background:var(--card);border-radius:20px 20px 0 0;width:100%;max-width:560px;animation:hbSlideUp 0.24s cubic-bezier(.22,.61,.36,1);box-shadow:0 -8px 32px rgba(0,0,0,0.18);padding:20px';
+  sheet.onclick=function(e){e.stopPropagation();};
+
+  // Date picker for "just this one" — defaults to today's view
+  const todayStr=fd(new Date());
+  const viewDateStr=S.dayOffset?fd(new Date(Date.now()+S.dayOffset*86400000)):todayStr;
+  const freqLabel=ev.freq==='weekly'?'weekly':ev.freq==='fortnightly'?'fortnightly':'recurring';
+
+  sheet.innerHTML=`
+    <div style="width:40px;height:4px;background:#D1D1D6;border-radius:2px;margin:0 auto 16px"></div>
+    <div style="font-size:18px;font-weight:800;color:var(--text);margin-bottom:6px">Delete "${(ev.title||'').replace(/"/g,'&quot;')}"</div>
+    <div style="font-size:13px;color:var(--text-secondary);margin-bottom:18px;line-height:1.4">This is a ${freqLabel} recurring event. What would you like to delete?</div>
+
+    <div style="background:var(--bg);border-radius:12px;padding:14px;margin-bottom:10px">
+      <label style="font-size:13px;color:var(--text);font-weight:600;display:block;margin-bottom:6px">Skip on a specific date</label>
+      <input id="rdel-date" type="date" value="${viewDateStr}" style="width:100%;padding:10px;border-radius:8px;border:1px solid var(--border);background:var(--card);color:var(--text);font-family:inherit;font-size:14px"/>
+      <button onclick="confirmDeleteOccurrence('${ev.id}')" style="width:100%;margin-top:10px;padding:12px;border-radius:10px;background:#FF9500;border:none;color:#fff;font-size:14px;font-weight:700;cursor:pointer;font-family:inherit">📅 Skip just this occurrence</button>
+    </div>
+
+    <div style="background:#FFF0EE;border-radius:12px;padding:14px;margin-bottom:10px">
+      <button onclick="confirmDeleteSeries('${ev.id}')" style="width:100%;padding:12px;border-radius:10px;background:#FF3B30;border:none;color:#fff;font-size:14px;font-weight:700;cursor:pointer;font-family:inherit">🗑️ Delete entire series</button>
+      <div style="font-size:11px;color:var(--text-secondary);margin-top:6px;line-height:1.4">Removes all past + future occurrences of this event.</div>
+    </div>
+
+    <button onclick="document.getElementById('recurring-delete-overlay').remove()" style="width:100%;padding:12px;border-radius:10px;background:var(--bg);border:none;color:var(--text);font-size:14px;font-weight:600;cursor:pointer;font-family:inherit;margin-top:6px">Cancel</button>
+  `;
+
+  overlay.appendChild(sheet);
+  document.body.appendChild(overlay);
+}
+
+// Skip one occurrence of a recurring event by adding the date to ev.skipDates
+window.confirmDeleteOccurrence=async function(id){
+  const dateInput=document.getElementById('rdel-date');
+  const date=dateInput?.value;
+  if(!date){notify('Please select a date','⚠️');return;}
+  const ev=S.events.find(x=>x.id===id);
+  if(!ev)return;
+  try{
+    const skipDates=Array.isArray(ev.skipDates)?[...ev.skipDates]:[];
+    if(!skipDates.includes(date))skipDates.push(date);
+    await fupd(['events',id],{skipDates});
+    document.getElementById('recurring-delete-overlay')?.remove();
+    notify('Skipped on '+date,'✅');
+  }catch(ex){notify('Failed: '+(ex.message||ex),'❌');}
+};
+
+// Delete the entire recurring series
+window.confirmDeleteSeries=async function(id){
+  if(!confirm('Delete the entire series? All past and future occurrences will be removed. This cannot be undone (except via Undo toast).'))return;
+  document.getElementById('recurring-delete-overlay')?.remove();
   await window.dEvent(id);
+};
+
+// Edit event from modal — pre-fill the Add Event form with this event's data + navigate
+window.editEventFromModal=function(id){
+  const ev=S.events.find(x=>x.id===id);
+  if(!ev)return;
+  closeEventModal();
+  // Populate S.ef with the event's existing values, including _editId so Save updates instead of creating
+  S.ef={
+    _editId:id,
+    title:ev.title||'',
+    emoji:ev.emoji||'📅',
+    freq:ev.freq||'once',
+    days:ev.days&&typeof ev.days==='object'?{...ev.days}:{Mon:false,Tue:false,Wed:false,Thu:false,Fri:false,Sat:false,Sun:false},
+    packItems:Array.isArray(ev.packItems)?[...ev.packItems]:[],
+    category:ev.category||'',
+    sport:ev.sport||'',
+    participantIds:Array.isArray(ev.participantIds)&&ev.participantIds.length
+      ? [...ev.participantIds]
+      : [ev.childId,ev.adultUid].filter(Boolean),
+    location:ev.location||'',
+    time:ev.time||'',
+    dropoff:ev.dropoff||'',
+    pickup:ev.pickup||'',
+    date:ev.date||'',
+    endDate:ev.endDate||'',
+    startDate:ev.startDate||'',
+    notes:ev.notes||''
+  };
+  go('addEvent');
 };
 window.tPack=async(cid,iid,val)=>{try{await fupd(['children',cid,'packing',iid],{checked:val===true||val==='true'});}catch(ex){notify('Save failed: '+(ex.message||ex),'⚠️');}};
 window.dPack=async(cid,iid)=>{try{await fdel(['children',cid,'packing',iid]);}catch(ex){notify('Delete failed: '+(ex.message||ex),'⚠️');}};
@@ -8574,7 +8713,10 @@ window.openEventModal=function(eventId){
         </div>`:''}
       </div>
 
-      <button onclick="deleteEventFromModal('${eventId}')" style="width:100%;margin-top:16px;padding:13px;border-radius:12px;background:#FF3B30;border:none;color:#fff;font-size:14px;font-weight:700;cursor:pointer;font-family:inherit">🗑️ Delete event</button>
+      <div style="display:flex;gap:8px;margin-top:16px">
+        <button onclick="editEventFromModal('${eventId}')" style="flex:2;padding:13px;border-radius:12px;background:var(--navy);border:none;color:#fff;font-size:14px;font-weight:700;cursor:pointer;font-family:inherit">✏️ Edit</button>
+        <button onclick="deleteEventFromModal('${eventId}')" style="flex:1;padding:13px;border-radius:12px;background:#FF3B30;border:none;color:#fff;font-size:14px;font-weight:700;cursor:pointer;font-family:inherit">🗑️ Delete</button>
+      </div>
     </div>`;
 
   overlay.appendChild(sheet);
