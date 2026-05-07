@@ -3399,6 +3399,18 @@ function sFixturesImport(){
           </div>
         </div>
 
+        <!-- Step 1.5: TRAINING PROMPT — only when importing GAMES, not when already importing training -->
+        ${fi.type==='sport-games'&&fi.sport?`<div style="background:linear-gradient(135deg,#34C75914,#1C3A6B14);border:1px solid #34C75944;border-radius:14px;padding:14px 18px;margin-bottom:14px">
+          <div style="display:flex;align-items:flex-start;gap:10px">
+            <div style="font-size:24px;flex-shrink:0">🏃</div>
+            <div style="flex:1;min-width:0">
+              <div style="font-size:14px;font-weight:700;color:var(--text);margin-bottom:4px">Do they also train weekly?</div>
+              <div style="font-size:12px;color:var(--text-secondary);line-height:1.5;margin-bottom:10px">Add a weekly ${fi.sport} training schedule alongside the games. Optional — you can add it later.</div>
+              <button onclick="openQuickTrainingFromFixtures()" style="padding:9px 16px;border-radius:10px;background:#34C759;border:none;color:#fff;font-size:13px;font-weight:700;cursor:pointer;font-family:inherit">+ Add training schedule</button>
+            </div>
+          </div>
+        </div>`:''}
+
         <!-- Step 2: GET THE FIXTURES -->
         <div style="background:var(--card);border-radius:14px;padding:18px;margin-bottom:14px;border:1px solid var(--row-border)">
           <div style="display:flex;align-items:center;gap:10px;margin-bottom:14px">
@@ -5081,18 +5093,244 @@ function eventChronoCmp(a,b){
   return next(a)-next(b);
 }
 
+// === QUICK TRAINING — fast-path form for adding weekly sport training ===
+// Opens via: (1) Sport Training drilldown "+ Add Training Schedule" button
+//            (2) Fixtures import flow Step 3 prompt
+// Pre-configured for weekly recurring training events with smart defaults.
+
+// Open the Quick Training form. `presetSport` is optional and pre-fills the sport name.
+window.openQuickTraining=function(presetSport){
+  S.qt={
+    sport:presetSport||'',
+    days:{Mon:false,Tue:false,Wed:false,Thu:false,Fri:false,Sat:false,Sun:false},
+    time:'',
+    endTime:'',
+    location:'',
+    participantIds:[],
+    startDate:fd(new Date()),
+    endDate:'',
+    notes:'',
+    hasEndTime:false
+  };
+  go('quickTraining');
+};
+// Pre-fill Quick Training with the sport + participants currently set up in the fixtures import flow.
+// User comes back to fixtures setup after — doesn't lose their place.
+window.openQuickTrainingFromFixtures=function(){
+  const fi=S.fixtureImport||{};
+  S.qt={
+    sport:fi.sport||'',
+    days:{Mon:false,Tue:false,Wed:false,Thu:false,Fri:false,Sat:false,Sun:false},
+    time:'',
+    endTime:'',
+    location:'',
+    participantIds:Array.isArray(fi.participantIds)?[...fi.participantIds]:[],
+    startDate:fd(new Date()),
+    endDate:'',
+    notes:'',
+    hasEndTime:false
+  };
+  go('quickTraining');
+};
+
+function sQuickTraining(){
+  const qt=S.qt||{};
+  const familySports=Array.isArray(S.family?.sports)?S.family.sports:[];
+  const allPeople=[
+    ...S.children.map(c=>({id:c.id,name:c.name,color:c.color||NAVY,photo:c.photoURL,kind:'child'})),
+    ...members().map(m=>({id:m.uid,name:m.name,color:m.color||NAVY,photo:m.photoURL,kind:'adult'}))
+  ];
+  const dayBtns=['Mon','Tue','Wed','Thu','Fri','Sat','Sun'].map(d=>
+    `<button type="button" id="qt-day-${d}" onclick="toggleQTDay('${d}')" class="freq-btn ${qt.days[d]?'on':''}" style="flex:1;padding:10px 4px;font-size:12px;font-weight:700">${d}</button>`
+  ).join('');
+
+  return `<div style="min-height:100%;display:flex;flex-direction:column;background:var(--bg)">
+    <div style="background:var(--card);padding:14px 16px;display:flex;align-items:center;border-bottom:1px solid var(--row-border)">
+      <button class="back-btn" onclick="back()">${bk()} Back</button>
+      <div style="flex:1;text-align:center;font-size:17px;font-weight:600">🏃 Quick Training</div>
+      <div style="width:60px"></div>
+    </div>
+
+    <div class="scroll-view" style="padding:14px 16px 100px;max-width:680px;margin:auto;width:100%">
+
+      <!-- HERO HINT -->
+      <div style="background:linear-gradient(135deg,#34C75914,#1C3A6B14);border-radius:12px;padding:12px 14px;margin-bottom:14px;border-left:4px solid #34C759">
+        <div style="font-size:13px;color:var(--text);line-height:1.5"><strong>Quick form for weekly training.</strong> Pick the sport, days, time, location — done. For one-off events use + Add Event instead.</div>
+      </div>
+
+      <!-- SPORT -->
+      <div style="margin-bottom:18px">
+        <div style="font-size:14px;font-weight:700;color:var(--text);margin-bottom:8px">🏅 Sport <span style="color:#FF3B30">*</span></div>
+        ${familySports.length>0?`<div style="display:flex;gap:6px;flex-wrap:wrap;margin-bottom:8px">${familySports.map(s=>{const safe=s.replace(/'/g,"\\'");return `<button type="button" onclick="pickQTSport('${safe}')" class="freq-btn ${qt.sport===s?'on':''}" style="padding:7px 12px;font-size:13px">${s}</button>`;}).join('')}</div>`:''}
+        <input class="input" id="qt-sport" type="text" placeholder="Type a sport (e.g. Hockey)" value="${(qt.sport||'').replace(/"/g,'&quot;')}" oninput="S.qt.sport=this.value" style="font-size:14px"/>
+      </div>
+
+      <!-- DAYS -->
+      <div style="margin-bottom:18px">
+        <div style="font-size:14px;font-weight:700;color:var(--text);margin-bottom:8px">📅 Days <span style="color:#FF3B30">*</span></div>
+        <div style="display:flex;gap:4px">${dayBtns}</div>
+        <div style="font-size:11px;color:var(--text-secondary);margin-top:6px">Tap one or more days. Most training is 1-2 days a week.</div>
+      </div>
+
+      <!-- TIME -->
+      <div style="margin-bottom:18px">
+        <div style="font-size:14px;font-weight:700;color:var(--text);margin-bottom:8px">⏰ Time <span style="color:#FF3B30">*</span></div>
+        <div style="display:flex;gap:8px;align-items:center">
+          <input class="input" id="qt-time" type="text" placeholder="e.g. 5:00pm" value="${(qt.time||'').replace(/"/g,'&quot;')}" oninput="S.qt.time=this.value" style="flex:1;font-size:14px"/>
+          <span style="color:var(--text-secondary);font-size:13px">to</span>
+          <input class="input" id="qt-endtime" type="text" placeholder="(optional)" value="${(qt.endTime||'').replace(/"/g,'&quot;')}" oninput="S.qt.endTime=this.value" style="flex:1;font-size:14px"/>
+        </div>
+      </div>
+
+      <!-- LOCATION -->
+      <div style="margin-bottom:18px">
+        <div style="font-size:14px;font-weight:700;color:var(--text);margin-bottom:8px">📍 Location</div>
+        <input class="input" id="qt-loc" type="text" placeholder="e.g. Lavington Sports Ground" value="${(qt.location||'').replace(/"/g,'&quot;')}" oninput="S.qt.location=this.value" style="font-size:14px"/>
+      </div>
+
+      <!-- WHO -->
+      <div style="margin-bottom:18px">
+        <div style="font-size:14px;font-weight:700;color:var(--text);margin-bottom:8px">👥 Who's training?</div>
+        <div style="display:flex;flex-wrap:wrap;gap:6px">${allPeople.map(p=>{
+          const isOn=(qt.participantIds||[]).includes(p.id);
+          return `<button type="button" onclick="toggleQTParticipant('${p.id}')" style="padding:8px 14px;border-radius:18px;background:${isOn?p.color:'var(--card)'};border:2px solid ${p.color};color:${isOn?'#fff':p.color};font-size:13px;font-weight:700;cursor:pointer;font-family:inherit">${isOn?'✓ ':''}${p.name.split(' ')[0]}</button>`;
+        }).join('')}</div>
+        <div style="font-size:11px;color:var(--text-secondary);margin-top:6px">Leave all off for a family-wide event.</div>
+      </div>
+
+      <!-- DATE RANGE (collapsible advanced) -->
+      <details style="margin-bottom:18px">
+        <summary style="font-size:13px;color:var(--navy);font-weight:600;cursor:pointer;padding:6px 0">📆 Set start/end dates (optional)</summary>
+        <div style="display:flex;gap:8px;margin-top:8px;align-items:center">
+          <div style="flex:1">
+            <div style="font-size:11px;color:var(--text-secondary);margin-bottom:4px">From</div>
+            <input class="input" id="qt-startdate" type="date" value="${qt.startDate||fd(new Date())}" oninput="S.qt.startDate=this.value" style="font-size:14px"/>
+          </div>
+          <div style="flex:1">
+            <div style="font-size:11px;color:var(--text-secondary);margin-bottom:4px">Until (optional)</div>
+            <input class="input" id="qt-enddate" type="date" value="${qt.endDate||''}" oninput="S.qt.endDate=this.value" style="font-size:14px"/>
+          </div>
+        </div>
+        <div style="font-size:11px;color:var(--text-secondary);margin-top:6px;line-height:1.4">Leave end blank for ongoing training. Set it to e.g. end of term to auto-stop.</div>
+      </details>
+
+      <!-- NOTES -->
+      <div style="margin-bottom:18px">
+        <div style="font-size:14px;font-weight:700;color:var(--text);margin-bottom:8px">📝 Notes (optional)</div>
+        <input class="input" id="qt-notes" type="text" placeholder="e.g. Bring water bottle, mouth guard" value="${(qt.notes||'').replace(/"/g,'&quot;')}" oninput="S.qt.notes=this.value" style="font-size:14px"/>
+      </div>
+
+      <div id="qt-err" class="err" style="margin-bottom:8px"></div>
+
+      <button onclick="saveQuickTraining()" style="width:100%;padding:14px;border-radius:14px;background:linear-gradient(135deg,#34C759,#1C3A6B);border:none;color:#fff;font-size:15px;font-weight:700;cursor:pointer;font-family:inherit;box-shadow:0 4px 14px rgba(52,199,89,0.25)">✓ Save Training</button>
+    </div>
+  </div>`;
+}
+
+window.toggleQTDay=function(day){
+  if(!S.qt)return;
+  S.qt.days[day]=!S.qt.days[day];
+  const btn=document.getElementById('qt-day-'+day);
+  if(btn)btn.classList.toggle('on',S.qt.days[day]);
+};
+window.pickQTSport=function(sport){
+  if(!S.qt)return;
+  S.qt.sport=sport;
+  const inp=document.getElementById('qt-sport');
+  if(inp)inp.value=sport;
+  // Update pill highlights
+  document.querySelectorAll('button.freq-btn').forEach(btn=>{
+    const txt=(btn.textContent||'').trim();
+    const familySports=Array.isArray(S.family?.sports)?S.family.sports:[];
+    if(familySports.includes(txt)){
+      btn.classList.toggle('on',txt===sport);
+    }
+  });
+};
+window.toggleQTParticipant=function(id){
+  if(!S.qt)return;
+  if(!Array.isArray(S.qt.participantIds))S.qt.participantIds=[];
+  const i=S.qt.participantIds.indexOf(id);
+  if(i>=0)S.qt.participantIds.splice(i,1);
+  else S.qt.participantIds.push(id);
+  render();
+};
+
+window.saveQuickTraining=async function(){
+  const qt=S.qt;
+  const err=document.getElementById('qt-err');
+  if(!qt){if(err)err.textContent='Form state lost — please reopen';return;}
+  // Validate
+  const sport=(document.getElementById('qt-sport')?.value||qt.sport||'').trim();
+  if(!sport){if(err)err.textContent='Please pick or type a sport';return;}
+  const anyDay=Object.values(qt.days).some(v=>v);
+  if(!anyDay){if(err)err.textContent='Please pick at least one day';return;}
+  const time=(document.getElementById('qt-time')?.value||qt.time||'').trim();
+  if(!time){if(err)err.textContent='Please enter a start time';return;}
+  const endTime=(document.getElementById('qt-endtime')?.value||qt.endTime||'').trim();
+  const location=(document.getElementById('qt-loc')?.value||qt.location||'').trim();
+  const startDate=(document.getElementById('qt-startdate')?.value||qt.startDate||fd(new Date())).trim();
+  const endDate=(document.getElementById('qt-enddate')?.value||qt.endDate||'').trim();
+  const notes=(document.getElementById('qt-notes')?.value||qt.notes||'').trim();
+  if(err)err.textContent='';
+  try{
+    // Auto-add the sport to family.sports if not already there
+    try{
+      const existing=Array.isArray(S.family?.sports)?S.family.sports:[];
+      const has=existing.some(s=>String(s).toLowerCase()===sport.toLowerCase());
+      if(!has&&S.familyId){
+        await updateDoc(doc(db,'families',S.familyId),{sports:[...existing,sport]});
+      }
+    }catch(e){console.warn('Failed to add sport to family.sports',e);}
+
+    const timeStr=endTime?(time+' – '+endTime):time;
+    await fadd(['events'],{
+      title:sport+' Training',
+      emoji:'🏃',
+      participantIds:Array.isArray(qt.participantIds)?qt.participantIds:[],
+      childId:'',adultUid:'',
+      freq:'weekly',
+      date:'',
+      startDate,
+      endDate,
+      days:qt.days,
+      time:timeStr,
+      category:'sport-training',
+      sport,
+      location,
+      dropoff:'',pickup:'',
+      packItems:[],
+      notes
+    });
+    notify(sport+' Training saved 🏃','✅');
+    S.qt=null;
+    back();
+  }catch(ex){
+    if(err)err.textContent='Save failed: '+(ex.message||ex);
+  }
+};
+
 function sCategoryEvents(tabBar,catKey,headerLabel){
   const todayStr=fd(new Date());
   const evs=S.events.filter(ev=>(ev.category||'')===catKey&&!((!ev.freq||ev.freq==='once')&&ev.date&&ev.date<todayStr))
     .sort(eventChronoCmp);
+  // Sport Training gets a dedicated "+ Add Training Schedule" prompt above the list
+  const showTrainingPrompt=catKey==='sport-training';
   return `
     <div style="background:var(--card);padding:14px 16px 0;border-bottom:1px solid var(--row-border);position:sticky;top:0;z-index:10">
       <div style="font-size:26px;font-weight:800;color:var(--text)">Events</div>
     </div>
     ${tabBar}
     <div class="scroll-view" style="padding:14px 0 80px">
+      ${showTrainingPrompt?`<div style="margin:0 16px 14px">
+        <button onclick="openQuickTraining('')" style="width:100%;padding:14px;border-radius:14px;background:linear-gradient(135deg,#34C759,#1C3A6B);border:none;color:#fff;font-size:15px;font-weight:700;cursor:pointer;font-family:inherit;display:flex;align-items:center;justify-content:center;gap:8px;box-shadow:0 4px 14px rgba(52,199,89,0.25)">
+          <span style="font-size:20px">🏃</span>
+          <span>+ Add Training Schedule</span>
+        </button>
+        <div style="font-size:11px;color:var(--text-secondary);text-align:center;margin-top:6px;line-height:1.4">Quick way to add weekly training. Skips the full event form.</div>
+      </div>`:''}
       <div class="sh" style="margin-bottom:6px">${headerLabel} (${evs.length})</div>
-      ${evs.length===0?`<div class="card" style="padding:30px 20px;text-align:center;color:var(--text-secondary)"><div style="font-size:42px;margin-bottom:10px">${headerLabel.split(' ')[0]}</div><div style="font-size:14px">No ${headerLabel.toLowerCase()} events yet.</div><div style="font-size:12px;margin-top:6px">Tap + to add one — it'll be tagged ${headerLabel.toLowerCase()}.</div></div>`:
+      ${evs.length===0?`<div class="card" style="padding:30px 20px;text-align:center;color:var(--text-secondary)"><div style="font-size:42px;margin-bottom:10px">${headerLabel.split(' ')[0]}</div><div style="font-size:14px">No ${headerLabel.toLowerCase()} events yet.</div><div style="font-size:12px;margin-top:6px">${showTrainingPrompt?'Use the green button above for the quick form, or':'Tap + to add one — it\'ll be tagged'} ${headerLabel.toLowerCase()}.</div></div>`:
       `<div class="card">${evs.map((ev,i)=>renderEventRow(ev,i===evs.length-1,false)).join('')}</div>`}
     </div>
     <div class="fab"><button class="fab-btn" style="background:#1C3A6B" onclick="quickAddTypedEvent('${catKey}')">+</button></div>`;
@@ -6766,7 +7004,8 @@ function render(){
       spreadsheetImport:sSpreadsheet,spreadsheetPreview:sSpreadsheetPreview,
       fixturesImport:sFixturesImport,fixturesPreview:sFixturesPreview,
       emailImport:sEmailImport,emailPreview:sEmailPreview,
-      inboxReview:sInboxReview,inboxSetup:sInboxSetup
+      inboxReview:sInboxReview,inboxSetup:sInboxSetup,
+      quickTraining:sQuickTraining
     };
     html=(map[S.screen]||sToday)();
   } else {
