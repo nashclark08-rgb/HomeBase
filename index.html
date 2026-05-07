@@ -1841,7 +1841,7 @@ function sAddEvent(){
             const currentSport=S.ef.sport||'';
             return `<div style="margin-top:14px;padding:12px;background:var(--bg);border-radius:10px;border:1px solid var(--border)">
               <div style="font-size:13px;font-weight:700;color:var(--text);margin-bottom:6px">Which sport? <span style="color:#FF3B30">*</span></div>
-              ${familySports.length===0?`<div style="font-size:12px;color:var(--text-secondary);line-height:1.5;margin-bottom:8px">No sports added yet. <a onclick="setTab('settings')" style="color:var(--navy);font-weight:600;cursor:pointer;text-decoration:underline">Add some in Settings</a> or type one below.</div>`:`<div style="display:flex;gap:6px;flex-wrap:wrap;margin-bottom:8px">${familySports.map(s=>{const safe=s.replace(/'/g,"\\'");return `<button type="button" onclick="captureEventFormToState();S.ef.sport='${safe}';document.getElementById('ev-sport-input').value='${safe}';render()" class="freq-btn ${currentSport===s?'on':''}" style="padding:6px 12px;font-size:12px">${s}</button>`;}).join('')}</div>`}
+              ${familySports.length===0?`<div style="font-size:12px;color:var(--text-secondary);line-height:1.5;margin-bottom:8px">No sports added yet. <a onclick="setTab('settings')" style="color:var(--navy);font-weight:600;cursor:pointer;text-decoration:underline">Add some in Settings</a> or type one below.</div>`:`<div style="display:flex;gap:6px;flex-wrap:wrap;margin-bottom:8px">${familySports.map(s=>{const safe=s.replace(/'/g,"\\'");return `<button type="button" onclick="pickEventSport('${safe}')" class="freq-btn ${currentSport===s?'on':''}" style="padding:6px 12px;font-size:12px">${s}</button>`;}).join('')}</div>`}
               <input class="input" id="ev-sport-input" type="text" placeholder="Type a sport (e.g. Water Polo)" value="${(currentSport||'').replace(/"/g,'&quot;')}" oninput="S.ef.sport=this.value" style="font-size:14px"/>
             </div>`;
           })():''}
@@ -2390,7 +2390,7 @@ function sEvents(){
     <div class="scroll-view" style="padding:14px 16px 100px">
 
       <!-- Quick add one-off -->
-      <button onclick="go('addEvent')" style="width:100%;padding:14px;border-radius:14px;background:var(--navy);border:none;color:#fff;font-size:15px;font-weight:700;cursor:pointer;font-family:inherit;margin-bottom:18px;display:flex;align-items:center;justify-content:center;gap:6px;box-shadow:0 2px 8px rgba(28,58,107,0.15)">+ Add one-off event</button>
+      <button onclick="go('addEvent')" style="width:100%;padding:14px;border-radius:14px;background:var(--navy);border:none;color:#fff;font-size:15px;font-weight:700;cursor:pointer;font-family:inherit;margin-bottom:18px;display:flex;align-items:center;justify-content:center;gap:6px;box-shadow:0 2px 8px rgba(28,58,107,0.15)">+ Add Event</button>
 
       <!-- IMPORT TOOLS -->
       <div class="sh" style="padding:0;margin-bottom:8px">IMPORT EVENTS</div>
@@ -7219,6 +7219,31 @@ window.toggleCategory=function(catId){
   }
   // Re-render so the sport sub-picker appears/disappears as needed
   render();
+};
+// Pick a sport from the pill list — bulletproof, separate function (was inline & flaky).
+window.pickEventSport=function(sport){
+  console.log('[pickEventSport]',sport);
+  try{
+    captureEventFormToState();
+    S.ef.sport=sport;
+    // Update DOM elements directly — no render needed, faster + zero risk of state loss.
+    // 1) Set the input box value so the user sees their choice
+    const inp=document.getElementById('ev-sport-input');
+    if(inp)inp.value=sport;
+    // 2) Toggle 'on' class on each sport pill button
+    const buttons=document.querySelectorAll('button.freq-btn');
+    buttons.forEach(btn=>{
+      const txt=(btn.textContent||'').trim();
+      // Only update buttons that match a sport name (avoid touching freq buttons like "One-off")
+      if(txt===sport)btn.classList.add('on');
+      else if(['Basketball','Hockey','Netball','Swimming','Training','Water Polo'].some(s=>txt===s)
+              ||(S.family?.sports||[]).some(s=>txt===s)){
+        btn.classList.remove('on');
+      }
+    });
+  }catch(e){
+    console.error('[pickEventSport] failed',e);
+  }
 };
 function buildTimeString(){
   const hs=document.getElementById('etime-h-start')?.value;
