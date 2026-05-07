@@ -1784,7 +1784,12 @@ function sCalendar(){
   const view=S.calView||'day'; // 'day' or 'week'
   const wStart=new Date(today);
   wStart.setDate(today.getDate()-today.getDay()+1+S.calWeekOffset*7);
-  const wDates=Array.from({length:7},(_,i)=>{const d=new Date(wStart);d.setDate(wStart.getDate()+i);return d;});
+  const allWDates=Array.from({length:7},(_,i)=>{const d=new Date(wStart);d.setDate(wStart.getDate()+i);return d;});
+  // For the CURRENT week, hide past days so the strip shrinks as the week progresses.
+  // Past/future weeks always show all 7 days.
+  const wDates=S.calWeekOffset===0
+    ? allWDates.filter(d=>fd(d)>=todayStr)
+    : allWDates;
   const sel=S.calDate||todayStr;
 
   // Helper: get events for a specific date
@@ -3025,7 +3030,7 @@ function parseRowAsFixture(cells,myTeamName){
 }
 
 // Parse fixtures from raw HTML. Walks tables + lists.
-function parseFixturesFromHTML(html){
+function parseFixturesFromHTML(html,myTeamName){
   const parser=new DOMParser();
   const doc=parser.parseFromString(html,'text/html');
   const fixtures=[];
@@ -3037,7 +3042,7 @@ function parseFixturesFromHTML(html){
     const rows=table.querySelectorAll('tr');
     for(const tr of rows){
       const cells=[...tr.querySelectorAll('td,th')].map(td=>(td.textContent||'').replace(/\s+/g,' ').trim());
-      const f=parseRowAsFixture(cells);
+      const f=parseRowAsFixture(cells,myTeamName);
       if(f){
         const key=f.date+'|'+f.time+'|'+f.opponent;
         if(!seen.has(key)){seen.add(key);fixtures.push(f);}
@@ -3053,7 +3058,7 @@ function parseFixturesFromHTML(html){
       const text=(b.textContent||'').replace(/\s*\n\s*/g,'\n').trim();
       const lines=text.split('\n').map(l=>l.trim()).filter(Boolean);
       // Treat lines as cells
-      const f=parseRowAsFixture(lines);
+      const f=parseRowAsFixture(lines,myTeamName);
       if(f){
         const key=f.date+'|'+f.time+'|'+f.opponent;
         if(!seen.has(key)){seen.add(key);fixtures.push(f);}
@@ -3065,7 +3070,7 @@ function parseFixturesFromHTML(html){
 }
 
 // Parse fixtures from a PDF file. Uses positional Y-coordinate grouping into lines.
-async function parseFixturesFromPDF(file){
+async function parseFixturesFromPDF(file,myTeamName){
   await loadPDFJS();
   const buf=await file.arrayBuffer();
   const pdf=await window.pdfjsLib.getDocument({data:buf}).promise;
@@ -3104,7 +3109,7 @@ async function parseFixturesFromPDF(file){
       // Now also try whole-line as one string + split on multi-space
       const wholeLine=cells.join('  ');
       const altCells=wholeLine.split(/\s{2,}|\t+/).map(s=>s.trim()).filter(Boolean);
-      const f=parseRowAsFixture(altCells.length>cells.length?altCells:cells)||parseRowAsFixture([wholeLine]);
+      const f=parseRowAsFixture(altCells.length>cells.length?altCells:cells,myTeamName)||parseRowAsFixture([wholeLine],myTeamName);
       if(f){
         const key=f.date+'|'+f.time+'|'+f.opponent;
         if(!seen.has(key)){seen.add(key);fixtures.push(f);}
@@ -3115,7 +3120,7 @@ async function parseFixturesFromPDF(file){
 }
 
 // Fetch a URL via cloud function (bypasses CORS) and parse fixtures from the HTML
-async function fetchAndParseFixturesFromURL(url){
+async function fetchAndParseFixturesFromURL(url,myTeamName){
   let resp;
   try{
     const callable=httpsCallable(functions,'fetchSportFixtures');
@@ -3129,8 +3134,13 @@ async function fetchAndParseFixturesFromURL(url){
   }
   const html=resp?.data?.html;
   if(!html)throw new Error('No HTML returned from URL');
-  const fixtures=parseFixturesFromHTML(html);
-  if(fixtures.length===0)throw new Error('Didn\'t spot any fixtures on that page. The page might use an unusual format — try copying the fixtures into the spreadsheet template instead.');
+  const fixtures=parseFixturesFromHTML(html,myTeamName);
+  if(fixtures.length===0){
+    if(myTeamName){
+      throw new Error('No fixtures found containing team "'+myTeamName+'". Check the spelling, or clear the team field to see all fixtures.');
+    }
+    throw new Error('Didn\'t spot any fixtures on that page. The page might use an unusual format — try copying the fixtures into the spreadsheet template instead.');
+  }
   return fixtures;
 }
 
@@ -3205,15 +3215,20 @@ function sFixturesImport(){
 
           <div style="font-size:12px;color:var(--text-secondary);margin-bottom:6px;font-weight:600">📎 From a URL (Revolutionise, school site, etc.)</div>
           <div style="display:flex;gap:8px;margin-bottom:14px">
-            <input class="input" id="fi-url-input" type="url" placeholder="https://..." value="${(fi.url||'').replace(/"/g,'&quot;')}" oninput="S.fixtureImport.url=this.value" style="flex:1"/>
-            <button onclick="handleFixtureUrlFetch()" ${fi.busy?'disabled':''} style="padding:12px 18px;border-radius:10px;background:#1C3A6B;border:none;color:#fff;font-size:14px;font-weight:700;cursor:${fi.busy?'wait':'pointer'};font-family:inherit;flex-shrink:0;${fi.busy?'opacity:0.7':''}">${fi.busy?'…':'Fetch'}</button>
+            <input class="input" id="fi-url-input" type="url" placeholder="https://..." value="${(fi.url||'').replace(/"/g,'&quot;')}" oninput="S.fixtureImport.url=this.value" style="flex:1" ${fi.busy?'disabled':''}/>
+            <button onclick="handleFixtureUrlFetch()" ${fi.busy?'disabled':''} style="padding:12px 18px;border-radius:10px;background:${fi.busy?'#8E8E93':'#1C3A6B'};border:none;color:#fff;font-size:14px;font-weight:700;cursor:${fi.busy?'wait':'pointer'};font-family:inherit;flex-shrink:0;min-width:80px">${fi.busy?'⏳':'Fetch'}</button>
           </div>
+
+          ${fi.busy?`<div style="background:#1C3A6B14;border:1px solid #1C3A6B33;border-radius:10px;padding:12px;margin-bottom:14px;display:flex;align-items:center;gap:10px">
+            <div style="width:18px;height:18px;border:2px solid #1C3A6B;border-top-color:transparent;border-radius:9px;animation:spin 0.8s linear infinite;flex-shrink:0"></div>
+            <div style="font-size:13px;color:#1C3A6B;font-weight:600;line-height:1.4">Working on it… this can take 5–15 seconds for big fixture lists</div>
+          </div>`:''}
 
           <div style="text-align:center;font-size:11px;color:var(--text-secondary);margin:6px 0">— or —</div>
 
           <div style="font-size:12px;color:var(--text-secondary);margin-bottom:6px;font-weight:600">📄 From a PDF</div>
           <input type="file" id="fi-pdf" accept=".pdf,application/pdf" style="display:none" onchange="handleFixturePdfUpload(this)"/>
-          <button onclick="document.getElementById('fi-pdf').click()" ${fi.busy?'disabled':''} style="width:100%;padding:13px;border-radius:12px;background:#34C759;border:none;color:#fff;font-size:14px;font-weight:700;cursor:${fi.busy?'wait':'pointer'};font-family:inherit;${fi.busy?'opacity:0.7':''}">${fi.busy?'Reading…':'Upload PDF'}</button>
+          <button onclick="document.getElementById('fi-pdf').click()" ${fi.busy?'disabled':''} style="width:100%;padding:13px;border-radius:12px;background:${fi.busy?'#8E8E93':'#34C759'};border:none;color:#fff;font-size:14px;font-weight:700;cursor:${fi.busy?'wait':'pointer'};font-family:inherit">${fi.busy?'⏳ Working…':'Upload PDF'}</button>
         </div>
 
         <details style="background:var(--card);border-radius:14px;padding:14px 18px;border:1px solid var(--row-border);margin-bottom:14px">
@@ -3267,8 +3282,8 @@ window.handleFixtureUrlFetch=async function(){
   }
   fi.busy=true;render();
   try{
-    notify('Fetching fixtures…','🌐');
-    const fixtures=await fetchAndParseFixturesFromURL(fi.url);
+    notify(fi.myTeam?('Fetching fixtures for '+fi.myTeam+'…'):'Fetching fixtures…','🌐');
+    const fixtures=await fetchAndParseFixturesFromURL(fi.url,fi.myTeam);
     fi.busy=false;
     S.fixturePreview={fixtures:fixtures.map(f=>({...f,id:Math.random().toString(36).slice(2,9)})),source:fi.url,sourceKind:'url'};
     go('fixturesPreview');
@@ -3287,11 +3302,15 @@ window.handleFixturePdfUpload=async function(input){
   if(errMsg){notify(errMsg,'⚠️');input.value='';return;}
   fi.busy=true;render();
   try{
-    notify('Reading PDF…','📄');
-    const fixtures=await parseFixturesFromPDF(file);
+    notify(fi.myTeam?('Reading PDF for '+fi.myTeam+'…'):'Reading PDF…','📄');
+    const fixtures=await parseFixturesFromPDF(file,fi.myTeam);
     fi.busy=false;
     if(fixtures.length===0){
-      notify('Didn\'t spot any fixtures in this PDF. Try the spreadsheet template instead.','⚠️');
+      if(fi.myTeam){
+        notify('No fixtures found containing team "'+fi.myTeam+'". Check the spelling, or clear the team field to see all fixtures.','⚠️');
+      }else{
+        notify('Didn\'t spot any fixtures in this PDF. Try the spreadsheet template instead.','⚠️');
+      }
       render();
       return;
     }
@@ -3334,21 +3353,36 @@ function sFixturesPreview(){
       </div>`;
     }
     const dateOk=!!f.date;
+    // Build a live preview title — sport vs opponent (or sport · venue if no opponent)
+    const opponentText=(f.opponent||'').trim();
+    const titleText=opponentText
+      ? fi.sport+' vs '+opponentText
+      : (f.venue?fi.sport+' · '+f.venue:fi.sport);
     return `<div style="padding:14px;border-bottom:1px solid var(--row-border);${!dateOk?'background:#FF3B3008':''}">
-      <div style="display:grid;grid-template-columns:auto 1fr;gap:8px 10px;align-items:center;margin-bottom:8px">
+      <!-- DATE + TIME -->
+      <div style="display:grid;grid-template-columns:auto 1fr auto 1fr;gap:8px 8px;align-items:center;margin-bottom:10px">
         <span style="font-size:11px;color:var(--text-secondary);font-weight:600">DATE</span>
-        <input type="date" value="${f.date||''}" onchange="updateFixture('${f.id}','date',this.value)" style="padding:6px 10px;border-radius:8px;border:1px solid ${dateOk?'var(--border)':'#FF3B30'};font-size:13px;font-family:inherit;background:var(--card);color:var(--text)"/>
-
+        <input type="date" value="${f.date||''}" onchange="updateFixture('${f.id}','date',this.value)" style="padding:6px 8px;border-radius:8px;border:1px solid ${dateOk?'var(--border)':'#FF3B30'};font-size:12px;font-family:inherit;background:var(--card);color:var(--text);min-width:0"/>
         <span style="font-size:11px;color:var(--text-secondary);font-weight:600">TIME</span>
-        <input type="text" value="${(f.time||'').replace(/"/g,'&quot;')}" placeholder="e.g. 9:00am" onchange="updateFixture('${f.id}','time',this.value)" style="padding:6px 10px;border-radius:8px;border:1px solid var(--border);font-size:13px;font-family:inherit;background:var(--card);color:var(--text)"/>
+        <input type="text" value="${(f.time||'').replace(/"/g,'&quot;')}" placeholder="9:00am" onchange="updateFixture('${f.id}','time',this.value)" style="padding:6px 8px;border-radius:8px;border:1px solid var(--border);font-size:12px;font-family:inherit;background:var(--card);color:var(--text);min-width:0"/>
+      </div>
 
+      <!-- TITLE (auto-built, prominent, large + bold) -->
+      <div style="background:var(--bg);border-radius:10px;padding:10px 12px;margin-bottom:10px;border-left:3px solid var(--navy)">
+        <div style="font-size:10px;color:var(--text-secondary);font-weight:600;letter-spacing:0.5px;margin-bottom:2px">TITLE</div>
+        <div style="font-size:17px;font-weight:800;color:var(--text);line-height:1.25">${titleText}</div>
+      </div>
+
+      <!-- vs + @ -->
+      <div style="display:grid;grid-template-columns:auto 1fr;gap:8px 10px;align-items:center">
         <span style="font-size:11px;color:var(--text-secondary);font-weight:600">vs</span>
-        <input type="text" value="${(f.opponent||'').replace(/"/g,'&quot;')}" placeholder="Opponent" onchange="updateFixture('${f.id}','opponent',this.value)" style="padding:6px 10px;border-radius:8px;border:1px solid var(--border);font-size:13px;font-family:inherit;background:var(--card);color:var(--text)"/>
+        <input type="text" value="${(f.opponent||'').replace(/"/g,'&quot;')}" placeholder="Opponent team" onchange="updateFixture('${f.id}','opponent',this.value)" style="padding:6px 10px;border-radius:8px;border:1px solid var(--border);font-size:13px;font-family:inherit;background:var(--card);color:var(--text)"/>
 
         <span style="font-size:11px;color:var(--text-secondary);font-weight:600">@</span>
         <input type="text" value="${(f.venue||'').replace(/"/g,'&quot;')}" placeholder="Venue" onchange="updateFixture('${f.id}','venue',this.value)" style="padding:6px 10px;border-radius:8px;border:1px solid var(--border);font-size:13px;font-family:inherit;background:var(--card);color:var(--text)"/>
       </div>
-      <div style="display:flex;justify-content:space-between;align-items:center;margin-top:6px">
+
+      <div style="display:flex;justify-content:space-between;align-items:center;margin-top:8px">
         <div style="font-size:10px;color:var(--text-secondary);font-style:italic;flex:1;min-width:0;overflow:hidden;text-overflow:ellipsis;white-space:nowrap">${f.raw?'From: '+f.raw.slice(0,80):''}</div>
         <button onclick="removeFixture('${f.id}')" style="font-size:11px;color:#FF3B30;font-weight:600;border:none;background:none;cursor:pointer;font-family:inherit;padding:4px 8px">Remove</button>
       </div>
@@ -3397,8 +3431,8 @@ window.updateFixture=function(id,field,value){
   const f=data.fixtures.find(x=>x.id===id);
   if(!f)return;
   f[field]=value;
-  // No re-render needed for input typing — only date may change validity, so re-render once user changes that
-  if(field==='date')render();
+  // Re-render so the auto-built title and date validity update live
+  if(field==='date'||field==='opponent'||field==='venue')render();
 };
 window.removeFixture=function(id){
   const data=S.fixturePreview;
@@ -7657,8 +7691,20 @@ function parseVoiceIntent(transcript){
   if(!text)return {kind:'empty'};
   const low=text.toLowerCase();
 
+  // Gift idea intents (tested first since they have specific keywords)
+  // "gift idea for olivia: blue scarf"  /  "birthday present for alby blue headphones"
+  // Recipient is captured as a single word (or "for X: " for two-word names)
+  let m=low.match(/^(?:add\s+)?(?:a\s+)?(?:birthday\s+|christmas\s+|xmas\s+)?(?:gift|present)(?:\s+idea)?\s+(?:for|to)\s+(\w+)\s*[:,\-]\s*(.+)/);
+  if(m&&m[2]&&m[2].trim().length>1){
+    return {kind:'gift',recipientHint:m[1].trim(),idea:m[2].trim(),phrase:text};
+  }
+  m=low.match(/^(?:add\s+)?(?:a\s+)?(?:birthday\s+|christmas\s+|xmas\s+)?(?:gift|present)(?:\s+idea)?\s+(?:for|to)\s+(\w+)\s+(.+)/);
+  if(m&&m[2]&&m[2].trim().length>1){
+    return {kind:'gift',recipientHint:m[1].trim(),idea:m[2].trim(),phrase:text};
+  }
+
   // Shopping list intents
-  let m=low.match(/^(?:shopping list|grocery list|groceries|shop)\s*[:,]?\s*(.+)/);
+  m=low.match(/^(?:shopping list|grocery list|groceries|shop)\s*[:,]?\s*(.+)/);
   if(m){
     const items=m[1].split(/\s*(?:,|\band\b)\s*/i).map(s=>s.trim()).filter(s=>s.length>0);
     return {kind:'grocery',items,phrase:text};
@@ -7754,7 +7800,7 @@ window.openVoiceQuickAdd=function(){
     <div id="voice-state-icon" style="font-size:60px;margin-bottom:8px">🎤</div>
     <div id="voice-state-title" style="font-size:18px;font-weight:800;color:var(--text);margin-bottom:8px">Tap to start speaking</div>
     <div id="voice-state-hint" style="font-size:12px;color:var(--text-secondary);line-height:1.5;margin-bottom:18px;min-height:34px">
-      Try: "Buy carrots and milk" · "Remind me to call school tomorrow" · "Note to self check the mail"
+      Try: "Buy carrots and milk" · "Remind me to call school tomorrow" · "Gift idea for Olivia: blue scarf"
     </div>
     <button id="voice-start-btn" onclick="startVoiceCapture()" style="width:88px;height:88px;border-radius:44px;background:#FF3B30;border:none;color:#fff;font-size:32px;cursor:pointer;font-family:inherit;display:flex;align-items:center;justify-content:center;margin:0 auto 16px;box-shadow:0 4px 16px rgba(255,59,48,0.3)">🎤</button>
     <div id="voice-transcript" style="font-size:15px;color:var(--text);line-height:1.5;min-height:40px;background:var(--bg);border-radius:10px;padding:10px;margin-bottom:14px;display:none"></div>
@@ -7871,7 +7917,47 @@ function finishVoiceCapture(transcript){
   if(btnEl)btnEl.style.display='none';
 
   let actionsHTML='';
-  if(intent.kind==='grocery'&&intent.items.length>0){
+  if(intent.kind==='gift'){
+    // Try to resolve the recipient to a family member by first-name match
+    const hint=(intent.recipientHint||'').toLowerCase();
+    const allPeople=[
+      ...S.children.map(c=>({id:c.id,name:c.name,color:c.color||'#1C3A6B'})),
+      ...members().map(m=>({id:m.uid,name:m.name,color:m.color||'#1C3A6B'}))
+    ];
+    const matches=allPeople.filter(p=>{
+      const fn=p.name.split(' ')[0].toLowerCase();
+      return fn===hint||p.name.toLowerCase()===hint||p.name.toLowerCase().includes(hint);
+    });
+    if(iconEl)iconEl.textContent='🎁';
+    if(titleEl)titleEl.textContent='Add gift idea?';
+    if(matches.length===1){
+      const recipient=matches[0];
+      // Single match — show idea preview + Private/Open save buttons
+      if(hintEl)hintEl.innerHTML='<div style="background:var(--bg);border-radius:8px;padding:8px 10px;margin:3px 0;color:var(--text);text-align:left">'+
+        '<div style="font-size:11px;color:var(--text-secondary);font-weight:600">FOR</div>'+
+        '<div style="font-size:14px;font-weight:700;margin-bottom:6px">'+recipient.name+'</div>'+
+        '<div style="font-size:11px;color:var(--text-secondary);font-weight:600">IDEA</div>'+
+        '<div style="font-size:14px;font-weight:600">'+intent.idea+'</div>'+
+        '</div>';
+      actionsHTML=`
+        <button onclick='saveVoiceGift(${JSON.stringify(recipient.id)},${JSON.stringify(intent.idea)},true)' style="flex:1;padding:13px;border-radius:12px;background:#FF9500;border:none;color:#fff;font-size:13px;font-weight:700;cursor:pointer;font-family:inherit">🔒 Save private</button>
+        <button onclick='saveVoiceGift(${JSON.stringify(recipient.id)},${JSON.stringify(intent.idea)},false)' style="flex:1;padding:13px;border-radius:12px;background:#FF6B9D;border:none;color:#fff;font-size:13px;font-weight:700;cursor:pointer;font-family:inherit">👀 Save open</button>`;
+    }else if(matches.length>1){
+      // Ambiguous — show buttons for each candidate
+      if(hintEl)hintEl.innerHTML='<div style="font-size:13px;color:var(--text);margin-bottom:6px">Idea: <strong>'+intent.idea+'</strong></div><div style="font-size:12px;color:var(--text-secondary)">Who is "'+intent.recipientHint+'"?</div>';
+      actionsHTML=matches.map(p=>`<button onclick='S._giftIdeaPending=${JSON.stringify({recipientId:p.id,idea:intent.idea})};showGiftPrivacyPicker()' style="flex:1;padding:13px;border-radius:12px;background:${p.color};border:none;color:#fff;font-size:13px;font-weight:700;cursor:pointer;font-family:inherit">${p.name.split(' ')[0]}</button>`).join('');
+    }else{
+      // No match — show all family members as picker
+      if(hintEl)hintEl.innerHTML='<div style="font-size:13px;color:var(--text);margin-bottom:8px">Idea: <strong>'+intent.idea+'</strong></div><div style="font-size:12px;color:var(--text-secondary);margin-bottom:6px">Couldn\'t find "'+intent.recipientHint+'". Pick recipient:</div>';
+      if(allPeople.length===0){
+        actionsHTML='<div style="flex:1;text-align:center;font-size:12px;color:var(--text-secondary);padding:10px">Add family members first</div>';
+      }else{
+        actionsHTML='<div style="flex:1;display:flex;flex-wrap:wrap;gap:6px">'+
+          allPeople.map(p=>`<button onclick='S._giftIdeaPending=${JSON.stringify({recipientId:p.id,idea:intent.idea})};showGiftPrivacyPicker()' style="padding:8px 12px;border-radius:10px;background:${p.color};border:none;color:#fff;font-size:12px;font-weight:700;cursor:pointer;font-family:inherit">${p.name.split(' ')[0]}</button>`).join('')+
+          '</div>';
+      }
+    }
+  }else if(intent.kind==='grocery'&&intent.items.length>0){
     if(iconEl)iconEl.textContent='🛒';
     if(titleEl)titleEl.textContent='Add to shopping list?';
     if(hintEl)hintEl.innerHTML=intent.items.map(i=>'<div style="background:var(--bg);border-radius:8px;padding:6px 10px;margin:3px 0;font-weight:600;color:var(--text)">• '+i+'</div>').join('');
@@ -7954,6 +8040,52 @@ window.saveVoiceAsReminder=async function(text){
 window.saveVoiceAsGroceryRaw=async function(text){
   if(!text||!text.trim()){closeVoiceQuickAdd();return;}
   await window.saveVoiceGrocery([text.trim()]);
+};
+
+// Save a gift idea from voice
+window.saveVoiceGift=async function(recipientId,idea,isPrivate){
+  if(!recipientId||!idea){closeVoiceQuickAdd();return;}
+  if(!S.familyId){notify('No family loaded','⚠️');return;}
+  try{
+    const cleanIdea=idea.charAt(0).toUpperCase()+idea.slice(1);
+    await fadd(['gifts'],{
+      recipientId,
+      label:cleanIdea,
+      price:null,
+      occasion:'birthday',
+      isPrivate:!!isPrivate,
+      createdBy:S.user?.uid||''
+    });
+    notify('Gift idea saved 🎁'+(isPrivate?' (private)':''),'✅');
+  }catch(e){
+    notify('Save failed: '+(e.message||e),'❌');
+  }
+  closeVoiceQuickAdd();
+};
+
+// Show private/open picker for ambiguous gift recipient choice
+window.showGiftPrivacyPicker=function(){
+  const pending=S._giftIdeaPending;
+  if(!pending){closeVoiceQuickAdd();return;}
+  const allPeople=[...S.children.map(c=>({id:c.id,name:c.name})),...members().map(m=>({id:m.uid,name:m.name}))];
+  const recipient=allPeople.find(p=>p.id===pending.recipientId);
+  if(!recipient){closeVoiceQuickAdd();return;}
+  const iconEl=document.getElementById('voice-state-icon');
+  const titleEl=document.getElementById('voice-state-title');
+  const hintEl=document.getElementById('voice-state-hint');
+  const actionsEl=document.getElementById('voice-actions');
+  if(iconEl)iconEl.textContent='🎁';
+  if(titleEl)titleEl.textContent='Private or open?';
+  if(hintEl)hintEl.innerHTML='<div style="background:var(--bg);border-radius:8px;padding:8px 10px;color:var(--text);text-align:left">'+
+    '<div style="font-size:13px"><strong>'+pending.idea+'</strong> for <strong>'+recipient.name+'</strong></div>'+
+    '<div style="font-size:11px;color:var(--text-secondary);margin-top:4px">Private = only you see it. Open = '+recipient.name.split(' ')[0]+' can see it too.</div>'+
+    '</div>';
+  if(actionsEl){
+    actionsEl.innerHTML=
+      `<button onclick='saveVoiceGift(${JSON.stringify(pending.recipientId)},${JSON.stringify(pending.idea)},true)' style="flex:1;padding:13px;border-radius:12px;background:#FF9500;border:none;color:#fff;font-size:13px;font-weight:700;cursor:pointer;font-family:inherit">🔒 Private</button>`+
+      `<button onclick='saveVoiceGift(${JSON.stringify(pending.recipientId)},${JSON.stringify(pending.idea)},false)' style="flex:1;padding:13px;border-radius:12px;background:#FF6B9D;border:none;color:#fff;font-size:13px;font-weight:700;cursor:pointer;font-family:inherit">👀 Open</button>`+
+      '<button onclick="closeVoiceQuickAdd()" style="padding:13px;border-radius:12px;background:var(--bg);border:none;color:var(--text-secondary);font-size:13px;font-weight:600;cursor:pointer;font-family:inherit">Cancel</button>';
+  }
 };
 
 // "Coming soon" placeholder modal for the recurring-import buttons
