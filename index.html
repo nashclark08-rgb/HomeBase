@@ -1541,6 +1541,7 @@ function sToday(){
 
     <div class="fab">
       ${S.fabOpen?`<div class="fab-menu">
+        <button class="fab-item" onclick="S.fabOpen=false;render();openVoiceQuickAdd()" style="background:#FF3B30">🎤 Voice quick add</button>
         <button class="fab-item" onclick="S.fabOpen=false;quickAddEvent()" style="background:#34C759">⚡ Quick Event</button>
         <button class="fab-item" onclick="S.fabOpen=false;openGiftPicker()" style="background:#FF6B9D">🎁 Add Gift Idea</button>
         <button class="fab-item" onclick="S.fabOpen=false;openHandoffPicker()" style="background:#FF9500">🚗 Log a hand-off</button>
@@ -4997,6 +4998,23 @@ function sPersonProfile(){
       </div>
       `:''}
 
+      <!-- GIFTS (everyone — kids & adults) -->
+      ${(()=>{
+        const uid=S.user?.uid;
+        const personGifts=(S.gifts||[]).filter(g=>g.recipientId===person.id&&(!g.isPrivate||g.createdBy===uid));
+        return `<div class="sh" style="padding:0 16px;margin-bottom:6px">🎁 Gift Ideas (${personGifts.length})</div>
+        <div class="card" style="margin-bottom:14px">
+          ${personGifts.length===0?`<div style="padding:20px;text-align:center;color:var(--text-secondary);font-size:14px">No gift ideas yet</div>`:personGifts.map((g,i,arr)=>`<div class="row" style="border-bottom:${i<arr.length-1?'1px solid var(--row-border)':'none'}">
+            <div style="flex:1">
+              <div style="font-size:14px;font-weight:600;color:var(--text)">${g.label}</div>
+              <div style="font-size:12px;color:var(--text-secondary)">${g.occasion||''}${g.price?' · $'+g.price:''}${g.isPrivate?' · 🔒 Private':''}</div>
+            </div>
+            <button onclick="dGift('${g.id}')" style="color:#FF3B30;font-size:18px;opacity:0.5;border:none;background:none;cursor:pointer">×</button>
+          </div>`).join('')}
+          <button onclick="go('addGift',{id:'${person.id}',name:'${name.replace(/'/g,'&#39;')}'})" style="width:100%;padding:13px 16px;border-top:1px solid var(--row-border);background:none;border-left:none;border-right:none;border-bottom:none;color:${color};font-size:14px;font-weight:600;cursor:pointer;font-family:inherit;text-align:center">+ Add Gift Idea for ${name.split(' ')[0]}</button>
+        </div>`;
+      })()}
+
       ${!person.isAdult?`
 
       <!-- ASSESSMENTS (Year 7+ only) -->
@@ -5021,23 +5039,6 @@ function sPersonProfile(){
             </div>`;
           }).join('')}
           <button onclick="S.preselectChild='${person.id}';go('addAssessment')" style="width:100%;padding:13px 16px;border-top:1px solid var(--row-border);background:none;border-left:none;border-right:none;border-bottom:none;color:${color};font-size:14px;font-weight:600;cursor:pointer;font-family:inherit;text-align:center">+ Add Assessment for ${name.split(' ')[0]}</button>
-        </div>`;
-      })()}
-
-      <!-- GIFTS -->
-      ${(()=>{
-        const uid=S.user?.uid;
-        const childGifts=(S.gifts||[]).filter(g=>g.recipientId===person.id&&(!g.isPrivate||g.createdBy===uid));
-        return `<div class="sh" style="padding:0 16px;margin-bottom:6px">🎁 Gift Ideas (${childGifts.length})</div>
-        <div class="card" style="margin-bottom:14px">
-          ${childGifts.length===0?`<div style="padding:20px;text-align:center;color:var(--text-secondary);font-size:14px">No gift ideas yet</div>`:childGifts.map((g,i,arr)=>`<div class="row" style="border-bottom:${i<arr.length-1?'1px solid var(--row-border)':'none'}">
-            <div style="flex:1">
-              <div style="font-size:14px;font-weight:600;color:var(--text)">${g.label}</div>
-              <div style="font-size:12px;color:var(--text-secondary)">${g.occasion||''}${g.price?' · $'+g.price:''}${g.isPrivate?' · 🔒 Private':''}</div>
-            </div>
-            <button onclick="dGift('${g.id}')" style="color:#FF3B30;font-size:18px;opacity:0.5;border:none;background:none;cursor:pointer">×</button>
-          </div>`).join('')}
-          <button onclick="go('addGift',{id:'${person.id}',name:'${name.replace(/'/g,'&#39;')}'})" style="width:100%;padding:13px 16px;border-top:1px solid var(--row-border);background:none;border-left:none;border-right:none;border-bottom:none;color:${color};font-size:14px;font-weight:600;cursor:pointer;font-family:inherit;text-align:center">+ Add Gift Idea for ${name.split(' ')[0]}</button>
         </div>`;
       })()}
       `:''}
@@ -7584,6 +7585,313 @@ window.closeActivityModal=function(){
   }
 };
 
+// ── VOICE QUICK ADD ──────────────────────────────────
+// Web Speech API → intent parser → save as reminder/grocery
+const _SR=window.SpeechRecognition||window.webkitSpeechRecognition;
+
+// Parse a transcript into a structured intent
+function parseVoiceIntent(transcript){
+  const text=(transcript||'').trim();
+  if(!text)return {kind:'empty'};
+  const low=text.toLowerCase();
+
+  // Shopping list intents
+  let m=low.match(/^(?:shopping list|grocery list|groceries|shop)\s*[:,]?\s*(.+)/);
+  if(m){
+    const items=m[1].split(/\s*(?:,|\band\b)\s*/i).map(s=>s.trim()).filter(s=>s.length>0);
+    return {kind:'grocery',items,phrase:text};
+  }
+  m=low.match(/^(?:buy|get|need|pick up|add)\s+(.+)/);
+  if(m){
+    const rest=m[1];
+    if(/\b(?:from (?:the )?(?:shop|shops|store|supermarket)|to (?:the )?(?:grocery|shopping)\s*list?)\b/.test(rest)){
+      const cleaned=rest.replace(/\b(?:from (?:the )?(?:shop|shops|store|supermarket)|to (?:the )?(?:grocery|shopping)\s*list?)\b.*$/,'').trim();
+      const items=cleaned.split(/\s*(?:,|\band\b)\s*/i).map(s=>s.trim()).filter(Boolean);
+      return {kind:'grocery',items,phrase:text};
+    }
+    if(rest.length<60&&!/\b(today|tomorrow|monday|tuesday|wednesday|thursday|friday|saturday|sunday|am|pm|at \d|by \d|next |on (?:the )?\d)\b/i.test(rest)){
+      const items=rest.split(/\s*(?:,|\band\b)\s*/i).map(s=>s.trim()).filter(Boolean);
+      return {kind:'grocery',items,phrase:text};
+    }
+  }
+
+  // Reminder intents
+  m=low.match(/^(?:remind (?:me|us)(?:\s+to)?|reminder(?:\s*(?:to|for))?|set (?:a )?reminder(?:\s+(?:to|for))?|add (?:a )?reminder(?:\s+(?:to|for))?|note to self(?:\s+to)?|don'?t forget (?:to)?)\s+(.+)/);
+  if(m){
+    return {kind:'reminder',raw:m[1],phrase:text};
+  }
+
+  return {kind:'unknown',phrase:text};
+}
+
+// Pull date + time out of a reminder phrase
+function extractDateTimeFromPhrase(phrase){
+  let cleaned=phrase;
+  let date='';
+  const today=new Date();
+
+  if(/\btoday\b/i.test(cleaned)){
+    date=fd(today);
+    cleaned=cleaned.replace(/\btoday\b/i,'');
+  }else if(/\btomorrow\b/i.test(cleaned)){
+    const t=new Date(today);t.setDate(t.getDate()+1);
+    date=fd(t);
+    cleaned=cleaned.replace(/\btomorrow\b/i,'');
+  }else{
+    const dowMatch=cleaned.match(/\b(?:next\s+|on\s+|this\s+)?(monday|tuesday|wednesday|thursday|friday|saturday|sunday)\b/i);
+    if(dowMatch){
+      const days=['sunday','monday','tuesday','wednesday','thursday','friday','saturday'];
+      const targetDow=days.indexOf(dowMatch[1].toLowerCase());
+      const todayDow=today.getDay();
+      let daysAhead=(targetDow-todayDow+7)%7;
+      if(daysAhead===0||/^next/i.test(dowMatch[0]))daysAhead=daysAhead||7;
+      const t=new Date(today);t.setDate(t.getDate()+daysAhead);
+      date=fd(t);
+      cleaned=cleaned.replace(dowMatch[0],'');
+    }else{
+      const d=parseLooseDate(cleaned);
+      if(d){
+        date=d;
+        const dateRe=/\d{1,2}(?:st|nd|rd|th)?\s+(?:jan|feb|mar|apr|may|jun|jul|aug|sep|oct|nov|dec)[a-z]*/i;
+        cleaned=cleaned.replace(dateRe,'');
+      }
+    }
+  }
+
+  const time=parseLooseTime(cleaned);
+  if(time)cleaned=cleaned.replace(/\b\d{1,2}(?::\d{2})?\s*(?:am|pm|AM|PM)\b/,'');
+
+  cleaned=cleaned.replace(/\s+(?:at|on|by|in)\s*$/i,'').replace(/^(?:at|on|by|in)\s+/i,'').replace(/\s+/g,' ').trim();
+
+  return {text:cleaned,date,time};
+}
+
+window.openVoiceQuickAdd=function(){
+  if(!_SR){
+    notify('Voice not supported in this browser. Try Safari or Chrome.','⚠️');
+    return;
+  }
+  closeVoiceQuickAdd();
+
+  if(!document.getElementById('hbVoiceKeyframes')){
+    const st=document.createElement('style');st.id='hbVoiceKeyframes';
+    st.textContent='@keyframes hbPulse{0%,100%{transform:scale(1);box-shadow:0 0 0 0 rgba(255,59,48,0.5)}50%{transform:scale(1.05);box-shadow:0 0 0 18px rgba(255,59,48,0)}}@keyframes hbVoiceFadeIn{from{opacity:0}to{opacity:1}}@keyframes hbVoiceSlideUp{from{transform:translateY(20px);opacity:0}to{transform:translateY(0);opacity:1}}';
+    document.head.appendChild(st);
+  }
+
+  const overlay=document.createElement('div');
+  overlay.id='voice-modal-overlay';
+  overlay.style.cssText='position:fixed;inset:0;background:rgba(0,0,0,0.55);z-index:9999;display:flex;align-items:center;justify-content:center;padding:20px;animation:hbVoiceFadeIn 0.2s';
+  overlay.onclick=function(e){if(e.target===overlay)closeVoiceQuickAdd();};
+
+  const card=document.createElement('div');
+  card.style.cssText='background:var(--card);border-radius:20px;padding:28px 24px 22px;width:100%;max-width:380px;animation:hbVoiceSlideUp 0.24s cubic-bezier(.22,.61,.36,1);box-shadow:0 12px 48px rgba(0,0,0,0.3);text-align:center';
+  card.onclick=function(e){e.stopPropagation();};
+  card.id='voice-modal-card';
+  card.innerHTML=`
+    <div id="voice-state-icon" style="font-size:60px;margin-bottom:8px">🎤</div>
+    <div id="voice-state-title" style="font-size:18px;font-weight:800;color:var(--text);margin-bottom:8px">Tap to start speaking</div>
+    <div id="voice-state-hint" style="font-size:12px;color:var(--text-secondary);line-height:1.5;margin-bottom:18px;min-height:34px">
+      Try: "Buy carrots and milk" · "Remind me to call school tomorrow" · "Note to self check the mail"
+    </div>
+    <button id="voice-start-btn" onclick="startVoiceCapture()" style="width:88px;height:88px;border-radius:44px;background:#FF3B30;border:none;color:#fff;font-size:32px;cursor:pointer;font-family:inherit;display:flex;align-items:center;justify-content:center;margin:0 auto 16px;box-shadow:0 4px 16px rgba(255,59,48,0.3)">🎤</button>
+    <div id="voice-transcript" style="font-size:15px;color:var(--text);line-height:1.5;min-height:40px;background:var(--bg);border-radius:10px;padding:10px;margin-bottom:14px;display:none"></div>
+    <div id="voice-actions" style="display:none"></div>
+    <button onclick="closeVoiceQuickAdd()" style="font-size:12px;color:var(--text-secondary);background:none;border:none;cursor:pointer;text-decoration:underline;font-family:inherit;padding:6px;margin-top:6px">Close</button>`;
+  overlay.appendChild(card);
+  document.body.appendChild(overlay);
+
+  const escHandler=function(e){if(e.key==='Escape')closeVoiceQuickAdd();};
+  document.addEventListener('keydown',escHandler);
+  overlay._escHandler=escHandler;
+};
+
+window.closeVoiceQuickAdd=function(){
+  if(window._activeRecognition){
+    try{window._activeRecognition.stop();}catch(e){}
+    window._activeRecognition=null;
+  }
+  const m=document.getElementById('voice-modal-overlay');
+  if(m){
+    if(m._escHandler)document.removeEventListener('keydown',m._escHandler);
+    m.style.animation='hbVoiceFadeIn 0.15s reverse';
+    setTimeout(function(){if(m.parentNode)m.remove();},140);
+  }
+};
+
+window.startVoiceCapture=function(){
+  if(!_SR)return;
+  const recognition=new _SR();
+  recognition.lang='en-AU';
+  recognition.continuous=false;
+  recognition.interimResults=true;
+  recognition.maxAlternatives=1;
+
+  const iconEl=document.getElementById('voice-state-icon');
+  const titleEl=document.getElementById('voice-state-title');
+  const hintEl=document.getElementById('voice-state-hint');
+  const btnEl=document.getElementById('voice-start-btn');
+  const transcriptEl=document.getElementById('voice-transcript');
+  let finalTranscript='';
+
+  if(iconEl)iconEl.textContent='👂';
+  if(titleEl)titleEl.textContent='Listening…';
+  if(hintEl)hintEl.textContent='Speak naturally, then pause when done';
+  if(btnEl){
+    btnEl.textContent='⏹';
+    btnEl.style.background='#8E8E93';
+    btnEl.style.animation='hbPulse 1.4s infinite';
+    btnEl.onclick=function(){try{recognition.stop();}catch(e){}};
+  }
+  if(transcriptEl){transcriptEl.style.display='block';transcriptEl.textContent='…';}
+
+  recognition.onresult=function(e){
+    let interim='';
+    for(let i=e.resultIndex;i<e.results.length;i++){
+      const t=e.results[i][0].transcript;
+      if(e.results[i].isFinal)finalTranscript+=t;
+      else interim+=t;
+    }
+    if(transcriptEl)transcriptEl.textContent=(finalTranscript+interim)||'…';
+  };
+  recognition.onend=function(){
+    window._activeRecognition=null;
+    if(btnEl)btnEl.style.animation='';
+    finishVoiceCapture(finalTranscript||(transcriptEl?transcriptEl.textContent:''));
+  };
+  recognition.onerror=function(e){
+    window._activeRecognition=null;
+    if(btnEl)btnEl.style.animation='';
+    if(e.error==='not-allowed'||e.error==='service-not-allowed'){
+      if(titleEl)titleEl.textContent='Microphone permission denied';
+      if(hintEl)hintEl.textContent='Allow microphone access in browser settings, then try again.';
+    }else if(e.error==='no-speech'){
+      if(titleEl)titleEl.textContent='Didn\'t hear anything';
+      if(hintEl)hintEl.textContent='Tap the mic and try again.';
+      if(btnEl){btnEl.textContent='🎤';btnEl.style.background='#FF3B30';btnEl.onclick=function(){startVoiceCapture();};}
+    }else{
+      if(titleEl)titleEl.textContent='Error: '+e.error;
+    }
+  };
+
+  try{
+    recognition.start();
+    window._activeRecognition=recognition;
+  }catch(ex){
+    notify('Could not start microphone: '+(ex.message||ex),'❌');
+  }
+};
+
+function finishVoiceCapture(transcript){
+  const card=document.getElementById('voice-modal-card');
+  if(!card)return;
+  if(!transcript||!transcript.trim()){
+    const titleEl=document.getElementById('voice-state-title');
+    const hintEl=document.getElementById('voice-state-hint');
+    const btnEl=document.getElementById('voice-start-btn');
+    if(titleEl)titleEl.textContent='Didn\'t catch that';
+    if(hintEl)hintEl.textContent='Tap to try again.';
+    if(btnEl){btnEl.textContent='🎤';btnEl.style.background='#FF3B30';btnEl.onclick=function(){startVoiceCapture();};}
+    return;
+  }
+
+  const intent=parseVoiceIntent(transcript);
+  const iconEl=document.getElementById('voice-state-icon');
+  const titleEl=document.getElementById('voice-state-title');
+  const hintEl=document.getElementById('voice-state-hint');
+  const btnEl=document.getElementById('voice-start-btn');
+  const transcriptEl=document.getElementById('voice-transcript');
+  const actionsEl=document.getElementById('voice-actions');
+
+  if(transcriptEl){
+    transcriptEl.innerHTML='<div style="font-size:11px;color:var(--text-secondary);font-weight:600;margin-bottom:4px">YOU SAID</div>'+transcript;
+  }
+  if(btnEl)btnEl.style.display='none';
+
+  let actionsHTML='';
+  if(intent.kind==='grocery'&&intent.items.length>0){
+    if(iconEl)iconEl.textContent='🛒';
+    if(titleEl)titleEl.textContent='Add to shopping list?';
+    if(hintEl)hintEl.innerHTML=intent.items.map(i=>'<div style="background:var(--bg);border-radius:8px;padding:6px 10px;margin:3px 0;font-weight:600;color:var(--text)">• '+i+'</div>').join('');
+    actionsHTML=`
+      <button onclick='saveVoiceGrocery(${JSON.stringify(intent.items)})' style="flex:2;padding:13px;border-radius:12px;background:#34C759;border:none;color:#fff;font-size:14px;font-weight:700;cursor:pointer;font-family:inherit">Add ${intent.items.length} item${intent.items.length===1?'':'s'}</button>
+      <button onclick="saveVoiceAsReminder(${JSON.stringify(transcript)})" style="flex:1;padding:13px;border-radius:12px;background:var(--bg);border:none;color:var(--text);font-size:13px;font-weight:600;cursor:pointer;font-family:inherit">Reminder?</button>`;
+  }else if(intent.kind==='reminder'){
+    const parsed=extractDateTimeFromPhrase(intent.raw);
+    if(iconEl)iconEl.textContent='⏰';
+    if(titleEl)titleEl.textContent='Save as reminder?';
+    if(hintEl)hintEl.innerHTML='<div style="background:var(--bg);border-radius:8px;padding:8px 10px;margin:3px 0;color:var(--text);text-align:left">'+
+      '<div style="font-weight:700;font-size:14px">'+(parsed.text||intent.raw)+'</div>'+
+      (parsed.date||parsed.time?'<div style="font-size:11px;color:var(--text-secondary);margin-top:3px">'+(parsed.date?'📅 '+parsed.date:'')+(parsed.date&&parsed.time?' · ':'')+(parsed.time?'⏰ '+parsed.time:'')+'</div>':'')+
+      '</div>';
+    const safeText=parsed.text||intent.raw;
+    const safeDate=parsed.date||fd(new Date());
+    actionsHTML=`<button onclick='saveVoiceReminder(${JSON.stringify(safeText)},${JSON.stringify(safeDate)})' style="flex:1;padding:13px;border-radius:12px;background:#AF52DE;border:none;color:#fff;font-size:14px;font-weight:700;cursor:pointer;font-family:inherit">Save reminder</button>`;
+  }else{
+    if(iconEl)iconEl.textContent='🤔';
+    if(titleEl)titleEl.textContent='Save it as…';
+    if(hintEl)hintEl.innerHTML='<em style="color:var(--text-secondary);font-size:12px">Couldn\'t auto-detect — pick one:</em>';
+    actionsHTML=`
+      <button onclick='saveVoiceAsReminder(${JSON.stringify(transcript)})' style="flex:1;padding:13px;border-radius:12px;background:#AF52DE;border:none;color:#fff;font-size:13px;font-weight:700;cursor:pointer;font-family:inherit">⏰ Reminder</button>
+      <button onclick='saveVoiceAsGroceryRaw(${JSON.stringify(transcript)})' style="flex:1;padding:13px;border-radius:12px;background:#34C759;border:none;color:#fff;font-size:13px;font-weight:700;cursor:pointer;font-family:inherit">🛒 Shopping</button>`;
+  }
+
+  if(actionsEl){
+    actionsEl.style.display='flex';
+    actionsEl.style.gap='8px';
+    actionsEl.style.marginTop='6px';
+    actionsEl.innerHTML=actionsHTML+
+      '<button onclick="closeVoiceQuickAdd()" style="padding:13px;border-radius:12px;background:var(--bg);border:none;color:var(--text-secondary);font-size:13px;font-weight:600;cursor:pointer;font-family:inherit">Cancel</button>';
+  }
+}
+
+window.saveVoiceGrocery=async function(items){
+  if(typeof items==='string'){try{items=JSON.parse(items);}catch(e){items=[items];}}
+  if(!items||!items.length){closeVoiceQuickAdd();return;}
+  if(!S.familyId){notify('No family loaded','⚠️');return;}
+  let saved=0;
+  for(const item of items){
+    const trimmed=String(item).trim();
+    if(!trimmed)continue;
+    try{
+      const label=trimmed.charAt(0).toUpperCase()+trimmed.slice(1);
+      await fadd(['groceries'],{label,checked:false});
+      saved++;
+    }catch(e){}
+  }
+  notify('Added '+saved+' item'+(saved===1?'':'s')+' to shopping list 🛒','✅');
+  closeVoiceQuickAdd();
+};
+
+window.saveVoiceReminder=async function(text,date){
+  if(!text||!text.trim()){closeVoiceQuickAdd();return;}
+  if(!S.familyId){notify('No family loaded','⚠️');return;}
+  try{
+    const cleanText=text.charAt(0).toUpperCase()+text.slice(1);
+    await fadd(['reminders'],{
+      text:cleanText,
+      date:date||fd(new Date()),
+      mode:'once',
+      done:false,
+      forKeys:[],
+      createdBy:S.user?.uid||''
+    });
+    notify('Reminder saved ⏰','✅');
+  }catch(e){
+    notify('Save failed: '+(e.message||e),'❌');
+  }
+  closeVoiceQuickAdd();
+};
+
+window.saveVoiceAsReminder=async function(text){
+  await window.saveVoiceReminder(text,fd(new Date()));
+};
+
+window.saveVoiceAsGroceryRaw=async function(text){
+  if(!text||!text.trim()){closeVoiceQuickAdd();return;}
+  await window.saveVoiceGrocery([text.trim()]);
+};
+
 // "Coming soon" placeholder modal for the recurring-import buttons
 window.openComingSoon=function(kind){
   const titles={
@@ -7660,4 +7968,3 @@ onAuthStateChanged(auth,async user=>{
 });
 </script>
 </body>
-</html>
