@@ -2968,11 +2968,24 @@ function parseRowAsFixture(cells,myTeamName){
 
   // ── TEAM-AWARE PARSING (when user gave us their team name) ──
   if(myTeamName&&myTeamName.trim()){
-    const tn=myTeamName.toLowerCase().trim();
-    // Find any cell containing the team name (substring match for flexibility)
+    const fullTeamLower=myTeamName.toLowerCase().trim();
+    // Build a list of "tokens" to match — full string + any non-trivial words.
+    // E.g. "Hockey - Norths U14" → ['hockey - norths u14', 'hockey', 'norths', 'u14']
+    // This way the user can paste a verbose label but match the simple cell text.
+    const stopWords=new Set(['the','a','an','and','or','of','for','to','in','on','at','-','–','—','&','/','\\']);
+    const tokens=[fullTeamLower];
+    fullTeamLower.split(/[\s\-–—\/&]+/).forEach(t=>{
+      if(t&&t.length>=2&&!stopWords.has(t))tokens.push(t);
+    });
+    // Find any cell whose text contains any of our tokens
     let myCellIdx=-1;
+    let matchedToken='';
     for(let i=0;i<cells.length;i++){
-      if(cells[i]&&cells[i].toLowerCase().includes(tn)){myCellIdx=i;break;}
+      const cellLow=(cells[i]||'').toLowerCase();
+      for(const tok of tokens){
+        if(cellLow.includes(tok)){myCellIdx=i;matchedToken=tok;break;}
+      }
+      if(myCellIdx>=0)break;
     }
     if(myCellIdx<0)return null; // doesn't involve this team — skip
 
@@ -3148,10 +3161,20 @@ async function fetchAndParseFixturesFromURL(url,myTeamName){
 function sFixturesImport(){
   // Initialise import state if not already there
   if(!S.fixtureImport){
+    // Pre-fill team name if we have one for the most recently used sport (or first family sport)
+    const familyTeams=S.family?.sportTeams||{};
+    const familySports=Array.isArray(S.family?.sports)?S.family.sports:[];
+    let initSport='';
+    let initTeam='';
+    // If only one family sport with a team, pre-select it
+    if(familySports.length===1&&familyTeams[familySports[0]]){
+      initSport=familySports[0];
+      initTeam=familyTeams[initSport];
+    }
     S.fixtureImport={
       type:'sport-games', // 'sport-games' or 'sport-training'
-      sport:'',
-      myTeam:'', // e.g. "Norths" — used to filter rows + identify opponent
+      sport:initSport,
+      myTeam:initTeam, // e.g. "Norths" — used to filter rows + identify opponent
       participantIds:[],
       url:'',
       busy:false
@@ -3191,11 +3214,12 @@ function sFixturesImport(){
           </div>
 
           <div style="font-size:12px;color:var(--text-secondary);margin-bottom:6px;font-weight:600">Sport <span style="color:#FF3B30">*</span></div>
-          ${familySports.length>0?`<div style="display:flex;flex-wrap:wrap;gap:6px;margin-bottom:8px">${familySports.map(s=>{const safe=s.replace(/'/g,"\\'");return `<button onclick="S.fixtureImport.sport='${safe}';document.getElementById('fi-sport-input').value='${safe}';render()" class="freq-btn ${fi.sport===s?'on':''}" style="padding:6px 12px;font-size:12px">${s}</button>`;}).join('')}</div>`:''}
+          ${familySports.length>0?`<div style="display:flex;flex-wrap:wrap;gap:6px;margin-bottom:8px">${familySports.map(s=>{const safe=s.replace(/'/g,"\\'");return `<button onclick="pickFixtureSport('${safe}')" class="freq-btn ${fi.sport===s?'on':''}" style="padding:6px 12px;font-size:12px">${s}</button>`;}).join('')}</div>`:''}
           <input class="input" id="fi-sport-input" type="text" placeholder="e.g. Water Polo" value="${(fi.sport||'').replace(/"/g,'&quot;')}" oninput="S.fixtureImport.sport=this.value" style="margin-bottom:14px"/>
 
           <div style="font-size:12px;color:var(--text-secondary);margin-bottom:6px;font-weight:600">My team <span style="color:var(--text-secondary);font-weight:500">(filters fixtures + finds opponent)</span></div>
-          <input class="input" id="fi-team-input" type="text" placeholder="e.g. Norths, Albury Lions, U14 Boys" value="${(fi.myTeam||'').replace(/"/g,'&quot;')}" oninput="S.fixtureImport.myTeam=this.value" style="margin-bottom:14px"/>
+          <input class="input" id="fi-team-input" type="text" placeholder="e.g. Norths, Albury Lions, U14 Boys" value="${(fi.myTeam||'').replace(/"/g,'&quot;')}" oninput="S.fixtureImport.myTeam=this.value" style="margin-bottom:6px"/>
+          <div style="font-size:11px;color:var(--text-secondary);margin-bottom:14px;line-height:1.4">💡 Save team names per sport in <a onclick="setTab('settings')" style="color:var(--navy);font-weight:600;cursor:pointer;text-decoration:underline">Settings → Family Sports</a> to skip this step next time.</div>
 
           <div style="font-size:12px;color:var(--text-secondary);margin-bottom:6px;font-weight:600">Who's playing? <span style="color:#FF3B30">*</span></div>
           <div style="display:flex;flex-wrap:wrap;gap:6px">
@@ -3247,6 +3271,15 @@ function sFixturesImport(){
 }
 
 // Toggle a person in the fixture import
+// Pick a sport for fixture import — auto-fills the team name from family settings
+window.pickFixtureSport=function(sport){
+  if(!S.fixtureImport)return;
+  S.fixtureImport.sport=sport;
+  const teams=S.family?.sportTeams||{};
+  if(teams[sport])S.fixtureImport.myTeam=teams[sport];
+  render();
+};
+
 window.toggleFixturePerson=function(id){
   const fi=S.fixtureImport;
   if(!fi)return;
@@ -3274,22 +3307,38 @@ function validateFixtureSetup(){
 
 window.handleFixtureUrlFetch=async function(){
   const fi=S.fixtureImport;
+  // FIRST — show immediate visual feedback that the click registered
+  notify('Tap registered — checking inputs…','⏳');
   const errMsg=validateFixtureSetup();
-  if(errMsg){notify(errMsg,'⚠️');return;}
+  if(errMsg){notify('⚠️ '+errMsg,'⚠️');return;}
   if(!fi.url||!/^https?:\/\//.test(fi.url)){
-    notify('Please paste a valid URL starting with http(s)://','⚠️');
+    notify('⚠️ URL must start with http:// or https://','⚠️');
+    return;
+  }
+  // Make sure we have a cloud function reference
+  if(typeof httpsCallable==='undefined'||!functions){
+    notify('⚠️ Cloud functions not loaded — refresh the app','❌');
     return;
   }
   fi.busy=true;render();
+  notify(fi.myTeam?('Fetching fixtures for '+fi.myTeam+'…'):'Fetching fixtures…','🌐');
   try{
-    notify(fi.myTeam?('Fetching fixtures for '+fi.myTeam+'…'):'Fetching fixtures…','🌐');
+    console.log('[fixtures] Calling cloud function for URL:',fi.url,'team:',fi.myTeam);
     const fixtures=await fetchAndParseFixturesFromURL(fi.url,fi.myTeam);
+    console.log('[fixtures] Parsed',fixtures.length,'fixtures');
     fi.busy=false;
+    if(fixtures.length===0){
+      notify('No fixtures found' +(fi.myTeam?' for "'+fi.myTeam+'"':''),'⚠️');
+      render();
+      return;
+    }
     S.fixturePreview={fixtures:fixtures.map(f=>({...f,id:Math.random().toString(36).slice(2,9)})),source:fi.url,sourceKind:'url'};
     go('fixturesPreview');
   }catch(ex){
+    console.error('[fixtures] URL fetch failed:',ex);
     fi.busy=false;
-    notify(ex.message||String(ex),'❌');
+    const detail=ex?.message||ex?.code||String(ex);
+    notify('❌ '+detail,'❌');
     render();
   }
 };
@@ -3656,22 +3705,24 @@ function extractTitleFromContext(lineText,dateMatch,timeStr,locationStr){
 }
 
 // Extract location from "at X" or "in (the) X" patterns within the line.
-// Accepts lowercase since "school oval" / "the gym" are valid locations.
+// Prefers locations that contain venue keywords or are clearly venue-shaped names.
 function extractLocationFromContext(lineText){
+  const VENUE_KEYWORDS=/(?:hall|pool|court|field|oval|park|centre|center|stadium|gym|complex|arena|grounds?|club|library|theatre|theater|chapel|auditorium|room|building|showgrounds?|aquatics|sports\s+ground|pavillion)/i;
   // "at School Hall" / "@ Pool" / "at the school oval"
   const m=lineText.match(/(?:^|\s)(?:at|@)\s+((?:the\s+)?[\w'\-][\w'\-\s,]{1,60}?)(?:[\.\,\;]|\s+(?:on|from|until|with|please|will|is|—|–|-)\b|$)/);
   if(m){
     let loc=m[1].trim().replace(/[\s,]+$/,'').replace(/^the\s+/i,'');
-    // Reject if it's a time / a date / a name fragment
     if(/^\d/.test(loc)||/(?:am|pm)$/i.test(loc))return '';
-    return loc;
+    // Must contain a venue keyword OR be clearly a proper noun (multi-capitalized words)
+    if(VENUE_KEYWORDS.test(loc)||/^[A-Z][\w\-]+(\s+[A-Z][\w\-]+){0,4}$/.test(loc))return loc;
+    // Very short single-word lowercase locations are usually false positives ("PE uniform")
   }
   // "in the Hall" / "in Room 5" / "in the gym"
   const m2=lineText.match(/(?:^|\s)in\s+((?:the\s+)?[\w'\-][\w'\-\s,]{1,60}?)(?:[\.\,\;]|\s+(?:on|from|until|with|please|will|is|—|–|-)\b|$)/);
   if(m2){
     let loc=m2[1].trim().replace(/[\s,]+$/,'').replace(/^the\s+/i,'');
     if(/^\d/.test(loc)||/(?:am|pm)$/i.test(loc))return '';
-    return loc;
+    if(VENUE_KEYWORDS.test(loc)||/^[A-Z][\w\-]+(\s+[A-Z][\w\-]+){0,4}$/.test(loc))return loc;
   }
   return '';
 }
@@ -3680,6 +3731,25 @@ function extractLocationFromContext(lineText){
 function parseEventsFromEmail(text){
   if(!text||text.trim().length<10)return [];
   const norm=text.replace(/\r\n?/g,'\n').replace(/[ \t]+/g,' ');
+  // Build a line-index for adjacent-line lookups
+  const allLines=norm.split('\n');
+  const lineStartIdx=[];
+  let cumLen=0;
+  for(const ln of allLines){
+    lineStartIdx.push(cumLen);
+    cumLen+=ln.length+1; // +1 for newline
+  }
+  function lineNumberAt(charIdx){
+    // Find which line contains charIdx
+    for(let i=lineStartIdx.length-1;i>=0;i--){
+      if(charIdx>=lineStartIdx[i])return i;
+    }
+    return 0;
+  }
+  function getLineText(lineNum){
+    return (lineNum>=0&&lineNum<allLines.length)?allLines[lineNum]:'';
+  }
+
   const dates=findAllDates(norm);
   if(dates.length===0)return [];
   const events=[];
@@ -3689,22 +3759,55 @@ function parseEventsFromEmail(text){
     const line=getLineContaining(norm,d.index);
     const lineText=line.text;
     if(isLikelyNoiseContext(norm,d.index,lineText))continue;
-    // Time on the same line
-    const timeStr=parseLooseTime(lineText);
-    // Location on the same line (extract first so we can strip it from the title)
-    const location=extractLocationFromContext(lineText);
-    // Title from the line (with location passed in so it gets stripped)
+
+    // Look at current + ONE next line (not two — too greedy) for time/location
+    // Only consult next line if current line has no time AND no location
+    const lineNum=lineNumberAt(d.index);
+    const sameLineTime=parseLooseTime(lineText);
+    const sameLineLocation=extractLocationFromContext(lineText);
+    let timeStr=sameLineTime;
+    let location=sameLineLocation;
+    if(!timeStr||!location){
+      const nextLine=getLineText(lineNum+1);
+      // Skip the next line if it looks like a different event (starts with a date or bullet)
+      const nextLineStartsEvent=nextLine&&(/^\s*(?:[\-\*\u2022•]|[A-Z][a-zA-Z\s]+:|\d{1,2}[\/\-\.])/.test(nextLine)||findAllDates(nextLine).length>0);
+      if(nextLine&&!nextLineStartsEvent){
+        if(!timeStr)timeStr=parseLooseTime(nextLine);
+        if(!location)location=extractLocationFromContext(nextLine);
+      }
+    }
+
+    // Title: try the line containing the date first
     let title=extractTitleFromContext(lineText,d.match,timeStr,location);
-    // If title is too short, look at the previous non-empty line for a heading
+    // If title is too short/empty, look at the previous non-empty line for a heading
     if(!title||title.length<4){
       const prevLine=getPreviousNonEmptyLine(norm,line.start);
-      // Only use prev line if it's heading-like (short, doesn't end in punctuation that suggests sentence)
-      if(prevLine&&prevLine.length<70&&prevLine.length>3&&!prevLine.endsWith('.')){
+      if(prevLine&&prevLine.length<90&&prevLine.length>3&&!prevLine.endsWith('.')){
         title=prevLine.replace(/^(?:reminder[:\s]*|note[:\s]*|fyi[:\s]*)/i,'').trim();
         title=title.replace(/[\:\,\—\–\-]\s*$/,'').trim();
       }
     }
     if(!title||title.length<3)continue;
+    // FALLBACK LOCATION EXTRACTION: if no location yet, look for a trailing "venue-like" token
+    // in a comma-separated list (handles "X: date, time, school hall" format)
+    if(!location){
+      const VENUE_KW=/(hall|pool|court|field|oval|park|centre|center|stadium|gym|complex|arena|grounds?|club|library|theatre|theater|chapel|auditorium|building|showgrounds?|aquatics)/i;
+      // Look at trailing comma-separated parts of the title
+      const parts=title.split(/\s*,\s*/);
+      for(let i=parts.length-1;i>=0;i--){
+        if(VENUE_KW.test(parts[i])){
+          location=parts[i].trim();
+          // Remove that part from title
+          parts.splice(i,1);
+          title=parts.join(', ').trim();
+          break;
+        }
+      }
+    }
+    // Final cleanup of title — strip leading/trailing colons, commas, dashes, and double-commas
+    title=title.replace(/^[\,\s\:\-]+/,'').replace(/[\,\s\:]+$/,'').replace(/,\s*,/g,',').replace(/\s+/g,' ').trim();
+    if(!title||title.length<3)continue;
+
     const notes=lineText.slice(0,400);
     const key=d.date+'|'+title.toLowerCase();
     if(seenKeys.has(key))continue;
@@ -4806,21 +4909,28 @@ function sSettings(){
   +'<button onclick="savePastRetention()" style="width:100%;margin-top:10px;padding:12px;border-radius:12px;background:#1C3A6B;border:none;color:#fff;font-size:14px;font-weight:600;cursor:pointer;font-family:inherit">Save</button>'
   +'</div>'
   +'</div>'
-  // Family Sports
-  +'<div class="sh" style="margin-bottom:6px">🏃 Family Sports</div>'
+  // Family Sports + Teams
+  +'<div class="sh" style="margin-bottom:6px">🏃 Family Sports & Teams</div>'
   +'<div class="card" style="margin-bottom:12px">'
   +'<div style="padding:14px 16px 10px">'
-  +'<div style="font-size:13px;color:#8E8E93;margin-bottom:10px;line-height:1.5">Sports your family plays. These appear as sub-tiles under <strong>Sport Games</strong> and <strong>Sport Training</strong> on the Events page.</div>'
+  +'<div style="font-size:13px;color:#8E8E93;margin-bottom:12px;line-height:1.5">Sports your family plays + the team name for each. Team names get pre-filled when importing fixtures.</div>'
   +(()=>{
     const sports=Array.isArray(S.family?.sports)?S.family.sports:[];
-    if(sports.length===0)return '<div style="font-size:12px;color:#8E8E93;font-style:italic;margin-bottom:8px">No sports added yet.</div>';
-    return '<div style="display:flex;flex-wrap:wrap;gap:6px;margin-bottom:10px">'+sports.map(s=>{
-      const safe=String(s).replace(/'/g,"\\'");
-      return '<div style="display:inline-flex;align-items:center;gap:6px;padding:6px 6px 6px 12px;border-radius:18px;background:#1C3A6B14;border:1px solid #1C3A6B22"><span style="font-size:13px;font-weight:600;color:#1C3A6B">'+s+'</span><button onclick="removeFamilySport(\''+safe+'\')" style="width:20px;height:20px;border-radius:10px;border:none;background:#1C3A6B22;color:#1C3A6B;font-size:14px;line-height:1;cursor:pointer;font-family:inherit;padding:0;display:flex;align-items:center;justify-content:center">×</button></div>';
+    const teams=S.family?.sportTeams||{};
+    if(sports.length===0)return '<div style="font-size:12px;color:#8E8E93;font-style:italic;margin-bottom:12px;padding:8px;background:#F2F2F7;border-radius:8px">No sports added yet. Add one below to get started.</div>';
+    return '<div style="display:flex;flex-direction:column;gap:10px;margin-bottom:14px">'+sports.map(s=>{
+      const safe=String(s).replace(/'/g,"\\'").replace(/"/g,'&quot;');
+      const teamName=teams[s]||'';
+      const safeTeam=String(teamName).replace(/"/g,'&quot;');
+      return '<div style="background:#F8F9FB;border:1px solid #1C3A6B22;border-radius:12px;padding:12px;display:flex;align-items:center;gap:10px">'
+        +'<div style="font-size:14px;font-weight:700;color:#1C1C1E;flex-shrink:0;min-width:90px">'+s+'</div>'
+        +'<input class="input" id="set-team-'+safe+'" type="text" placeholder="Team name (e.g. Norths)" value="'+safeTeam+'" onchange="updateSportTeam(\''+safe+'\',this.value)" style="flex:1;font-size:13px;padding:8px 10px;background:#fff"/>'
+        +'<button onclick="removeFamilySport(\''+safe+'\')" style="width:28px;height:28px;border-radius:14px;border:none;background:#FF3B3022;color:#FF3B30;font-size:16px;line-height:1;cursor:pointer;font-family:inherit;padding:0;display:flex;align-items:center;justify-content:center;flex-shrink:0">×</button>'
+        +'</div>';
     }).join('')+'</div>';
   })()
   +'<div style="display:flex;gap:8px">'
-  +'<input class="input" id="set-family-sport-input" type="text" placeholder="e.g. Water Polo" style="flex:1" onkeydown="if(event.key===\'Enter\'){event.preventDefault();addFamilySport();}"/>'
+  +'<input class="input" id="set-family-sport-input" type="text" placeholder="Add a sport (e.g. Water Polo)" style="flex:1" onkeydown="if(event.key===\'Enter\'){event.preventDefault();addFamilySport();}"/>'
   +'<button onclick="addFamilySport()" style="padding:12px 16px;border-radius:10px;background:#1C3A6B;border:none;color:#fff;font-size:14px;font-weight:600;cursor:pointer;font-family:inherit">+ Add</button>'
   +'</div>'
   +'</div>'
@@ -6872,6 +6982,20 @@ window.savePastRetention=async function(){
     render();
   }catch(e){notify('Save failed: '+(e.message||e),'⚠️');}
 };
+// Save the team name for a specific sport (e.g. "Hockey" -> "Norths")
+window.updateSportTeam=async function(sport,teamName){
+  if(!S.familyId)return;
+  const trimmed=String(teamName||'').trim();
+  const existing=S.family?.sportTeams||{};
+  const next={...existing};
+  if(trimmed)next[sport]=trimmed;
+  else delete next[sport];
+  try{
+    await updateDoc(doc(db,'families',S.familyId),{sportTeams:next});
+    if(S.family)S.family.sportTeams=next;
+    notify(trimmed?'Team saved 🏃':'Team cleared','✅');
+  }catch(e){notify('Save failed: '+(e.message||e),'⚠️');}
+};
 window.addFamilySport=async function(){
   const inp=document.getElementById('set-family-sport-input');
   const raw=inp?.value?.trim();
@@ -7996,21 +8120,47 @@ function finishVoiceCapture(transcript){
 window.saveVoiceGrocery=async function(items){
   if(typeof items==='string'){try{items=JSON.parse(items);}catch(e){items=[items];}}
   if(!items||!items.length){closeVoiceQuickAdd();return;}
-  if(!S.familyId){notify('No family loaded','⚠️');return;}
+  if(!S.familyId){notify('No family loaded — open the app fully first','⚠️');return;}
+  if(!S.user||!S.user.uid){notify('Not signed in','⚠️');return;}
+
+  // Show "saving" feedback in the modal so user sees progress
+  const titleEl=document.getElementById('voice-state-title');
+  const hintEl=document.getElementById('voice-state-hint');
+  const actionsEl=document.getElementById('voice-actions');
+  if(titleEl)titleEl.textContent='Saving…';
+  if(hintEl)hintEl.innerHTML='<div style="font-size:12px;color:var(--text-secondary)">Adding '+items.length+' item'+(items.length===1?'':'s')+' to shopping list…</div>';
+  if(actionsEl)actionsEl.innerHTML='';
+
   let saved=0;
+  const errors=[];
   for(const item of items){
     const trimmed=String(item).trim();
     if(!trimmed)continue;
     try{
       const label=trimmed.charAt(0).toUpperCase()+trimmed.slice(1);
-      // CRITICAL: must include addedToList:true and quantity (matches existing format)
-      // — otherwise the item is created as a "frequent only" entry that doesn't appear on the shopping list
+      // EXACT same shape as hAddGrocery (which works) — addedToList:true is what makes it
+      // appear on the shopping list (not just in the frequents bank).
       await fadd(['groceries'],{label,quantity:1,isFrequent:false,addedToList:true,checked:false});
       saved++;
-    }catch(e){console.warn('Voice grocery save failed for',item,e);}
+    }catch(e){
+      console.error('[voice-grocery] save failed for',item,e);
+      errors.push((item||'?')+': '+(e.message||e.code||'unknown error'));
+    }
   }
-  notify('Added '+saved+' item'+(saved===1?'':'s')+' to shopping list 🛒','✅');
-  closeVoiceQuickAdd();
+
+  if(saved>0&&errors.length===0){
+    notify('Added '+saved+' item'+(saved===1?'':'s')+' to shopping list 🛒','✅');
+    closeVoiceQuickAdd();
+  }else if(saved>0&&errors.length>0){
+    if(titleEl)titleEl.textContent='Saved '+saved+', '+errors.length+' failed';
+    if(hintEl)hintEl.innerHTML='<div style="font-size:12px;color:#FF3B30;text-align:left;background:#FF3B3014;border-radius:8px;padding:8px;line-height:1.5">'+errors.join('<br>')+'</div>';
+    if(actionsEl)actionsEl.innerHTML='<button onclick="closeVoiceQuickAdd()" style="flex:1;padding:13px;border-radius:12px;background:var(--bg);border:none;color:var(--text);font-size:13px;font-weight:600;cursor:pointer;font-family:inherit">Close</button>';
+  }else{
+    // All failed
+    if(titleEl)titleEl.textContent='Save failed';
+    if(hintEl)hintEl.innerHTML='<div style="font-size:12px;color:#FF3B30;text-align:left;background:#FF3B3014;border-radius:8px;padding:8px;line-height:1.5">'+(errors.length?errors.join('<br>'):'Unknown error — check the console for details.')+'</div>';
+    if(actionsEl)actionsEl.innerHTML='<button onclick="closeVoiceQuickAdd()" style="flex:1;padding:13px;border-radius:12px;background:var(--bg);border:none;color:var(--text);font-size:13px;font-weight:600;cursor:pointer;font-family:inherit">Close</button>';
+  }
 };
 
 window.saveVoiceReminder=async function(text,date){
