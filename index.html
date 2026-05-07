@@ -552,9 +552,22 @@ async function fw(){
 }
 
 // ── FIREBASE ─────────────────────────────────────
+// Generate a friendly inbound email address for a family.
+// Format: {firstName}-{6charHash}@in.ourhomebase.com.au
+// Example: nash-a4k9p2@in.ourhomebase.com.au
+function buildInboundAddress(name,seed){
+  const slug=String(name||'family').toLowerCase().replace(/[^a-z0-9]/g,'').slice(0,12)||'family';
+  const hash=String(seed||Math.random().toString(36).slice(2,8)).replace(/[^a-z0-9]/gi,'').toLowerCase().slice(0,6).padEnd(6,'x');
+  return slug+'-'+hash+'@in.ourhomebase.com.au';
+}
+
 async function createFamily(name){
   const code='HB-'+Math.random().toString(36).substr(2,6).toUpperCase();
-  const r=await addDoc(collection(db,'families'),{name,inviteCode:code,createdBy:S.user.uid,createdAt:new Date(),members:{[S.user.uid]:{name:S.user.displayName,role:'Admin',color:NAVY}}});
+  // Get the user's first name from their display name
+  const firstName=(S.user.displayName||'').split(' ')[0]||'family';
+  // Use the auth UID as the seed for a stable, unguessable hash
+  const inboundAddress=buildInboundAddress(firstName,S.user.uid);
+  const r=await addDoc(collection(db,'families'),{name,inviteCode:code,inboundAddress,createdBy:S.user.uid,createdAt:new Date(),members:{[S.user.uid]:{name:S.user.displayName,role:'Admin',color:NAVY}}});
   await setDoc(doc(db,'users',S.user.uid),{familyId:r.id,name:S.user.displayName});
   return r.id;
 }
@@ -775,6 +788,18 @@ function subscribe(){
       if(S.family.eventsCategorizedV2!==true&&!S._migrationRunning){
         setTimeout(()=>runEventCategoryMigration(),2000);
       }
+      // INBOUND ADDRESS BACKFILL: ensure every family has an inbound email address for the
+      // forwarding feature. Runs once per session, idempotent. Generates an unguessable
+      // address using the creator's first name + family ID.
+      if(!S.family.inboundAddress&&!S._inboundAddrAssigned&&S.familyId){
+        S._inboundAddrAssigned=true;
+        const creatorMember=S.family.members?.[S.family.createdBy];
+        const firstName=(creatorMember?.name||S.user?.displayName||'family').split(' ')[0]||'family';
+        const addr=buildInboundAddress(firstName,S.familyId);
+        updateDoc(doc(db,'families',S.familyId),{inboundAddress:addr})
+          .then(()=>console.log('[migration] Assigned inbound address:',addr))
+          .catch(e=>console.warn('[migration] Inbound address backfill failed:',e));
+      }
     }
     queueRender();
   }));
@@ -821,6 +846,17 @@ function subscribe(){
   S.unsubs.push(onSnapshot(fcol(['mealIdeas']),s=>{S.mealIdeas=s.docs.map(d=>({id:d.id,...d.data()}));queueRender();}));
   S.unsubs.push(onSnapshot(fcol(['handoffs']),s=>{S.handoffs=s.docs.map(d=>({id:d.id,...d.data()}));queueRender();}));
   S.unsubs.push(onSnapshot(fcol(['reminders']),s=>{S.reminders=s.docs.map(d=>({id:d.id,...d.data()}));queueRender();}));
+  // Pending events from inbound emails — only show ones still pending review
+  S.unsubs.push(onSnapshot(fcol(['pending_events']),s=>{
+    S.pendingEmails=s.docs.map(d=>({id:d.id,...d.data()}))
+      .filter(p=>p.status==='pending')
+      .sort((a,b)=>{
+        const ta=a.createdAt?.toMillis?.()||0;
+        const tb=b.createdAt?.toMillis?.()||0;
+        return tb-ta;
+      });
+    queueRender();
+  }));
 }
 
 // ── AUTH SCREENS ──────────────────────────────────
@@ -1372,6 +1408,25 @@ function sToday(){
               <span style="color:${col};font-size:18px">›</span>
             </div>`;
           }).join('')}
+        </div>`;
+      })()}
+
+      <!-- PENDING EMAIL EVENTS — show ABOVE activities when there's anything to review -->
+      ${(()=>{
+        const pending=Array.isArray(S.pendingEmails)?S.pendingEmails:[];
+        if(pending.length===0)return '';
+        // Total event count across all pending bundles
+        const totalEvents=pending.reduce((sum,p)=>sum+(Array.isArray(p.events)?p.events.length:0),0);
+        return `<div class="sh" style="margin-bottom:6px">📥 New from Email</div>
+        <div onclick="go('inboxReview')" class="card" style="margin-bottom:14px;cursor:pointer;background:linear-gradient(135deg,#AF52DE,#5856D6);color:#fff;border:none;padding:0;overflow:hidden">
+          <div style="padding:14px 16px;display:flex;align-items:center;gap:12px">
+            <div style="width:42px;height:42px;border-radius:21px;background:rgba(255,255,255,0.22);display:flex;align-items:center;justify-content:center;font-size:22px;flex-shrink:0">🤖</div>
+            <div style="flex:1;min-width:0">
+              <div style="font-size:15px;font-weight:800;color:#fff;line-height:1.2">${totalEvents} event${totalEvents===1?'':'s'} from ${pending.length} email${pending.length===1?'':'s'}</div>
+              <div style="font-size:12px;color:rgba(255,255,255,0.88);margin-top:2px">Tap to review and approve</div>
+            </div>
+            <span style="color:#fff;font-size:22px;opacity:0.85">›</span>
+          </div>
         </div>`;
       })()}
 
@@ -3177,6 +3232,7 @@ function sFixturesImport(){
       myTeam:initTeam, // e.g. "Norths" — used to filter rows + identify opponent
       participantIds:[],
       url:'',
+      useAI:true, // default to AI parser — much smarter
       busy:false
     };
   }
@@ -3237,22 +3293,29 @@ function sFixturesImport(){
             <div style="font-size:15px;font-weight:700;color:var(--text)">Where are the fixtures?</div>
           </div>
 
+          <!-- Parser mode toggle: AI vs Basic -->
+          <div style="display:flex;gap:6px;margin-bottom:14px;background:var(--bg);border-radius:10px;padding:4px">
+            <button onclick="S.fixtureImport.useAI=true;render()" style="flex:1;padding:9px;border-radius:8px;border:none;background:${fi.useAI!==false?'linear-gradient(135deg,#AF52DE,#5856D6)':'transparent'};color:${fi.useAI!==false?'#fff':'var(--text-secondary)'};font-size:12px;font-weight:700;cursor:pointer;font-family:inherit">🤖 AI Parser</button>
+            <button onclick="S.fixtureImport.useAI=false;render()" style="flex:1;padding:9px;border-radius:8px;border:none;background:${fi.useAI===false?'var(--navy)':'transparent'};color:${fi.useAI===false?'#fff':'var(--text-secondary)'};font-size:12px;font-weight:700;cursor:pointer;font-family:inherit">🔍 Basic</button>
+          </div>
+          ${fi.useAI!==false?'<div style="font-size:11px;color:#5856D6;background:#5856D614;border:1px solid #5856D633;border-radius:8px;padding:6px 10px;margin-bottom:12px;line-height:1.4">✨ AI handles weird formats, BYE rounds, court names. Costs ~$0.003 per import.</div>':'<div style="font-size:11px;color:var(--text-secondary);background:var(--bg);border-radius:8px;padding:6px 10px;margin-bottom:12px;line-height:1.4">Free regex matching. Best for simple table layouts.</div>'}
+
           <div style="font-size:12px;color:var(--text-secondary);margin-bottom:6px;font-weight:600">📎 From a URL (Revolutionise, school site, etc.)</div>
           <div style="display:flex;gap:8px;margin-bottom:14px">
             <input class="input" id="fi-url-input" type="url" placeholder="https://..." value="${(fi.url||'').replace(/"/g,'&quot;')}" oninput="S.fixtureImport.url=this.value" style="flex:1" ${fi.busy?'disabled':''}/>
-            <button onclick="handleFixtureUrlFetch()" ${fi.busy?'disabled':''} style="padding:12px 18px;border-radius:10px;background:${fi.busy?'#8E8E93':'#1C3A6B'};border:none;color:#fff;font-size:14px;font-weight:700;cursor:${fi.busy?'wait':'pointer'};font-family:inherit;flex-shrink:0;min-width:80px">${fi.busy?'⏳':'Fetch'}</button>
+            <button onclick="handleFixtureUrlFetch()" ${fi.busy?'disabled':''} style="padding:12px 18px;border-radius:10px;background:${fi.busy?'#8E8E93':(fi.useAI!==false?'#AF52DE':'#1C3A6B')};border:none;color:#fff;font-size:14px;font-weight:700;cursor:${fi.busy?'wait':'pointer'};font-family:inherit;flex-shrink:0;min-width:80px">${fi.busy?'⏳':'Fetch'}</button>
           </div>
 
-          ${fi.busy?`<div style="background:#1C3A6B14;border:1px solid #1C3A6B33;border-radius:10px;padding:12px;margin-bottom:14px;display:flex;align-items:center;gap:10px">
-            <div style="width:18px;height:18px;border:2px solid #1C3A6B;border-top-color:transparent;border-radius:9px;animation:spin 0.8s linear infinite;flex-shrink:0"></div>
-            <div style="font-size:13px;color:#1C3A6B;font-weight:600;line-height:1.4">Working on it… this can take 5–15 seconds for big fixture lists</div>
+          ${fi.busy?`<div style="background:${fi.useAI!==false?'#AF52DE14':'#1C3A6B14'};border:1px solid ${fi.useAI!==false?'#AF52DE33':'#1C3A6B33'};border-radius:10px;padding:12px;margin-bottom:14px;display:flex;align-items:center;gap:10px">
+            <div style="width:18px;height:18px;border:2px solid ${fi.useAI!==false?'#AF52DE':'#1C3A6B'};border-top-color:transparent;border-radius:9px;animation:spin 0.8s linear infinite;flex-shrink:0"></div>
+            <div style="font-size:13px;color:${fi.useAI!==false?'#AF52DE':'#1C3A6B'};font-weight:600;line-height:1.4">${fi.useAI!==false?'AI is reading…':'Working on it…'} this can take 5–15 seconds for big fixture lists</div>
           </div>`:''}
 
           <div style="text-align:center;font-size:11px;color:var(--text-secondary);margin:6px 0">— or —</div>
 
           <div style="font-size:12px;color:var(--text-secondary);margin-bottom:6px;font-weight:600">📄 From a PDF</div>
           <input type="file" id="fi-pdf" accept=".pdf,application/pdf" style="display:none" onchange="handleFixturePdfUpload(this)"/>
-          <button onclick="document.getElementById('fi-pdf').click()" ${fi.busy?'disabled':''} style="width:100%;padding:13px;border-radius:12px;background:${fi.busy?'#8E8E93':'#34C759'};border:none;color:#fff;font-size:14px;font-weight:700;cursor:${fi.busy?'wait':'pointer'};font-family:inherit">${fi.busy?'⏳ Working…':'Upload PDF'}</button>
+          <button onclick="document.getElementById('fi-pdf').click()" ${fi.busy?'disabled':''} style="width:100%;padding:13px;border-radius:12px;background:${fi.busy?'#8E8E93':(fi.useAI!==false?'#AF52DE':'#34C759')};border:none;color:#fff;font-size:14px;font-weight:700;cursor:${fi.busy?'wait':'pointer'};font-family:inherit">${fi.busy?'⏳ Working…':'Upload PDF'}</button>
         </div>
 
         <details style="background:var(--card);border-radius:14px;padding:14px 18px;border:1px solid var(--row-border);margin-bottom:14px">
@@ -3307,7 +3370,6 @@ function validateFixtureSetup(){
 
 window.handleFixtureUrlFetch=async function(){
   const fi=S.fixtureImport;
-  // FIRST — show immediate visual feedback that the click registered
   notify('Tap registered — checking inputs…','⏳');
   const errMsg=validateFixtureSetup();
   if(errMsg){notify('⚠️ '+errMsg,'⚠️');return;}
@@ -3315,24 +3377,59 @@ window.handleFixtureUrlFetch=async function(){
     notify('⚠️ URL must start with http:// or https://','⚠️');
     return;
   }
-  // Make sure we have a cloud function reference
   if(typeof httpsCallable==='undefined'||!functions){
     notify('⚠️ Cloud functions not loaded — refresh the app','❌');
     return;
   }
   fi.busy=true;render();
-  notify(fi.myTeam?('Fetching fixtures for '+fi.myTeam+'…'):'Fetching fixtures…','🌐');
+  const useAI=fi.useAI!==false;
+  notify(useAI?('🤖 AI fetching '+(fi.myTeam||'fixtures')+'…'):(fi.myTeam?('Fetching fixtures for '+fi.myTeam+'…'):'Fetching fixtures…'),useAI?'🤖':'🌐');
   try{
-    console.log('[fixtures] Calling cloud function for URL:',fi.url,'team:',fi.myTeam);
-    const fixtures=await fetchAndParseFixturesFromURL(fi.url,fi.myTeam);
-    console.log('[fixtures] Parsed',fixtures.length,'fixtures');
+    let fixtures;
+    if(useAI){
+      console.log('[fixtures] AI flow: fetching HTML…');
+      // 1. Fetch the HTML via existing cloud function
+      const fetchCall=httpsCallable(functions,'fetchSportFixtures');
+      const fetchResp=await fetchCall({url:fi.url});
+      const html=fetchResp?.data?.html;
+      if(!html)throw new Error('No HTML returned from URL');
+      console.log('[fixtures] Got HTML',html.length,'chars. Calling AI parser…');
+      // 2. Send HTML to AI parser
+      const aiCall=httpsCallable(functions,'parseFixturesWithAI');
+      const aiResp=await aiCall({
+        rawText:html,
+        sourceKind:'html',
+        sport:fi.sport,
+        myTeam:fi.myTeam||'',
+        familyId:S.familyId||''
+      });
+      const aiData=aiResp?.data||{};
+      const aiFixtures=Array.isArray(aiData.fixtures)?aiData.fixtures:[];
+      console.log('[fixtures] AI returned',aiFixtures.length,'fixtures. Summary:',aiData.summary);
+      // Map AI fixtures to our existing shape (opponent/venue same field names)
+      fixtures=aiFixtures.map(f=>({
+        date:f.date,
+        time:f.time,
+        opponent:f.opponent,
+        venue:f.venue,
+        round:f.round||'',
+        notes:f.notes||'',
+        isHome:f.isHome,
+        raw:'AI: '+(f.round?f.round+' · ':'')+(f.opponent||'?')
+      }));
+      if(aiData.summary)notify(aiData.summary,'🤖');
+    }else{
+      console.log('[fixtures] Basic flow: regex parsing…');
+      fixtures=await fetchAndParseFixturesFromURL(fi.url,fi.myTeam);
+    }
+    console.log('[fixtures] Final count:',fixtures.length);
     fi.busy=false;
     if(fixtures.length===0){
-      notify('No fixtures found' +(fi.myTeam?' for "'+fi.myTeam+'"':''),'⚠️');
+      notify('No fixtures found'+(fi.myTeam?' for "'+fi.myTeam+'"':''),'⚠️');
       render();
       return;
     }
-    S.fixturePreview={fixtures:fixtures.map(f=>({...f,id:Math.random().toString(36).slice(2,9)})),source:fi.url,sourceKind:'url'};
+    S.fixturePreview={fixtures:fixtures.map(f=>({...f,id:Math.random().toString(36).slice(2,9)})),source:fi.url,sourceKind:'url',aiUsed:useAI};
     go('fixturesPreview');
   }catch(ex){
     console.error('[fixtures] URL fetch failed:',ex);
@@ -3349,23 +3446,54 @@ window.handleFixturePdfUpload=async function(input){
   const fi=S.fixtureImport;
   const errMsg=validateFixtureSetup();
   if(errMsg){notify(errMsg,'⚠️');input.value='';return;}
+  if(typeof httpsCallable==='undefined'||!functions){
+    notify('⚠️ Cloud functions not loaded — refresh the app','❌');
+    return;
+  }
   fi.busy=true;render();
+  const useAI=fi.useAI!==false;
   try{
-    notify(fi.myTeam?('Reading PDF for '+fi.myTeam+'…'):'Reading PDF…','📄');
-    const fixtures=await parseFixturesFromPDF(file,fi.myTeam);
+    notify(useAI?('🤖 AI reading PDF…'):(fi.myTeam?('Reading PDF for '+fi.myTeam+'…'):'Reading PDF…'),useAI?'🤖':'📄');
+    let fixtures;
+    if(useAI){
+      // Extract raw text from PDF, send to AI
+      console.log('[fixtures] AI flow: extracting PDF text…');
+      const pdfText=await extractRawTextFromPDF(file);
+      console.log('[fixtures] Got PDF text',pdfText.length,'chars. Calling AI…');
+      if(!pdfText||pdfText.length<50){
+        throw new Error('PDF appears empty or unreadable. Try a different export of the file.');
+      }
+      const aiCall=httpsCallable(functions,'parseFixturesWithAI');
+      const aiResp=await aiCall({
+        rawText:pdfText,
+        sourceKind:'pdf',
+        sport:fi.sport,
+        myTeam:fi.myTeam||'',
+        familyId:S.familyId||''
+      });
+      const aiData=aiResp?.data||{};
+      const aiFixtures=Array.isArray(aiData.fixtures)?aiData.fixtures:[];
+      console.log('[fixtures] AI returned',aiFixtures.length,'fixtures');
+      fixtures=aiFixtures.map(f=>({
+        date:f.date,time:f.time,opponent:f.opponent,venue:f.venue,
+        round:f.round||'',notes:f.notes||'',isHome:f.isHome,
+        raw:'AI: '+(f.round?f.round+' · ':'')+(f.opponent||'?')
+      }));
+      if(aiData.summary)notify(aiData.summary,'🤖');
+    }else{
+      console.log('[fixtures] Basic flow: regex parsing PDF…');
+      fixtures=await parseFixturesFromPDF(file,fi.myTeam);
+    }
     fi.busy=false;
     if(fixtures.length===0){
-      if(fi.myTeam){
-        notify('No fixtures found containing team "'+fi.myTeam+'". Check the spelling, or clear the team field to see all fixtures.','⚠️');
-      }else{
-        notify('Didn\'t spot any fixtures in this PDF. Try the spreadsheet template instead.','⚠️');
-      }
+      notify(fi.myTeam?('No fixtures found for "'+fi.myTeam+'"'):'No fixtures found in PDF','⚠️');
       render();
       return;
     }
-    S.fixturePreview={fixtures:fixtures.map(f=>({...f,id:Math.random().toString(36).slice(2,9)})),source:file.name,sourceKind:'pdf'};
+    S.fixturePreview={fixtures:fixtures.map(f=>({...f,id:Math.random().toString(36).slice(2,9)})),source:file.name,sourceKind:'pdf',aiUsed:useAI};
     go('fixturesPreview');
   }catch(ex){
+    console.error('[fixtures] PDF flow failed:',ex);
     fi.busy=false;
     notify('PDF read failed: '+(ex.message||ex),'❌');
     render();
@@ -3373,6 +3501,34 @@ window.handleFixturePdfUpload=async function(input){
     if(input)input.value='';
   }
 };
+
+// Helper: extract raw text from a PDF file using PDF.js (for AI parser input)
+async function extractRawTextFromPDF(file){
+  await loadPDFJS();
+  const buf=await file.arrayBuffer();
+  const pdf=await window.pdfjsLib.getDocument({data:buf}).promise;
+  const lines=[];
+  for(let pageNum=1;pageNum<=pdf.numPages;pageNum++){
+    const page=await pdf.getPage(pageNum);
+    const content=await page.getTextContent();
+    // Group items by Y coord to preserve table-row structure
+    const lineMap=new Map();
+    for(const item of content.items){
+      if(!item.str||!item.str.trim())continue;
+      const y=Math.round(item.transform[5]/4)*4;
+      if(!lineMap.has(y))lineMap.set(y,[]);
+      lineMap.get(y).push({x:item.transform[4],text:item.str.trim()});
+    }
+    const ys=[...lineMap.keys()].sort((a,b)=>b-a);
+    for(const y of ys){
+      const items=lineMap.get(y).sort((a,b)=>a.x-b.x);
+      const joined=items.map(i=>i.text).join('  ');
+      if(joined.trim())lines.push(joined);
+    }
+    lines.push(''); // page break
+  }
+  return lines.join('\n');
+}
 
 // === PREVIEW SCREEN ===
 function sFixturesPreview(){
@@ -3451,7 +3607,10 @@ function sFixturesPreview(){
         <div style="display:flex;align-items:center;gap:10px;margin-bottom:8px">
           <div style="width:38px;height:38px;border-radius:19px;background:${cat.color}18;border:2px solid ${cat.color};display:flex;align-items:center;justify-content:center;font-size:18px;flex-shrink:0">${cat.emoji}</div>
           <div style="flex:1;min-width:0">
-            <div style="font-size:16px;font-weight:800;color:var(--text);line-height:1.2">${cat.label} · ${fi.sport}</div>
+            <div style="display:flex;align-items:center;gap:6px;flex-wrap:wrap">
+              <div style="font-size:16px;font-weight:800;color:var(--text);line-height:1.2">${cat.label} · ${fi.sport}</div>
+              ${data.aiUsed?'<span style="font-size:10px;font-weight:700;padding:2px 8px;border-radius:8px;background:linear-gradient(135deg,#AF52DE,#5856D6);color:#fff">🤖 AI</span>':''}
+            </div>
             <div style="font-size:11px;color:var(--text-secondary)">${data.source}</div>
           </div>
         </div>
@@ -3942,8 +4101,9 @@ window.parseEmailNow=function(){
 
 // Use Claude API (via cloud function) to parse emails. Much smarter than regex.
 window.parseEmailWithAI=async function(){
+  console.log('[ai-parse] === START ===');
   const ei=S.emailImport;
-  if(!ei)return;
+  if(!ei){console.error('[ai-parse] No emailImport state');return;}
   const ta=document.getElementById('ei-content');
   if(ta)ei.content=ta.value;
   if(!ei.content||ei.content.trim().length<10){
@@ -3954,6 +4114,7 @@ window.parseEmailWithAI=async function(){
     notify('Cloud functions not loaded — refresh the app','❌');
     return;
   }
+  console.log('[ai-parse] Email length:',ei.content.length,'familyId:',S.familyId,'user:',S.user?.uid);
 
   // Show full-screen "AI is reading…" overlay so user sees feedback
   const overlay=document.createElement('div');
@@ -3968,14 +4129,17 @@ window.parseEmailWithAI=async function(){
   document.body.appendChild(overlay);
 
   try{
+    console.log('[ai-parse] Calling cloud function…');
     const callable=httpsCallable(functions,'parseEmailWithAI');
     const resp=await callable({
       emailText:ei.content,
       familyId:S.familyId||'',
       contextHint:'Default category preference is '+(ei.defaultCategory||'school')+'.'
     });
+    console.log('[ai-parse] Cloud function returned:',resp);
     const data=resp?.data||{};
     const aiEvents=Array.isArray(data.events)?data.events:[];
+    console.log('[ai-parse] Got',aiEvents.length,'events from AI');
     overlay.remove();
 
     if(aiEvents.length===0){
@@ -3989,6 +4153,7 @@ window.parseEmailWithAI=async function(){
       id:Math.random().toString(36).slice(2,9),
       title:ev.title||'',
       date:ev.date||'',
+      endDate:ev.endDate||'',
       time:ev.time||'',
       endTime:ev.endTime||'',
       location:ev.location||'',
@@ -3997,6 +4162,33 @@ window.parseEmailWithAI=async function(){
       raw:'AI: '+(ev.title||'').slice(0,80)
     }));
 
+    // Dedupe check — flag events that already exist in the family's events collection.
+    // Match on normalised title + same date (or overlapping date range for multi-day).
+    const norm=s=>String(s||'').toLowerCase().replace(/\s+/g,' ').trim();
+    const existingEvents=Array.isArray(S.events)?S.events:[];
+    events.forEach(ev=>{
+      const nTitle=norm(ev.title);
+      const nDate=ev.date;
+      const dup=existingEvents.find(existing=>{
+        if(!existing.title||!existing.date)return false;
+        const sameTitle=norm(existing.title)===nTitle;
+        if(!sameTitle)return false;
+        // Same date OR overlapping multi-day range
+        if(existing.date===nDate)return true;
+        // Multi-day overlap check
+        const evStart=ev.date;
+        const evEnd=ev.endDate||ev.date;
+        const exStart=existing.date;
+        const exEnd=existing.endDate||existing.date;
+        return !(evEnd<exStart||evStart>exEnd);
+      });
+      if(dup){
+        ev._duplicate=true;
+        ev._duplicateOf=dup.id;
+        ev._removed=true; // skip duplicates by default — user can undo
+      }
+    });
+
     S.emailPreview={
       events,
       sourceCategory:ei.defaultCategory,
@@ -4004,12 +4196,23 @@ window.parseEmailWithAI=async function(){
       source:'ai',
       usage:data.usage
     };
-    notify('AI found '+aiEvents.length+' event'+(aiEvents.length===1?'':'s')+' ✨','🤖');
+    console.log('[ai-parse] Set emailPreview:',S.emailPreview);
+    notify('AI found '+aiEvents.length+' event'+(aiEvents.length===1?'':'s')+' — opening preview…','🤖');
+    console.log('[ai-parse] Calling go(emailPreview)…');
     go('emailPreview');
+    console.log('[ai-parse] go() returned. S.screen=',S.screen);
+    // Verify the screen actually rendered — if not, force again
+    setTimeout(function(){
+      if(S.screen!=='emailPreview'){
+        console.error('[ai-parse] Screen failed to navigate! Current screen:',S.screen,'Forcing re-render…');
+        S.screen='emailPreview';
+        render();
+      }
+    },200);
   }catch(ex){
     overlay.remove();
     const detail=ex?.message||ex?.code||String(ex);
-    console.error('[ai-parse] failed:',ex);
+    console.error('[ai-parse] FAILED:',ex);
     notify('AI parse failed: '+detail,'❌');
   }
 };
@@ -4029,38 +4232,49 @@ function sEmailPreview(){
       </div>`;
   }
 
-  const events=data.events;
-  const validCount=events.filter(e=>e.title&&e.date&&!e._removed).length;
-  const cat=EV_CATEGORIES.find(c=>c.id===data.sourceCategory)||EV_CATEGORIES.find(c=>c.id==='other');
-  const participantNames=data.participantIds.map(id=>{
+  // Defensive null safety
+  const events=Array.isArray(data.events)?data.events:[];
+  const validCount=events.filter(e=>e&&e.title&&e.date&&!e._removed).length;
+  const cat=EV_CATEGORIES.find(c=>c.id===data.sourceCategory)||EV_CATEGORIES.find(c=>c.id==='school')||EV_CATEGORIES[0];
+  const participantIds=Array.isArray(data.participantIds)?data.participantIds:[];
+  const participantNames=participantIds.map(id=>{
     const c=S.children.find(x=>x.id===id);
     if(c)return c.name.split(' ')[0];
     const m=members().find(x=>x.uid===id);
     return m?m.name.split(' ')[0]:'?';
-  });
+  }).filter(Boolean);
 
   const eventCard=ev=>{
     if(ev._removed){
-      return `<div style="padding:10px 14px;opacity:0.5;display:flex;align-items:center;justify-content:space-between;border-bottom:1px solid var(--row-border)">
-        <div style="font-size:13px;color:var(--text-secondary);text-decoration:line-through">${ev.title||'(removed)'}</div>
-        <button onclick="restoreEmailEvent('${ev.id}')" style="font-size:11px;color:var(--navy);font-weight:600;border:none;background:none;cursor:pointer;font-family:inherit;text-decoration:underline">Undo</button>
+      const isDupe=ev._duplicate;
+      return `<div style="padding:10px 14px;opacity:0.6;display:flex;align-items:center;justify-content:space-between;border-bottom:1px solid var(--row-border);${isDupe?'background:#FF950014':''}">
+        <div style="flex:1;min-width:0">
+          ${isDupe?'<div style="font-size:10px;color:#FF9500;font-weight:700;margin-bottom:2px">⚠️ ALREADY IN CALENDAR</div>':''}
+          <div style="font-size:13px;color:var(--text-secondary);text-decoration:line-through">${ev.title||'(removed)'} · ${ev.date||''}</div>
+        </div>
+        <button onclick="restoreEmailEvent('${ev.id}')" style="font-size:11px;color:var(--navy);font-weight:600;border:none;background:none;cursor:pointer;font-family:inherit;text-decoration:underline">${isDupe?'Add anyway':'Undo'}</button>
       </div>`;
     }
     const titleOk=!!(ev.title&&ev.title.trim());
     const dateOk=!!ev.date;
     const evCat=ev.category||data.sourceCategory||'school';
     const evCatMeta=EV_CATEGORIES.find(c=>c.id===evCat)||EV_CATEGORIES.find(c=>c.id==='other');
+    const isMultiDay=!!(ev.endDate&&ev.endDate!==ev.date);
     return `<div style="padding:14px;border-bottom:1px solid var(--row-border);${(!titleOk||!dateOk)?'background:#FF3B3008':''}">
-      <div style="display:flex;align-items:center;gap:8px;margin-bottom:10px">
+      <div style="display:flex;align-items:center;gap:8px;margin-bottom:10px;flex-wrap:wrap">
         <div style="background:${evCatMeta.color}18;border:1px solid ${evCatMeta.color}55;border-radius:14px;padding:4px 10px;font-size:11px;font-weight:700;color:${evCatMeta.color};display:inline-flex;align-items:center;gap:4px">${evCatMeta.emoji} ${evCatMeta.label}</div>
+        ${isMultiDay?`<div style="background:#5856D618;border:1px solid #5856D655;border-radius:14px;padding:4px 10px;font-size:11px;font-weight:700;color:#5856D6">📆 Multi-day</div>`:''}
         ${ev.endTime?`<div style="font-size:11px;color:var(--text-secondary)">⏱ ${ev.time||'?'} – ${ev.endTime}</div>`:''}
       </div>
       <div style="display:grid;grid-template-columns:auto 1fr;gap:8px 10px;align-items:center;margin-bottom:8px">
         <span style="font-size:11px;color:var(--text-secondary);font-weight:600">TITLE</span>
         <input type="text" value="${(ev.title||'').replace(/"/g,'&quot;')}" onchange="updateEmailEvent('${ev.id}','title',this.value)" style="padding:6px 10px;border-radius:8px;border:1px solid ${titleOk?'var(--border)':'#FF3B30'};font-size:13px;font-family:inherit;background:var(--card);color:var(--text);font-weight:600"/>
 
-        <span style="font-size:11px;color:var(--text-secondary);font-weight:600">DATE</span>
+        <span style="font-size:11px;color:var(--text-secondary);font-weight:600">${isMultiDay?'FROM':'DATE'}</span>
         <input type="date" value="${ev.date||''}" onchange="updateEmailEvent('${ev.id}','date',this.value)" style="padding:6px 10px;border-radius:8px;border:1px solid ${dateOk?'var(--border)':'#FF3B30'};font-size:13px;font-family:inherit;background:var(--card);color:var(--text)"/>
+
+        ${isMultiDay||ev.endDate?`<span style="font-size:11px;color:var(--text-secondary);font-weight:600">TO</span>
+        <input type="date" value="${ev.endDate||''}" onchange="updateEmailEvent('${ev.id}','endDate',this.value)" style="padding:6px 10px;border-radius:8px;border:1px solid var(--border);font-size:13px;font-family:inherit;background:var(--card);color:var(--text)"/>`:''}
 
         <span style="font-size:11px;color:var(--text-secondary);font-weight:600">TIME</span>
         <input type="text" value="${(ev.time||'').replace(/"/g,'&quot;')}" placeholder="(optional)" onchange="updateEmailEvent('${ev.id}','time',this.value)" style="padding:6px 10px;border-radius:8px;border:1px solid var(--border);font-size:13px;font-family:inherit;background:var(--card);color:var(--text)"/>
@@ -4088,14 +4302,15 @@ function sEmailPreview(){
         <div style="display:flex;align-items:center;gap:10px;margin-bottom:6px">
           <div style="width:38px;height:38px;border-radius:19px;background:${cat.color}18;border:2px solid ${cat.color};display:flex;align-items:center;justify-content:center;font-size:18px;flex-shrink:0">${cat.emoji}</div>
           <div style="flex:1;min-width:0">
-            <div style="display:flex;align-items:center;gap:6px;margin-bottom:2px">
+            <div style="display:flex;align-items:center;gap:6px;margin-bottom:2px;flex-wrap:wrap">
               <div style="font-size:16px;font-weight:800;color:var(--text);line-height:1.2">${events.length} event${events.length===1?'':'s'} detected</div>
               ${data.source==='ai'?'<span style="font-size:10px;font-weight:700;padding:2px 8px;border-radius:8px;background:linear-gradient(135deg,#AF52DE,#5856D6);color:#fff">🤖 AI</span>':data.source==='basic'?'<span style="font-size:10px;font-weight:700;padding:2px 8px;border-radius:8px;background:var(--text-secondary);color:#fff">BASIC</span>':''}
             </div>
             <div style="font-size:11px;color:var(--text-secondary)">Default category: ${cat.label}${participantNames.length?' · For: '+participantNames.join(', '):' · Family-wide'}</div>
           </div>
         </div>
-        <div style="font-size:11px;color:var(--text-secondary);line-height:1.4">Review each event before importing. Edit, remove, or commit.</div>
+        ${(()=>{const dupes=events.filter(e=>e._duplicate).length;return dupes>0?`<div style="background:#FF950014;border:1px solid #FF950055;border-radius:10px;padding:8px 12px;margin-top:8px;font-size:12px;color:#996600;line-height:1.4">⚠️ <strong>${dupes} already in your calendar</strong> — auto-skipped. Tap "Add anyway" on any to import again.</div>`:'';})()}
+        <div style="font-size:11px;color:var(--text-secondary);line-height:1.4;margin-top:6px">Review each event before importing. Edit, remove, or commit.</div>
       </div>
 
       <div class="scroll-view" style="padding:0 0 100px;max-width:680px;margin:auto;width:100%">
@@ -4168,7 +4383,8 @@ window.commitEmailImport=async function(){
         participantIds:[...data.participantIds],childId,adultUid,
         freq:'once',
         date:ev.date,
-        startDate:'',endDate:'',
+        endDate:ev.endDate||'',
+        startDate:'',
         days:{Mon:false,Tue:false,Wed:false,Thu:false,Fri:false,Sat:false,Sun:false},
         time:timeStr,
         category:eventCat,
@@ -4187,6 +4403,376 @@ window.commitEmailImport=async function(){
   if(failed===0){notify('Imported '+success+' event'+(success===1?'':'s')+' ✅','📅');}
   else{notify('Imported '+success+' / failed '+failed,'⚠️');}
   S.screen=null;S.tab='events';S.evView='tiles';render();
+};
+
+// === INBOX REVIEW SCREEN — pending events from forwarded emails ===
+function sInboxReview(){
+  const pending=Array.isArray(S.pendingEmails)?S.pendingEmails:[];
+
+  if(pending.length===0){
+    return `<div style="min-height:100%;display:flex;flex-direction:column;background:var(--bg)">
+      <div style="background:var(--card);padding:14px 16px;display:flex;align-items:center;border-bottom:1px solid var(--row-border)">
+        <button class="back-btn" onclick="back()">${bk()} Back</button>
+        <div style="flex:1;text-align:center;font-size:17px;font-weight:600">📥 Inbox</div>
+        <div style="width:60px"></div>
+      </div>
+      <div style="text-align:center;padding:80px 24px;color:var(--text-secondary)">
+        <div style="font-size:60px;margin-bottom:14px">✨</div>
+        <div style="font-size:18px;font-weight:700;color:var(--text);margin-bottom:6px">All caught up!</div>
+        <div style="font-size:14px;line-height:1.5">No pending events to review.<br>Forward emails to your HomeBase address to extract events automatically.</div>
+        <button onclick="go('inboxSetup')" style="margin-top:20px;padding:11px 20px;border-radius:12px;background:var(--navy);border:none;color:#fff;font-size:13px;font-weight:700;cursor:pointer;font-family:inherit">⚙️ Setup forwarding</button>
+      </div>
+    </div>`;
+  }
+
+  const bundleCard=bundle=>{
+    const events=Array.isArray(bundle.events)?bundle.events:[];
+    const conf=bundle.confidence||'medium';
+    const confColor=conf==='high'?'#34C759':conf==='medium'?'#FF9500':'#8E8E93';
+    const confLabel=conf==='high'?'High':conf==='medium'?'Medium':'Low';
+    const dateStr=bundle.sourceReceivedAt?.toDate?.toLocaleDateString('en-AU',{day:'numeric',month:'short'})||'';
+
+    return `<div class="card" style="margin:0 16px 14px;overflow:hidden">
+      <!-- HEADER: source email info -->
+      <div style="padding:12px 16px;background:linear-gradient(135deg,#AF52DE08,#5856D608);border-bottom:1px solid var(--row-border)">
+        <div style="display:flex;align-items:center;gap:8px;margin-bottom:4px;flex-wrap:wrap">
+          <span style="font-size:10px;font-weight:700;padding:2px 8px;border-radius:8px;background:linear-gradient(135deg,#AF52DE,#5856D6);color:#fff">🤖 AI EXTRACTED</span>
+          <span style="font-size:10px;font-weight:700;padding:2px 8px;border-radius:8px;background:${confColor}22;color:${confColor};border:1px solid ${confColor}55">${confLabel} confidence</span>
+          ${dateStr?`<span style="font-size:11px;color:var(--text-secondary);margin-left:auto">${dateStr}</span>`:''}
+        </div>
+        <div style="font-size:13px;font-weight:700;color:var(--text);line-height:1.3">📧 ${bundle.sourceSubject||'(no subject)'}</div>
+        <div style="font-size:11px;color:var(--text-secondary);margin-top:2px">From: ${bundle.sourceFrom||'unknown'}</div>
+      </div>
+
+      <!-- EVENTS -->
+      ${events.map((ev,idx)=>{
+        const evCat=ev.category||'school';
+        const catMeta=EV_CATEGORIES.find(c=>c.id===evCat)||EV_CATEGORIES.find(c=>c.id==='other');
+        const isMultiDay=!!(ev.endDate&&ev.endDate!==ev.date);
+        const dateDisplay=ev.date?new Date(ev.date+'T12:00').toLocaleDateString('en-AU',{weekday:'short',day:'numeric',month:'short'}):'No date';
+        const endDateDisplay=isMultiDay&&ev.endDate?new Date(ev.endDate+'T12:00').toLocaleDateString('en-AU',{weekday:'short',day:'numeric',month:'short'}):'';
+        return `<div style="padding:14px 16px;border-bottom:${idx<events.length-1?'1px solid var(--row-border)':'none'}">
+          <div style="display:flex;align-items:flex-start;gap:10px;margin-bottom:8px">
+            <div style="width:36px;height:36px;border-radius:18px;background:${catMeta.color}18;border:1.5px solid ${catMeta.color};display:flex;align-items:center;justify-content:center;font-size:16px;flex-shrink:0">${catMeta.emoji}</div>
+            <div style="flex:1;min-width:0">
+              <div style="font-size:15px;font-weight:700;color:var(--text);line-height:1.25">${ev.title||'(no title)'}</div>
+              <div style="font-size:12px;color:var(--text-secondary);margin-top:2px;line-height:1.5">
+                📅 ${dateDisplay}${isMultiDay?' → '+endDateDisplay:''}
+                ${ev.time?'  ·  ⏰ '+ev.time+(ev.endTime?'–'+ev.endTime:''):''}
+              </div>
+              ${ev.location?`<div style="font-size:12px;color:var(--text-secondary);margin-top:2px;line-height:1.5">📍 ${ev.location}</div>`:''}
+              ${ev.notes?`<div style="font-size:11px;color:var(--text-secondary);margin-top:6px;background:var(--bg);border-radius:6px;padding:6px 8px;line-height:1.5">📝 ${ev.notes}</div>`:''}
+            </div>
+          </div>
+          <div style="display:flex;gap:6px;margin-top:8px">
+            <button onclick="approvePendingEvent('${bundle.id}',${idx})" style="flex:1;padding:8px;border-radius:8px;background:#34C759;border:none;color:#fff;font-size:12px;font-weight:700;cursor:pointer;font-family:inherit">✓ Approve</button>
+            <button onclick="editPendingEvent('${bundle.id}',${idx})" style="flex:1;padding:8px;border-radius:8px;background:var(--bg);border:1px solid var(--border);color:var(--text);font-size:12px;font-weight:700;cursor:pointer;font-family:inherit">✏️ Edit</button>
+            <button onclick="dismissPendingEvent('${bundle.id}',${idx})" style="padding:8px 14px;border-radius:8px;background:var(--bg);border:1px solid var(--border);color:#FF3B30;font-size:12px;font-weight:700;cursor:pointer;font-family:inherit">✕</button>
+          </div>
+        </div>`;
+      }).join('')}
+
+      <!-- BULK ACTIONS -->
+      <div style="padding:10px 16px;background:var(--bg);display:flex;gap:8px;border-top:1px solid var(--row-border)">
+        <button onclick="approveAllInBundle('${bundle.id}')" style="flex:2;padding:10px;border-radius:10px;background:#34C759;border:none;color:#fff;font-size:13px;font-weight:700;cursor:pointer;font-family:inherit">✓ Approve all (${events.length})</button>
+        <button onclick="dismissBundle('${bundle.id}')" style="flex:1;padding:10px;border-radius:10px;background:var(--card);border:1px solid var(--border);color:var(--text-secondary);font-size:12px;font-weight:600;cursor:pointer;font-family:inherit">Dismiss</button>
+      </div>
+    </div>`;
+  };
+
+  const totalEvents=pending.reduce((sum,p)=>sum+(Array.isArray(p.events)?p.events.length:0),0);
+
+  return `<div style="min-height:100%;display:flex;flex-direction:column;background:var(--bg)">
+    <div style="background:var(--card);padding:14px 16px;display:flex;align-items:center;border-bottom:1px solid var(--row-border);position:sticky;top:0;z-index:10">
+      <button class="back-btn" onclick="back()">${bk()} Back</button>
+      <div style="flex:1;text-align:center;font-size:17px;font-weight:600">📥 Inbox</div>
+      <button onclick="go('inboxSetup')" style="background:none;border:none;color:var(--navy);font-size:13px;font-weight:600;cursor:pointer;font-family:inherit;padding:4px 8px">⚙️</button>
+    </div>
+
+    <div style="padding:14px 16px;background:linear-gradient(135deg,#AF52DE,#5856D6);color:#fff">
+      <div style="font-size:13px;font-weight:700;color:rgba(255,255,255,0.9)">📊 SUMMARY</div>
+      <div style="font-size:18px;font-weight:800;margin-top:2px">${totalEvents} event${totalEvents===1?'':'s'} from ${pending.length} email${pending.length===1?'':'s'}</div>
+      <div style="font-size:12px;color:rgba(255,255,255,0.88);margin-top:4px">Review each event below. Approve to add to your calendar, dismiss if AI got it wrong.</div>
+    </div>
+
+    <div class="scroll-view" style="padding:14px 0 100px">
+      ${pending.map(bundleCard).join('')}
+    </div>
+  </div>`;
+}
+
+// Approve a single event in a pending bundle — saves to events, removes from bundle
+window.approvePendingEvent=async function(bundleId,eventIdx){
+  if(!S.familyId)return;
+  const bundle=(S.pendingEmails||[]).find(p=>p.id===bundleId);
+  if(!bundle||!Array.isArray(bundle.events))return;
+  const ev=bundle.events[eventIdx];
+  if(!ev)return;
+  try{
+    const evCat=ev.category||'school';
+    const catMeta=EV_CATEGORIES.find(c=>c.id===evCat)||{emoji:'📅'};
+    const timeStr=ev.endTime?(ev.time||'')+' – '+ev.endTime:(ev.time||'');
+    await fadd(['events'],{
+      title:(ev.title||'').trim(),
+      emoji:catMeta.emoji||'📅',
+      participantIds:[],childId:'',adultUid:'',
+      freq:'once',
+      date:ev.date,endDate:ev.endDate||'',startDate:'',
+      days:{Mon:false,Tue:false,Wed:false,Thu:false,Fri:false,Sat:false,Sun:false},
+      time:timeStr,
+      category:evCat,
+      sport:'',
+      location:ev.location||'',
+      dropoff:'',pickup:'',
+      packItems:[],
+      notes:ev.notes||''
+    });
+    // Remove this event from the bundle
+    const remaining=bundle.events.filter((_,i)=>i!==eventIdx);
+    if(remaining.length===0){
+      // Last event in bundle — mark whole bundle reviewed
+      await updateDoc(doc(db,'families',S.familyId,'pending_events',bundleId),{
+        status:'reviewed',events:[],reviewedAt:new Date()
+      });
+    }else{
+      await updateDoc(doc(db,'families',S.familyId,'pending_events',bundleId),{events:remaining});
+    }
+    notify('Event approved 📅','✅');
+  }catch(e){
+    console.error('Approve failed:',e);
+    notify('Failed: '+(e.message||e),'❌');
+  }
+};
+
+// Edit a pending event before approving — opens the Add Event form pre-filled
+window.editPendingEvent=function(bundleId,eventIdx){
+  const bundle=(S.pendingEmails||[]).find(p=>p.id===bundleId);
+  if(!bundle||!Array.isArray(bundle.events))return;
+  const ev=bundle.events[eventIdx];
+  if(!ev)return;
+  // Pre-fill the Add Event form with this pending event's data
+  S.ef={
+    title:ev.title||'',
+    emoji:'📅',
+    freq:'once',
+    days:{Mon:false,Tue:false,Wed:false,Thu:false,Fri:false,Sat:false,Sun:false},
+    packItems:[],
+    category:ev.category||'school',
+    participantIds:[],
+    location:ev.location||'',
+    time:ev.time||'',
+    endTime:ev.endTime||'',
+    dropoff:'',
+    pickup:'',
+    date:ev.date||'',
+    endDate:ev.endDate||'',
+    startDate:'',
+    notes:ev.notes||''
+  };
+  // Stash a marker so we know to remove from pending after save
+  S._pendingEventApproval={bundleId,eventIdx};
+  go('addEvent');
+};
+
+// Dismiss a single pending event
+window.dismissPendingEvent=async function(bundleId,eventIdx){
+  if(!S.familyId)return;
+  const bundle=(S.pendingEmails||[]).find(p=>p.id===bundleId);
+  if(!bundle||!Array.isArray(bundle.events))return;
+  try{
+    const remaining=bundle.events.filter((_,i)=>i!==eventIdx);
+    if(remaining.length===0){
+      await updateDoc(doc(db,'families',S.familyId,'pending_events',bundleId),{
+        status:'dismissed',events:[],dismissedAt:new Date()
+      });
+    }else{
+      await updateDoc(doc(db,'families',S.familyId,'pending_events',bundleId),{events:remaining});
+    }
+    notify('Event dismissed','🗑️');
+  }catch(e){notify('Failed: '+(e.message||e),'❌');}
+};
+
+// Approve every event in a bundle
+window.approveAllInBundle=async function(bundleId){
+  if(!S.familyId)return;
+  const bundle=(S.pendingEmails||[]).find(p=>p.id===bundleId);
+  if(!bundle||!Array.isArray(bundle.events))return;
+  let success=0,failed=0;
+  for(const ev of bundle.events){
+    try{
+      const evCat=ev.category||'school';
+      const catMeta=EV_CATEGORIES.find(c=>c.id===evCat)||{emoji:'📅'};
+      const timeStr=ev.endTime?(ev.time||'')+' – '+ev.endTime:(ev.time||'');
+      await fadd(['events'],{
+        title:(ev.title||'').trim(),
+        emoji:catMeta.emoji||'📅',
+        participantIds:[],childId:'',adultUid:'',
+        freq:'once',
+        date:ev.date,endDate:ev.endDate||'',startDate:'',
+        days:{Mon:false,Tue:false,Wed:false,Thu:false,Fri:false,Sat:false,Sun:false},
+        time:timeStr,category:evCat,sport:'',
+        location:ev.location||'',
+        dropoff:'',pickup:'',packItems:[],
+        notes:ev.notes||''
+      });
+      success++;
+    }catch(e){failed++;}
+  }
+  try{
+    await updateDoc(doc(db,'families',S.familyId,'pending_events',bundleId),{
+      status:'reviewed',events:[],reviewedAt:new Date()
+    });
+  }catch(e){}
+  if(failed===0)notify('Approved '+success+' event'+(success===1?'':'s')+' 📅','✅');
+  else notify('Approved '+success+', '+failed+' failed','⚠️');
+};
+
+// Dismiss an entire email bundle (all events from it)
+window.dismissBundle=async function(bundleId){
+  if(!S.familyId)return;
+  if(!confirm('Dismiss this entire email and all its events?'))return;
+  try{
+    await updateDoc(doc(db,'families',S.familyId,'pending_events',bundleId),{
+      status:'dismissed',events:[],dismissedAt:new Date()
+    });
+    notify('Email dismissed','🗑️');
+  }catch(e){notify('Failed: '+(e.message||e),'❌');}
+};
+
+// === INBOX SETUP SCREEN — show forwarding address + instructions ===
+function sInboxSetup(){
+  // Prefer the friendly inbound address; fall back to Postmark address if DNS not set up
+  const friendly=S.family?.inboundAddress||'';
+  const postmark=S.family?.postmarkInboundAddress||'';
+  const activeAddress=postmark||friendly;
+  const hasDNS=false; // TODO: when DNS is verified, set this to true and use friendly address
+
+  return `<div style="min-height:100%;display:flex;flex-direction:column;background:var(--bg)">
+    <div style="background:var(--card);padding:14px 16px;display:flex;align-items:center;border-bottom:1px solid var(--row-border)">
+      <button class="back-btn" onclick="back()">${bk()} Back</button>
+      <div style="flex:1;text-align:center;font-size:17px;font-weight:600">📥 Email Setup</div>
+      <div style="width:60px"></div>
+    </div>
+
+    <div class="scroll-view" style="padding:14px 16px 80px;max-width:680px;margin:auto;width:100%">
+
+      <!-- HERO -->
+      <div style="background:linear-gradient(135deg,#AF52DE,#5856D6);border-radius:16px;padding:20px;color:#fff;margin-bottom:16px">
+        <div style="font-size:32px;margin-bottom:8px">📬</div>
+        <div style="font-size:18px;font-weight:800;margin-bottom:6px">Forward emails to HomeBase</div>
+        <div style="font-size:13px;color:rgba(255,255,255,0.92);line-height:1.5">School newsletters, sport notices, excursion notes — forward them to your private HomeBase address and AI extracts the events automatically.</div>
+      </div>
+
+      <!-- YOUR ADDRESS -->
+      <div class="sh" style="margin-bottom:6px">YOUR FORWARDING ADDRESS</div>
+      <div class="card" style="margin-bottom:16px;padding:16px">
+        <div style="font-size:11px;color:var(--text-secondary);margin-bottom:6px;font-weight:600">${hasDNS?'PRIMARY':'TEMPORARY (until DNS is set up)'}</div>
+        <div style="background:var(--bg);border-radius:10px;padding:12px;margin-bottom:10px;display:flex;align-items:center;gap:8px">
+          <code style="flex:1;font-family:Menlo,monospace;font-size:12px;color:var(--text);word-break:break-all">${activeAddress||'(not yet assigned — refresh)'}</code>
+          ${activeAddress?`<button onclick="copyInboundAddress('${activeAddress.replace(/'/g,'\\\'')}')" style="padding:6px 12px;border-radius:8px;background:var(--navy);border:none;color:#fff;font-size:12px;font-weight:700;cursor:pointer;font-family:inherit;flex-shrink:0">📋 Copy</button>`:''}
+        </div>
+        ${friendly&&friendly!==activeAddress?`<div style="font-size:11px;color:var(--text-secondary);line-height:1.5">Future address (after DNS): <code style="font-family:Menlo,monospace;font-size:11px;color:var(--text)">${friendly}</code></div>`:''}
+      </div>
+
+      <!-- HOW IT WORKS -->
+      <div class="sh" style="margin-bottom:6px">HOW IT WORKS</div>
+      <div class="card" style="margin-bottom:16px;padding:14px 18px">
+        <ol style="margin:0;padding-left:20px;font-size:13px;line-height:1.7;color:var(--text)">
+          <li>Forward an email (school newsletter, sport notice) to your address above.</li>
+          <li>AI reads the email and extracts events.</li>
+          <li>Events appear in your <strong>📥 Inbox</strong> for review.</li>
+          <li>Tap ✓ Approve to add to calendar, or ✕ to dismiss.</li>
+        </ol>
+      </div>
+
+      <!-- SETUP GUIDES -->
+      <div class="sh" style="margin-bottom:6px">SETUP GUIDES</div>
+      <div class="card" style="margin-bottom:16px;overflow:hidden">
+
+        <!-- Gmail -->
+        <details style="border-bottom:1px solid var(--row-border)">
+          <summary style="padding:14px 16px;cursor:pointer;font-size:14px;font-weight:600;color:var(--text);display:flex;align-items:center;gap:8px">
+            <span style="font-size:20px">📧</span>
+            <span style="flex:1">Gmail — auto-forward school emails</span>
+            <span style="color:var(--text-secondary)">▾</span>
+          </summary>
+          <div style="padding:0 16px 16px;font-size:13px;color:var(--text-secondary);line-height:1.7">
+            <ol style="margin:0;padding-left:20px">
+              <li>Open Gmail → Settings (⚙️) → "See all settings" → "Forwarding and POP/IMAP"</li>
+              <li>Click "Add a forwarding address" → paste your HomeBase address → Next</li>
+              <li>Gmail sends a confirmation email — check your HomeBase Inbox in a minute and approve it</li>
+              <li>Back in Gmail → "Filters and Blocked Addresses" → "Create a new filter"</li>
+              <li>From: <code>@trinityac.nsw.edu.au</code> (or whichever school domain) → Create filter</li>
+              <li>Tick "Forward it to: [your HomeBase address]" → Create filter</li>
+              <li>Done! New school emails auto-forward.</li>
+            </ol>
+          </div>
+        </details>
+
+        <!-- Outlook -->
+        <details style="border-bottom:1px solid var(--row-border)">
+          <summary style="padding:14px 16px;cursor:pointer;font-size:14px;font-weight:600;color:var(--text);display:flex;align-items:center;gap:8px">
+            <span style="font-size:20px">📨</span>
+            <span style="flex:1">Outlook / Hotmail — auto-forward</span>
+            <span style="color:var(--text-secondary)">▾</span>
+          </summary>
+          <div style="padding:0 16px 16px;font-size:13px;color:var(--text-secondary);line-height:1.7">
+            <ol style="margin:0;padding-left:20px">
+              <li>Outlook web → Settings (⚙️) → "View all Outlook settings"</li>
+              <li>Mail → Rules → "Add new rule"</li>
+              <li>Name: "Forward to HomeBase"</li>
+              <li>Condition: "From" contains <code>@trinityac.nsw.edu.au</code></li>
+              <li>Action: "Forward to" → paste your HomeBase address</li>
+              <li>Save. Done.</li>
+            </ol>
+          </div>
+        </details>
+
+        <!-- Manual forward -->
+        <details>
+          <summary style="padding:14px 16px;cursor:pointer;font-size:14px;font-weight:600;color:var(--text);display:flex;align-items:center;gap:8px">
+            <span style="font-size:20px">✋</span>
+            <span style="flex:1">One-off forwarding (any email app)</span>
+            <span style="color:var(--text-secondary)">▾</span>
+          </summary>
+          <div style="padding:0 16px 16px;font-size:13px;color:var(--text-secondary);line-height:1.7">
+            For occasional emails, just hit "Forward" in your email app and paste the HomeBase address as the recipient. Send. Done.
+          </div>
+        </details>
+      </div>
+
+      <!-- ADVANCED -->
+      <div class="sh" style="margin-bottom:6px">ADVANCED</div>
+      <div class="card" style="margin-bottom:16px;padding:14px 18px">
+        <div style="font-size:12px;color:var(--text-secondary);line-height:1.6">
+          <strong style="color:var(--text)">Privacy:</strong> Your forwarding address is private. Only emails to this exact address get processed.
+          <br><br>
+          <strong style="color:var(--text)">Cost:</strong> Each email costs ~$0.001 of AI credit. 50/day limit per family to prevent runaway costs.
+          <br><br>
+          <strong style="color:var(--text)">Confidence:</strong> AI marks each extraction with a confidence score. Review high-confidence events quickly, scrutinise low-confidence ones.
+        </div>
+      </div>
+
+    </div>
+  </div>`;
+}
+
+// Copy the inbound address to clipboard
+window.copyInboundAddress=function(addr){
+  if(navigator.clipboard&&navigator.clipboard.writeText){
+    navigator.clipboard.writeText(addr).then(
+      ()=>notify('Address copied 📋','✅'),
+      ()=>notify('Copy failed — long-press to copy manually','⚠️')
+    );
+  }else{
+    // Fallback for older browsers
+    const ta=document.createElement('textarea');
+    ta.value=addr;ta.style.position='fixed';ta.style.opacity='0';
+    document.body.appendChild(ta);ta.select();
+    try{document.execCommand('copy');notify('Address copied 📋','✅');}
+    catch(e){notify('Copy failed — long-press to copy','⚠️');}
+    finally{document.body.removeChild(ta);}
+  }
 };
 
 // Shared event-row renderer (used by Events tab + Past Events)
@@ -5003,6 +5589,17 @@ function sSettings(){
   +'</div>'
   +'</div>'
   // Family Sports + Teams
+  +'<div class="sh" style="margin-bottom:6px">📥 Email Inbox</div>'
+  +'<div class="card" style="margin-bottom:12px;cursor:pointer" onclick="go(\'inboxSetup\')">'
+  +'<div style="padding:14px 16px;display:flex;align-items:center;gap:12px">'
+  +'<div style="width:38px;height:38px;border-radius:19px;background:linear-gradient(135deg,#AF52DE,#5856D6);display:flex;align-items:center;justify-content:center;font-size:18px;flex-shrink:0">📬</div>'
+  +'<div style="flex:1;min-width:0">'
+  +'<div style="font-size:14px;font-weight:700;color:var(--text)">Forward emails to extract events</div>'
+  +'<div style="font-size:11px;color:var(--text-secondary);margin-top:2px">View your address + setup guides</div>'
+  +'</div>'
+  +'<span style="color:var(--text-secondary);font-size:18px">›</span>'
+  +'</div>'
+  +'</div>'
   +'<div class="sh" style="margin-bottom:6px">🏃 Family Sports & Teams</div>'
   +'<div class="card" style="margin-bottom:12px">'
   +'<div style="padding:14px 16px 10px">'
@@ -5890,7 +6487,8 @@ function render(){
       personProfile:sPersonProfile,
       spreadsheetImport:sSpreadsheet,spreadsheetPreview:sSpreadsheetPreview,
       fixturesImport:sFixturesImport,fixturesPreview:sFixturesPreview,
-      emailImport:sEmailImport,emailPreview:sEmailPreview
+      emailImport:sEmailImport,emailPreview:sEmailPreview,
+      inboxReview:sInboxReview,inboxSetup:sInboxSetup
     };
     html=(map[S.screen]||sToday)();
   } else {
