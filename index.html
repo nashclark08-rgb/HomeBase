@@ -553,20 +553,25 @@ async function fw(){
 
 // ── FIREBASE ─────────────────────────────────────
 // Generate a friendly inbound email address for a family.
-// Format: {firstName}-{6charHash}@in.ourhomebase.com.au
-// Example: nash-a4k9p2@in.ourhomebase.com.au
+// Format: {familySlug}-{6charHash}@in.ourhomebase.com.au
+// Example: clark-a4k9p2@in.ourhomebase.com.au
+// Strips common filler words ("the", "family", "household") so "The Clark Family" → "clark"
 function buildInboundAddress(name,seed){
-  const slug=String(name||'family').toLowerCase().replace(/[^a-z0-9]/g,'').slice(0,12)||'family';
+  const stopWords=['the','family','household','home','clan','team'];
+  let slug=String(name||'family').toLowerCase()
+    .split(/[^a-z0-9]+/)
+    .filter(t=>t&&!stopWords.includes(t))
+    .join('')
+    .slice(0,16)||'family';
   const hash=String(seed||Math.random().toString(36).slice(2,8)).replace(/[^a-z0-9]/gi,'').toLowerCase().slice(0,6).padEnd(6,'x');
   return slug+'-'+hash+'@in.ourhomebase.com.au';
 }
 
 async function createFamily(name){
   const code='HB-'+Math.random().toString(36).substr(2,6).toUpperCase();
-  // Get the user's first name from their display name
-  const firstName=(S.user.displayName||'').split(' ')[0]||'family';
-  // Use the auth UID as the seed for a stable, unguessable hash
-  const inboundAddress=buildInboundAddress(firstName,S.user.uid);
+  // Use the FAMILY NAME for the inbound address slug (not the creator's first name).
+  // E.g. "The Clark Family" -> clark-a4k9p2@in.ourhomebase.com.au
+  const inboundAddress=buildInboundAddress(name,S.user.uid);
   const r=await addDoc(collection(db,'families'),{name,inviteCode:code,inboundAddress,createdBy:S.user.uid,createdAt:new Date(),members:{[S.user.uid]:{name:S.user.displayName,role:'Admin',color:NAVY}}});
   await setDoc(doc(db,'users',S.user.uid),{familyId:r.id,name:S.user.displayName});
   return r.id;
@@ -789,13 +794,11 @@ function subscribe(){
         setTimeout(()=>runEventCategoryMigration(),2000);
       }
       // INBOUND ADDRESS BACKFILL: ensure every family has an inbound email address for the
-      // forwarding feature. Runs once per session, idempotent. Generates an unguessable
-      // address using the creator's first name + family ID.
+      // forwarding feature. Runs once per session, idempotent. Uses the FAMILY name + family ID hash.
       if(!S.family.inboundAddress&&!S._inboundAddrAssigned&&S.familyId){
         S._inboundAddrAssigned=true;
-        const creatorMember=S.family.members?.[S.family.createdBy];
-        const firstName=(creatorMember?.name||S.user?.displayName||'family').split(' ')[0]||'family';
-        const addr=buildInboundAddress(firstName,S.familyId);
+        const familyName=S.family.name||S.family.members?.[S.family.createdBy]?.name||'family';
+        const addr=buildInboundAddress(familyName,S.familyId);
         updateDoc(doc(db,'families',S.familyId),{inboundAddress:addr})
           .then(()=>console.log('[migration] Assigned inbound address:',addr))
           .catch(e=>console.warn('[migration] Inbound address backfill failed:',e));
@@ -855,6 +858,15 @@ function subscribe(){
         const tb=b.createdAt?.toMillis?.()||0;
         return tb-ta;
       });
+    // Update PWA app icon badge with total pending event count.
+    // Works on Android Chrome PWA + macOS/Windows desktop PWA. iOS PWA doesn't yet support this API.
+    try{
+      const totalPending=S.pendingEmails.reduce((sum,p)=>sum+(Array.isArray(p.events)?p.events.length:0),0);
+      if('setAppBadge' in navigator){
+        if(totalPending>0)navigator.setAppBadge(totalPending).catch(()=>{});
+        else navigator.clearAppBadge?.().catch(()=>{});
+      }
+    }catch(e){/* badge API not supported, ignore */}
     queueRender();
   }));
 }
@@ -7169,6 +7181,15 @@ window.dEvent=async id=>{
     showUndoToast(ev.title+' deleted','event');
   }catch(ex){notify('Delete failed: '+(ex.message||ex),'⚠️');}
 };
+// Delete event from the modal — shows confirmation, then closes modal + deletes
+window.deleteEventFromModal=async function(id){
+  const ev=S.events.find(x=>x.id===id);
+  if(!ev)return;
+  const ok=confirm('Delete "'+ev.title+'"?\n\nThis cannot be undone (except via the Undo toast).');
+  if(!ok)return;
+  closeEventModal();
+  await window.dEvent(id);
+};
 window.tPack=async(cid,iid,val)=>{try{await fupd(['children',cid,'packing',iid],{checked:val===true||val==='true'});}catch(ex){notify('Save failed: '+(ex.message||ex),'⚠️');}};
 window.dPack=async(cid,iid)=>{try{await fdel(['children',cid,'packing',iid]);}catch(ex){notify('Delete failed: '+(ex.message||ex),'⚠️');}};
 window.hAddPackItem=async()=>{
@@ -8377,7 +8398,7 @@ window.openEventModal=function(eventId){
         </div>`:''}
       </div>
 
-      <button onclick="closeEventModal()" style="width:100%;margin-top:16px;padding:13px;border-radius:12px;background:var(--bg);border:none;color:var(--text);font-size:14px;font-weight:700;cursor:pointer;font-family:inherit">Close</button>
+      <button onclick="deleteEventFromModal('${eventId}')" style="width:100%;margin-top:16px;padding:13px;border-radius:12px;background:#FF3B30;border:none;color:#fff;font-size:14px;font-weight:700;cursor:pointer;font-family:inherit">🗑️ Delete event</button>
     </div>`;
 
   overlay.appendChild(sheet);
