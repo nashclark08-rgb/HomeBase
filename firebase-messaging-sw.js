@@ -552,9 +552,22 @@ async function fw(){
 }
 
 // ── FIREBASE ─────────────────────────────────────
+// Generate a friendly inbound email address for a family.
+// Format: {firstName}-{6charHash}@in.ourhomebase.com.au
+// Example: nash-a4k9p2@in.ourhomebase.com.au
+function buildInboundAddress(name,seed){
+  const slug=String(name||'family').toLowerCase().replace(/[^a-z0-9]/g,'').slice(0,12)||'family';
+  const hash=String(seed||Math.random().toString(36).slice(2,8)).replace(/[^a-z0-9]/gi,'').toLowerCase().slice(0,6).padEnd(6,'x');
+  return slug+'-'+hash+'@in.ourhomebase.com.au';
+}
+
 async function createFamily(name){
   const code='HB-'+Math.random().toString(36).substr(2,6).toUpperCase();
-  const r=await addDoc(collection(db,'families'),{name,inviteCode:code,createdBy:S.user.uid,createdAt:new Date(),members:{[S.user.uid]:{name:S.user.displayName,role:'Admin',color:NAVY}}});
+  // Get the user's first name from their display name
+  const firstName=(S.user.displayName||'').split(' ')[0]||'family';
+  // Use the auth UID as the seed for a stable, unguessable hash
+  const inboundAddress=buildInboundAddress(firstName,S.user.uid);
+  const r=await addDoc(collection(db,'families'),{name,inviteCode:code,inboundAddress,createdBy:S.user.uid,createdAt:new Date(),members:{[S.user.uid]:{name:S.user.displayName,role:'Admin',color:NAVY}}});
   await setDoc(doc(db,'users',S.user.uid),{familyId:r.id,name:S.user.displayName});
   return r.id;
 }
@@ -774,6 +787,18 @@ function subscribe(){
       // EVENT CATEGORY MIGRATION: run once per family if not yet done
       if(S.family.eventsCategorizedV2!==true&&!S._migrationRunning){
         setTimeout(()=>runEventCategoryMigration(),2000);
+      }
+      // INBOUND ADDRESS BACKFILL: ensure every family has an inbound email address for the
+      // forwarding feature. Runs once per session, idempotent. Generates an unguessable
+      // address using the creator's first name + family ID.
+      if(!S.family.inboundAddress&&!S._inboundAddrAssigned&&S.familyId){
+        S._inboundAddrAssigned=true;
+        const creatorMember=S.family.members?.[S.family.createdBy];
+        const firstName=(creatorMember?.name||S.user?.displayName||'family').split(' ')[0]||'family';
+        const addr=buildInboundAddress(firstName,S.familyId);
+        updateDoc(doc(db,'families',S.familyId),{inboundAddress:addr})
+          .then(()=>console.log('[migration] Assigned inbound address:',addr))
+          .catch(e=>console.warn('[migration] Inbound address backfill failed:',e));
       }
     }
     queueRender();
@@ -3177,6 +3202,7 @@ function sFixturesImport(){
       myTeam:initTeam, // e.g. "Norths" — used to filter rows + identify opponent
       participantIds:[],
       url:'',
+      useAI:true, // default to AI parser — much smarter
       busy:false
     };
   }
@@ -3237,22 +3263,29 @@ function sFixturesImport(){
             <div style="font-size:15px;font-weight:700;color:var(--text)">Where are the fixtures?</div>
           </div>
 
+          <!-- Parser mode toggle: AI vs Basic -->
+          <div style="display:flex;gap:6px;margin-bottom:14px;background:var(--bg);border-radius:10px;padding:4px">
+            <button onclick="S.fixtureImport.useAI=true;render()" style="flex:1;padding:9px;border-radius:8px;border:none;background:${fi.useAI!==false?'linear-gradient(135deg,#AF52DE,#5856D6)':'transparent'};color:${fi.useAI!==false?'#fff':'var(--text-secondary)'};font-size:12px;font-weight:700;cursor:pointer;font-family:inherit">🤖 AI Parser</button>
+            <button onclick="S.fixtureImport.useAI=false;render()" style="flex:1;padding:9px;border-radius:8px;border:none;background:${fi.useAI===false?'var(--navy)':'transparent'};color:${fi.useAI===false?'#fff':'var(--text-secondary)'};font-size:12px;font-weight:700;cursor:pointer;font-family:inherit">🔍 Basic</button>
+          </div>
+          ${fi.useAI!==false?'<div style="font-size:11px;color:#5856D6;background:#5856D614;border:1px solid #5856D633;border-radius:8px;padding:6px 10px;margin-bottom:12px;line-height:1.4">✨ AI handles weird formats, BYE rounds, court names. Costs ~$0.003 per import.</div>':'<div style="font-size:11px;color:var(--text-secondary);background:var(--bg);border-radius:8px;padding:6px 10px;margin-bottom:12px;line-height:1.4">Free regex matching. Best for simple table layouts.</div>'}
+
           <div style="font-size:12px;color:var(--text-secondary);margin-bottom:6px;font-weight:600">📎 From a URL (Revolutionise, school site, etc.)</div>
           <div style="display:flex;gap:8px;margin-bottom:14px">
             <input class="input" id="fi-url-input" type="url" placeholder="https://..." value="${(fi.url||'').replace(/"/g,'&quot;')}" oninput="S.fixtureImport.url=this.value" style="flex:1" ${fi.busy?'disabled':''}/>
-            <button onclick="handleFixtureUrlFetch()" ${fi.busy?'disabled':''} style="padding:12px 18px;border-radius:10px;background:${fi.busy?'#8E8E93':'#1C3A6B'};border:none;color:#fff;font-size:14px;font-weight:700;cursor:${fi.busy?'wait':'pointer'};font-family:inherit;flex-shrink:0;min-width:80px">${fi.busy?'⏳':'Fetch'}</button>
+            <button onclick="handleFixtureUrlFetch()" ${fi.busy?'disabled':''} style="padding:12px 18px;border-radius:10px;background:${fi.busy?'#8E8E93':(fi.useAI!==false?'#AF52DE':'#1C3A6B')};border:none;color:#fff;font-size:14px;font-weight:700;cursor:${fi.busy?'wait':'pointer'};font-family:inherit;flex-shrink:0;min-width:80px">${fi.busy?'⏳':'Fetch'}</button>
           </div>
 
-          ${fi.busy?`<div style="background:#1C3A6B14;border:1px solid #1C3A6B33;border-radius:10px;padding:12px;margin-bottom:14px;display:flex;align-items:center;gap:10px">
-            <div style="width:18px;height:18px;border:2px solid #1C3A6B;border-top-color:transparent;border-radius:9px;animation:spin 0.8s linear infinite;flex-shrink:0"></div>
-            <div style="font-size:13px;color:#1C3A6B;font-weight:600;line-height:1.4">Working on it… this can take 5–15 seconds for big fixture lists</div>
+          ${fi.busy?`<div style="background:${fi.useAI!==false?'#AF52DE14':'#1C3A6B14'};border:1px solid ${fi.useAI!==false?'#AF52DE33':'#1C3A6B33'};border-radius:10px;padding:12px;margin-bottom:14px;display:flex;align-items:center;gap:10px">
+            <div style="width:18px;height:18px;border:2px solid ${fi.useAI!==false?'#AF52DE':'#1C3A6B'};border-top-color:transparent;border-radius:9px;animation:spin 0.8s linear infinite;flex-shrink:0"></div>
+            <div style="font-size:13px;color:${fi.useAI!==false?'#AF52DE':'#1C3A6B'};font-weight:600;line-height:1.4">${fi.useAI!==false?'AI is reading…':'Working on it…'} this can take 5–15 seconds for big fixture lists</div>
           </div>`:''}
 
           <div style="text-align:center;font-size:11px;color:var(--text-secondary);margin:6px 0">— or —</div>
 
           <div style="font-size:12px;color:var(--text-secondary);margin-bottom:6px;font-weight:600">📄 From a PDF</div>
           <input type="file" id="fi-pdf" accept=".pdf,application/pdf" style="display:none" onchange="handleFixturePdfUpload(this)"/>
-          <button onclick="document.getElementById('fi-pdf').click()" ${fi.busy?'disabled':''} style="width:100%;padding:13px;border-radius:12px;background:${fi.busy?'#8E8E93':'#34C759'};border:none;color:#fff;font-size:14px;font-weight:700;cursor:${fi.busy?'wait':'pointer'};font-family:inherit">${fi.busy?'⏳ Working…':'Upload PDF'}</button>
+          <button onclick="document.getElementById('fi-pdf').click()" ${fi.busy?'disabled':''} style="width:100%;padding:13px;border-radius:12px;background:${fi.busy?'#8E8E93':(fi.useAI!==false?'#AF52DE':'#34C759')};border:none;color:#fff;font-size:14px;font-weight:700;cursor:${fi.busy?'wait':'pointer'};font-family:inherit">${fi.busy?'⏳ Working…':'Upload PDF'}</button>
         </div>
 
         <details style="background:var(--card);border-radius:14px;padding:14px 18px;border:1px solid var(--row-border);margin-bottom:14px">
@@ -3307,7 +3340,6 @@ function validateFixtureSetup(){
 
 window.handleFixtureUrlFetch=async function(){
   const fi=S.fixtureImport;
-  // FIRST — show immediate visual feedback that the click registered
   notify('Tap registered — checking inputs…','⏳');
   const errMsg=validateFixtureSetup();
   if(errMsg){notify('⚠️ '+errMsg,'⚠️');return;}
@@ -3315,24 +3347,59 @@ window.handleFixtureUrlFetch=async function(){
     notify('⚠️ URL must start with http:// or https://','⚠️');
     return;
   }
-  // Make sure we have a cloud function reference
   if(typeof httpsCallable==='undefined'||!functions){
     notify('⚠️ Cloud functions not loaded — refresh the app','❌');
     return;
   }
   fi.busy=true;render();
-  notify(fi.myTeam?('Fetching fixtures for '+fi.myTeam+'…'):'Fetching fixtures…','🌐');
+  const useAI=fi.useAI!==false;
+  notify(useAI?('🤖 AI fetching '+(fi.myTeam||'fixtures')+'…'):(fi.myTeam?('Fetching fixtures for '+fi.myTeam+'…'):'Fetching fixtures…'),useAI?'🤖':'🌐');
   try{
-    console.log('[fixtures] Calling cloud function for URL:',fi.url,'team:',fi.myTeam);
-    const fixtures=await fetchAndParseFixturesFromURL(fi.url,fi.myTeam);
-    console.log('[fixtures] Parsed',fixtures.length,'fixtures');
+    let fixtures;
+    if(useAI){
+      console.log('[fixtures] AI flow: fetching HTML…');
+      // 1. Fetch the HTML via existing cloud function
+      const fetchCall=httpsCallable(functions,'fetchSportFixtures');
+      const fetchResp=await fetchCall({url:fi.url});
+      const html=fetchResp?.data?.html;
+      if(!html)throw new Error('No HTML returned from URL');
+      console.log('[fixtures] Got HTML',html.length,'chars. Calling AI parser…');
+      // 2. Send HTML to AI parser
+      const aiCall=httpsCallable(functions,'parseFixturesWithAI');
+      const aiResp=await aiCall({
+        rawText:html,
+        sourceKind:'html',
+        sport:fi.sport,
+        myTeam:fi.myTeam||'',
+        familyId:S.familyId||''
+      });
+      const aiData=aiResp?.data||{};
+      const aiFixtures=Array.isArray(aiData.fixtures)?aiData.fixtures:[];
+      console.log('[fixtures] AI returned',aiFixtures.length,'fixtures. Summary:',aiData.summary);
+      // Map AI fixtures to our existing shape (opponent/venue same field names)
+      fixtures=aiFixtures.map(f=>({
+        date:f.date,
+        time:f.time,
+        opponent:f.opponent,
+        venue:f.venue,
+        round:f.round||'',
+        notes:f.notes||'',
+        isHome:f.isHome,
+        raw:'AI: '+(f.round?f.round+' · ':'')+(f.opponent||'?')
+      }));
+      if(aiData.summary)notify(aiData.summary,'🤖');
+    }else{
+      console.log('[fixtures] Basic flow: regex parsing…');
+      fixtures=await fetchAndParseFixturesFromURL(fi.url,fi.myTeam);
+    }
+    console.log('[fixtures] Final count:',fixtures.length);
     fi.busy=false;
     if(fixtures.length===0){
-      notify('No fixtures found' +(fi.myTeam?' for "'+fi.myTeam+'"':''),'⚠️');
+      notify('No fixtures found'+(fi.myTeam?' for "'+fi.myTeam+'"':''),'⚠️');
       render();
       return;
     }
-    S.fixturePreview={fixtures:fixtures.map(f=>({...f,id:Math.random().toString(36).slice(2,9)})),source:fi.url,sourceKind:'url'};
+    S.fixturePreview={fixtures:fixtures.map(f=>({...f,id:Math.random().toString(36).slice(2,9)})),source:fi.url,sourceKind:'url',aiUsed:useAI};
     go('fixturesPreview');
   }catch(ex){
     console.error('[fixtures] URL fetch failed:',ex);
@@ -3349,23 +3416,54 @@ window.handleFixturePdfUpload=async function(input){
   const fi=S.fixtureImport;
   const errMsg=validateFixtureSetup();
   if(errMsg){notify(errMsg,'⚠️');input.value='';return;}
+  if(typeof httpsCallable==='undefined'||!functions){
+    notify('⚠️ Cloud functions not loaded — refresh the app','❌');
+    return;
+  }
   fi.busy=true;render();
+  const useAI=fi.useAI!==false;
   try{
-    notify(fi.myTeam?('Reading PDF for '+fi.myTeam+'…'):'Reading PDF…','📄');
-    const fixtures=await parseFixturesFromPDF(file,fi.myTeam);
+    notify(useAI?('🤖 AI reading PDF…'):(fi.myTeam?('Reading PDF for '+fi.myTeam+'…'):'Reading PDF…'),useAI?'🤖':'📄');
+    let fixtures;
+    if(useAI){
+      // Extract raw text from PDF, send to AI
+      console.log('[fixtures] AI flow: extracting PDF text…');
+      const pdfText=await extractRawTextFromPDF(file);
+      console.log('[fixtures] Got PDF text',pdfText.length,'chars. Calling AI…');
+      if(!pdfText||pdfText.length<50){
+        throw new Error('PDF appears empty or unreadable. Try a different export of the file.');
+      }
+      const aiCall=httpsCallable(functions,'parseFixturesWithAI');
+      const aiResp=await aiCall({
+        rawText:pdfText,
+        sourceKind:'pdf',
+        sport:fi.sport,
+        myTeam:fi.myTeam||'',
+        familyId:S.familyId||''
+      });
+      const aiData=aiResp?.data||{};
+      const aiFixtures=Array.isArray(aiData.fixtures)?aiData.fixtures:[];
+      console.log('[fixtures] AI returned',aiFixtures.length,'fixtures');
+      fixtures=aiFixtures.map(f=>({
+        date:f.date,time:f.time,opponent:f.opponent,venue:f.venue,
+        round:f.round||'',notes:f.notes||'',isHome:f.isHome,
+        raw:'AI: '+(f.round?f.round+' · ':'')+(f.opponent||'?')
+      }));
+      if(aiData.summary)notify(aiData.summary,'🤖');
+    }else{
+      console.log('[fixtures] Basic flow: regex parsing PDF…');
+      fixtures=await parseFixturesFromPDF(file,fi.myTeam);
+    }
     fi.busy=false;
     if(fixtures.length===0){
-      if(fi.myTeam){
-        notify('No fixtures found containing team "'+fi.myTeam+'". Check the spelling, or clear the team field to see all fixtures.','⚠️');
-      }else{
-        notify('Didn\'t spot any fixtures in this PDF. Try the spreadsheet template instead.','⚠️');
-      }
+      notify(fi.myTeam?('No fixtures found for "'+fi.myTeam+'"'):'No fixtures found in PDF','⚠️');
       render();
       return;
     }
-    S.fixturePreview={fixtures:fixtures.map(f=>({...f,id:Math.random().toString(36).slice(2,9)})),source:file.name,sourceKind:'pdf'};
+    S.fixturePreview={fixtures:fixtures.map(f=>({...f,id:Math.random().toString(36).slice(2,9)})),source:file.name,sourceKind:'pdf',aiUsed:useAI};
     go('fixturesPreview');
   }catch(ex){
+    console.error('[fixtures] PDF flow failed:',ex);
     fi.busy=false;
     notify('PDF read failed: '+(ex.message||ex),'❌');
     render();
@@ -3373,6 +3471,34 @@ window.handleFixturePdfUpload=async function(input){
     if(input)input.value='';
   }
 };
+
+// Helper: extract raw text from a PDF file using PDF.js (for AI parser input)
+async function extractRawTextFromPDF(file){
+  await loadPDFJS();
+  const buf=await file.arrayBuffer();
+  const pdf=await window.pdfjsLib.getDocument({data:buf}).promise;
+  const lines=[];
+  for(let pageNum=1;pageNum<=pdf.numPages;pageNum++){
+    const page=await pdf.getPage(pageNum);
+    const content=await page.getTextContent();
+    // Group items by Y coord to preserve table-row structure
+    const lineMap=new Map();
+    for(const item of content.items){
+      if(!item.str||!item.str.trim())continue;
+      const y=Math.round(item.transform[5]/4)*4;
+      if(!lineMap.has(y))lineMap.set(y,[]);
+      lineMap.get(y).push({x:item.transform[4],text:item.str.trim()});
+    }
+    const ys=[...lineMap.keys()].sort((a,b)=>b-a);
+    for(const y of ys){
+      const items=lineMap.get(y).sort((a,b)=>a.x-b.x);
+      const joined=items.map(i=>i.text).join('  ');
+      if(joined.trim())lines.push(joined);
+    }
+    lines.push(''); // page break
+  }
+  return lines.join('\n');
+}
 
 // === PREVIEW SCREEN ===
 function sFixturesPreview(){
@@ -3451,7 +3577,10 @@ function sFixturesPreview(){
         <div style="display:flex;align-items:center;gap:10px;margin-bottom:8px">
           <div style="width:38px;height:38px;border-radius:19px;background:${cat.color}18;border:2px solid ${cat.color};display:flex;align-items:center;justify-content:center;font-size:18px;flex-shrink:0">${cat.emoji}</div>
           <div style="flex:1;min-width:0">
-            <div style="font-size:16px;font-weight:800;color:var(--text);line-height:1.2">${cat.label} · ${fi.sport}</div>
+            <div style="display:flex;align-items:center;gap:6px;flex-wrap:wrap">
+              <div style="font-size:16px;font-weight:800;color:var(--text);line-height:1.2">${cat.label} · ${fi.sport}</div>
+              ${data.aiUsed?'<span style="font-size:10px;font-weight:700;padding:2px 8px;border-radius:8px;background:linear-gradient(135deg,#AF52DE,#5856D6);color:#fff">🤖 AI</span>':''}
+            </div>
             <div style="font-size:11px;color:var(--text-secondary)">${data.source}</div>
           </div>
         </div>
