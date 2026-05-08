@@ -383,6 +383,10 @@ function findUpcomingClashes(daysAhead){
   const today=new Date();today.setHours(0,0,0,0);
   const clashes=[];
   const seen=new Set(); // de-dupe pair-on-date
+  // Read dismissed clashes (acknowledged by an adult). Stored on family doc as
+  // { 'sortedPairId|date': true }. Auto-cleared once the date passes — we just
+  // skip checking past dates anyway, so no cleanup needed here.
+  const dismissed=(S.family&&S.family.clashDismissals)||{};
 
   for(let d=0;d<=daysAhead;d++){
     const checkDate=new Date(today);checkDate.setDate(today.getDate()+d);
@@ -415,34 +419,36 @@ function findUpcomingClashes(daysAhead){
         const overlap=aRange.start<aRange.end&&bRange.start<bRange.end&&aRange.start<bRange.end&&bRange.start<aRange.end;
         if(!overlap)continue;
 
+        // Skip clashes where BOTH events are school-related — kids are at school
+        // every weekday, so e.g. "Maths class vs PE class" would falsely flag every day.
+        const isSchoolCat=cat=>cat==='school'||cat==='school-event'||cat==='school-subject';
+        if(isSchoolCat(a.category)&&isSchoolCat(b.category))continue;
+
         // Determine reason for the clash:
         const aIds=Array.isArray(a.participantIds)&&a.participantIds.length?a.participantIds:[a.childId,a.adultUid].filter(Boolean);
         const bIds=Array.isArray(b.participantIds)&&b.participantIds.length?b.participantIds:[b.childId,b.adultUid].filter(Boolean);
         const sharedPerson=aIds.find(id=>bIds.includes(id));
 
-        // Driver/host clash: same adult on dropoff/pickup duty for both
-        const aDuties=[a.dropoff,a.pickup].filter(Boolean);
-        const bDuties=[b.dropoff,b.pickup].filter(Boolean);
-        const sharedDuty=aDuties.find(d=>bDuties.includes(d));
-
-        if(!sharedPerson&&!sharedDuty)continue;
+        // Person-clash only — same person scheduled in two places at once.
+        // Logistics clashes (same adult on driving duty for both) are intentionally
+        // NOT flagged because a parent can often combine trips (e.g. drop both kids at
+        // the same venue) — surfacing those creates noise, not signal.
+        if(!sharedPerson)continue;
 
         const pairKey=dateStr+':'+[a.id,b.id].sort().join('|');
+        const safePairKey=pairKey.replace(/[.#$/\[\]:]/g,'_');
         if(seen.has(pairKey))continue;
         seen.add(pairKey);
+        // Skip if an adult has acknowledged this clash already
+        if(dismissed[safePairKey])continue;
 
-        let reason='';
-        if(sharedPerson){
-          const c=S.children.find(x=>x.id===sharedPerson);
-          const m=members().find(x=>x.uid===sharedPerson);
-          const personName=(c?c.name:m?m.name:'someone').split(' ')[0];
-          reason=personName+' is in both';
-        }else if(sharedDuty){
-          reason=sharedDuty+' is on duty for both';
-        }
+        const c=S.children.find(x=>x.id===sharedPerson);
+        const m=members().find(x=>x.uid===sharedPerson);
+        const personName=(c?c.name:m?m.name:'someone').split(' ')[0];
+        const reason=personName+' is in both';
 
         const daysAway=d;
-        clashes.push({date:dateStr,daysAway,events:[a,b],reason});
+        clashes.push({date:dateStr,daysAway,events:[a,b],reason,pairKey:safePairKey});
       }
     }
   }
@@ -1775,6 +1781,7 @@ function sToday(){
               maybePush({
                 _isBirthday:true, // reuse the virtual-reminder render path
                 _isClash:true,
+                _clashPairKey:c.pairKey, // used by ack handler to persist dismissal
                 _date:dateD,
                 id:'clash-'+c.events[0].id+'-'+c.events[1].id,
                 text:'⚠️ Clash: '+aTitle+' vs '+bTitle,
@@ -1815,17 +1822,19 @@ function sToday(){
               if(r._isClash){
                 const firstEvId=String(r.id||'').replace(/^clash-/,'').split('-')[0];
                 const badgeBg=r.daysAway===0?'#FF3B30':r.daysAway<=3?'#FF6B00':r.tcol;
-                return `<div class="row" onclick="openEventModal('${firstEvId}')" style="border-bottom:${i<dueReminders.length-1?'1px solid var(--row-border)':'none'};cursor:pointer;background:linear-gradient(90deg,${r.tcol}15,transparent)">
-                  <div style="width:36px;height:36px;border-radius:18px;background:${r.tcol}18;border:2px solid ${r.tcol};display:flex;align-items:center;justify-content:center;font-size:18px;flex-shrink:0">⚠️</div>
-                  <div style="flex:1;min-width:0">
+                const ackKey=r._clashPairKey||'';
+                return `<div class="row" style="border-bottom:${i<dueReminders.length-1?'1px solid var(--row-border)':'none'};background:linear-gradient(90deg,${r.tcol}15,transparent)">
+                  <div class="cb" onclick="ackClash('${ackKey.replace(/'/g,'\\\'')}')" title="Tick once sorted" style="border-color:${r.tcol};cursor:pointer"></div>
+                  <div style="flex:1;min-width:0;cursor:pointer" onclick="openEventModal('${firstEvId}')">
                     <div style="font-size:14px;color:var(--text);font-weight:700;line-height:1.3">${String(r.text||'').replace(/^⚠️\s*/,'')}</div>
                     ${r.subtext?`<div style="font-size:11px;color:var(--text-secondary);font-weight:600;margin-top:2px">${r.subtext}</div>`:''}
-                    <div style="display:flex;align-items:center;gap:6px;margin-top:3px">
+                    <div style="display:flex;align-items:center;gap:6px;margin-top:3px;flex-wrap:wrap">
                       <span style="font-size:11px;font-weight:700;padding:2px 8px;border-radius:8px;background:${badgeBg};color:#fff">${r.countdown}</span>
                       <span style="font-size:11px;color:var(--text-secondary)">${new Date(r.date+'T12:00').toLocaleDateString('en-AU',{weekday:'short',day:'numeric',month:'short'})}</span>
+                      <span style="font-size:10px;color:var(--text-secondary);font-style:italic">· tap ✓ once sorted</span>
                     </div>
                   </div>
-                  <span style="color:${r.tcol};font-size:18px;opacity:0.7">›</span>
+                  <span onclick="openEventModal('${firstEvId}')" style="color:${r.tcol};font-size:18px;opacity:0.7;cursor:pointer">›</span>
                 </div>`;
               }
               const p=r.person;
@@ -2086,6 +2095,7 @@ function sAddEvent(){
             </label>
           </div>
           <div id="etime-pickers" style="display:${ef.allDay?'none':'block'}">
+          ${ef._schoolTimeAutoFilled?`<div style="background:#34C75914;border-left:3px solid #34C759;border-radius:6px;padding:8px 12px;margin-bottom:8px;font-size:12px;color:#1F8E3F;font-weight:600">🏫 Auto-filled to school hours (8:45am – 3:15pm). Edit if different.</div>`:''}
           <div style="display:flex;gap:6px;align-items:center">
             <select class="input" id="etime-h-start" style="flex:1">
               ${Array.from({length:12},(_,i)=>{const h=i+1;return `<option value="${h}" ${h===timeParts.sH?'selected':''}>${h}</option>`;}).join('')}
@@ -6384,11 +6394,7 @@ function sSettings(){
   +'<div class="card" style="margin-bottom:12px">'
   +'<div style="padding:14px 16px;border-bottom:1px solid #F2F2F7">'
   +'<div style="font-size:14px;color:#1C1C1E;margin-bottom:8px;font-weight:600">Push notifications</div>'
-  +(isIOS&&!isStandalonePWA
-    ?'<div style="font-size:12px;color:#FF9500;line-height:1.5;margin-bottom:10px;background:#FFF3E0;padding:10px;border-radius:8px"><strong>📲 iPhone setup required:</strong><br>1. Tap the <strong>Share</strong> button (square with arrow up) in Safari<br>2. Tap <strong>"Add to Home Screen"</strong><br>3. Open HomeBase from the home screen icon<br>4. Come back here and tap "Enable Notifications"</div>'
-    :'<div style="font-size:12px;color:#8E8E93;line-height:1.5;margin-bottom:10px">Get reminders for events, packing, and daily plans — even when HomeBase is closed.</div>'
-  )
-  +'<button onclick="requestNotifPerm()" style="width:100%;padding:11px;border-radius:10px;background:'+(isIOS&&!isStandalonePWA?'#8E8E93':'#1C3A6B')+';border:none;color:#fff;font-size:14px;font-weight:600;cursor:pointer;font-family:inherit">'+(typeof Notification!=='undefined'&&Notification.permission==='granted'?'✅ Notifications enabled':'Enable Notifications')+'</button>'
+  +'<div style="background:#FFF3E0;border-left:3px solid #FF9500;border-radius:6px;padding:10px 12px;font-size:12px;color:#1C1C1E;line-height:1.5"><strong>🚧 Coming soon</strong><br/>Push notifications when the app is closed are currently being set up. In the meantime, in-app reminders work fully — open HomeBase and you\'ll see today\'s events, due reminders, and any clashes flagged a week ahead.</div>'
   +'</div>'
   +'<div class="row">'
   +'<span style="font-size:20px">📱</span>'
@@ -7760,6 +7766,7 @@ function captureEventFormToState(){
 window.toggleCategory=function(catId){
   // CRITICAL: capture user-typed fields BEFORE re-render so they survive
   captureEventFormToState();
+  const wasOff=S.ef.category!==catId;
   S.ef.category=S.ef.category===catId?'':catId;
   // Auto-set emoji from category metadata so users don't have to pick it manually
   if(S.ef.category){
@@ -7767,6 +7774,16 @@ window.toggleCategory=function(catId){
     if(cat)S.ef.emoji=cat.emoji;
   }else{
     S.ef.emoji='📅';
+  }
+  // School categories: auto-fill the standard school day time (8:45am – 3:15pm)
+  // ONLY when the school category is being TURNED ON (not toggled off, not re-clicked).
+  // We auto-fill regardless of whether the time picker has its default value, because
+  // the default 3:30pm-4:30pm is just the picker resting state, not a user choice.
+  // Skip auto-fill when editing an existing event (preserve their original time).
+  const isSchoolCat=S.ef.category==='school'||S.ef.category==='school-event'||S.ef.category==='school-subject';
+  if(isSchoolCat&&wasOff&&!S.ef._editId){
+    S.ef.time='8:45am – 3:15pm';
+    S.ef._schoolTimeAutoFilled=true; // marker for the hint
   }
   // Re-render so the sport sub-picker appears/disappears as needed
   render();
@@ -9224,6 +9241,22 @@ function stashRmFormInputs(){
 }
 window.tReminder=async function(id,val){
   try{await fupd(['reminders',id],{done:val});}catch(ex){notify('Save failed: '+(ex.message||ex),'⚠️');}
+};
+// Acknowledge a scheduling clash. Stores the pairKey on family.clashDismissals
+// so it disappears for ALL adults in the family (shared truth). Auto-clears once
+// the clash date passes — no explicit cleanup needed since findUpcomingClashes
+// only looks 7 days ahead.
+window.ackClash=async function(pairKey){
+  if(!pairKey||!S.familyId){notify('Could not acknowledge — no family loaded','⚠️');return;}
+  try{
+    await updateDoc(doc(db,'families',S.familyId),{
+      ['clashDismissals.'+pairKey]:true
+    });
+    notify('Clash acknowledged ✓','👌');
+  }catch(ex){
+    console.error('[ackClash] failed',ex);
+    notify('Failed: '+(ex.message||ex),'⚠️');
+  }
 };
 window.dReminder=async function(id){
   try{await fdel(['reminders',id]);notify('Reminder removed');}catch(ex){notify('Delete failed: '+(ex.message||ex),'⚠️');}
