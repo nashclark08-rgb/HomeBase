@@ -1539,7 +1539,7 @@ function sToday(){
           const isMyDropoff=ev.dropoff&&(ev.dropoff===myName||ev.dropoff===myFirstName);
           const isMyPickup=ev.pickup&&(ev.pickup===myName||ev.pickup===myFirstName);
           const isMine=isMyDropoff||isMyPickup;
-          return `<div class="row" onclick="openEventModal('${ev.id}')" style="border-bottom:${i<arr.length-1?'1px solid var(--row-border)':'none'};${isMine?'background:#FFF8E5':''};cursor:pointer">
+          return `<div class="row" onclick="openEventModal('${ev.id}')" data-longpress="event:${ev.id}" style="border-bottom:${i<arr.length-1?'1px solid var(--row-border)':'none'};${isMine?'background:#FFF8E5':''};cursor:pointer">
             <div style="width:48px;text-align:right;font-size:12px;font-weight:600;color:var(--text-secondary);flex-shrink:0">${ev.time||''}</div>
             <div style="width:32px;height:32px;border-radius:16px;background:${col}18;border:2px solid ${col};display:flex;align-items:center;justify-content:center;font-size:14px;flex-shrink:0">${ev.emoji||'📅'}</div>
             <div style="flex:1;min-width:0">
@@ -1736,7 +1736,7 @@ function sToday(){
               const dStr=DAYSH[dDate.getDay()]+' '+dDate.getDate()+' '+MONTHS[dDate.getMonth()];
               dueLabel=`<div style="font-size:11px;font-weight:700;color:${isDueToday?'#FF3B30':tcol};margin-top:3px">${isDueToday?'🔴 Due today · '+dStr:'📅 Due '+dStr}</div>`;
             }
-            return `<div class="row" style="border-bottom:${i<dueReminders.length-1?'1px solid var(--row-border)':'none'};${r.done?'opacity:0.55':''}">
+            return `<div class="row" data-longpress="reminder:${r.id}" style="border-bottom:${i<dueReminders.length-1?'1px solid var(--row-border)':'none'};${r.done?'opacity:0.55':''}">
               <div class="cb ${r.done?'on':''}" onclick="tReminder('${r.id}',${!r.done})" style="${r.done?'background:'+tcol+';border:none':'border-color:'+tcol}">${r.done?ck():''}</div>
               <div style="flex:1;min-width:0">
                 <div style="font-size:15px;color:var(--text);font-weight:500;${r.done?'text-decoration:line-through':''}">${r.text}</div>
@@ -2094,7 +2094,7 @@ function sCalendar(){
           <div style="font-size:11px;color:rgba(255,255,255,0.8);font-weight:500">· ${events.length} ${events.length===1?'event':'events'}</div>
         </div>`:''}
         <div style="display:flex;flex-direction:column;gap:10px">
-          ${events.map((ev,i)=>`<div onclick="openEventModal('${ev.id}')" style="${i>0?'padding-top:10px;border-top:1px solid rgba(255,255,255,0.18)':''};cursor:pointer">
+          ${events.map((ev,i)=>`<div onclick="openEventModal('${ev.id}')" data-longpress="event:${ev.id}" style="${i>0?'padding-top:10px;border-top:1px solid rgba(255,255,255,0.18)':''};cursor:pointer">
             <div style="display:flex;align-items:center;gap:8px;margin-bottom:4px;flex-wrap:wrap">
               <span style="font-size:20px">${ev.emoji||'📅'}</span>
               <span style="font-size:15px;font-weight:700;color:#fff;flex:1;min-width:0">${ev.title}</span>
@@ -2384,7 +2384,7 @@ function sEvents(){
     const personLabel=people.length===0?'Family':people.map(p=>p.name.split(' ')[0]).join(', ');
     const isOnce=!ev.freq||ev.freq==='once';
     const whenLabel=isOnce?formatDateShort(ev.date):formatDays(ev);
-    return `<div class="row" onclick="openEventModal('${ev.id}')" style="border-bottom:${i<total-1?'1px solid var(--row-border)':'none'};cursor:pointer">
+    return `<div class="row" onclick="openEventModal('${ev.id}')" data-longpress="event:${ev.id}" style="border-bottom:${i<total-1?'1px solid var(--row-border)':'none'};cursor:pointer">
       <div style="width:32px;height:32px;border-radius:16px;background:${col}18;border:2px solid ${col};display:flex;align-items:center;justify-content:center;font-size:14px;flex-shrink:0">${ev.emoji||'📅'}</div>
       <div style="flex:1;min-width:0">
         <div style="font-size:14px;font-weight:600;color:var(--text);overflow:hidden;text-overflow:ellipsis;white-space:nowrap">${ev.title||'Event'}</div>
@@ -2569,11 +2569,7 @@ function sEvents(){
       <!-- IMPORT TOOLS -->
       <div class="sh" style="padding:0;margin-bottom:8px">IMPORT EVENTS</div>
       <div style="display:grid;grid-template-columns:repeat(auto-fit,minmax(140px,1fr));gap:10px;margin-bottom:22px">
-        <div onclick="go('spreadsheetImport')" style="background:var(--card);border:1px dashed var(--border);border-radius:14px;padding:14px;cursor:pointer;display:flex;flex-direction:column;gap:6px;min-height:96px">
-          <div style="font-size:24px">📄</div>
-          <div style="font-size:14px;font-weight:700;color:var(--text);line-height:1.25">Spreadsheet</div>
-          <div style="font-size:11px;color:var(--text-secondary);line-height:1.4">Download a template or upload your own.</div>
-        </div>
+        <!-- Spreadsheet tile removed — AI fixtures + voice + email forwarding cover the bulk-add cases -->
         <div onclick="go('fixturesImport')" style="background:var(--card);border:1px dashed var(--border);border-radius:14px;padding:14px;cursor:pointer;display:flex;flex-direction:column;gap:6px;min-height:96px">
           <div style="font-size:24px">🏊</div>
           <div style="font-size:14px;font-weight:700;color:var(--text);line-height:1.25">Sport Fixtures</div>
@@ -6436,7 +6432,7 @@ function sPersonProfile(){
               const dStr=DAYSH[dDate.getDay()]+' '+dDate.getDate()+' '+MONTHS[dDate.getMonth()];
               dueLabel=`<div style="font-size:11px;font-weight:700;color:${isDueToday?'#FF3B30':color};margin-top:3px">${isDueToday?'🔴 Due today · '+dStr:'📅 Due '+dStr}</div>`;
             }
-            return `<div class="row" style="border-bottom:${i<personReminders.length-1?'1px solid var(--row-border)':'none'};${r.done?'opacity:0.55':''}">
+            return `<div class="row" data-longpress="reminder:${r.id}" style="border-bottom:${i<personReminders.length-1?'1px solid var(--row-border)':'none'};${r.done?'opacity:0.55':''}">
             <div class="cb ${r.done?'on':''}" onclick="tReminder('${r.id}',${!r.done})" style="${r.done?'background:'+color+';border:none':'border-color:'+color}">${r.done?ck():''}</div>
             <div style="flex:1">
               <div style="font-size:15px;font-weight:500;color:var(--text);${r.done?'text-decoration:line-through':''}">${r.text}</div>
@@ -6997,8 +6993,8 @@ function sAddReminder(){
   ];
   return `<div style="min-height:100%;display:flex;flex-direction:column;background:var(--bg)">
     <div style="background:var(--card);padding:14px 16px;display:flex;align-items:center;border-bottom:1px solid var(--row-border);position:sticky;top:0;z-index:10">
-      <button class="back-btn" onclick="S.rmFor=[];S.rmMode='ondate';S.rmText='';S.rmDate='';S.rmNotes='';back()">${bk()} Back</button>
-      <div style="flex:1;text-align:center;font-size:17px;font-weight:600">⏰ Set a reminder</div>
+      <button class="back-btn" onclick="S.rmFor=[];S.rmMode='ondate';S.rmText='';S.rmDate='';S.rmNotes='';S.rmEditId=null;back()">${bk()} Back</button>
+      <div style="flex:1;text-align:center;font-size:17px;font-weight:600">${S.rmEditId?'✏️ Edit reminder':'⏰ Set a reminder'}</div>
       <div style="width:60px"></div>
     </div>
     <div style="padding:20px;display:flex;flex-direction:column;gap:14px;max-width:560px;margin:auto;width:100%">
@@ -7052,7 +7048,7 @@ function sAddReminder(){
       </div>
 
       <div id="rmErr" class="err"></div>
-      <button class="primary-btn" onclick="hAddReminder()">⏰ Save Reminder</button>
+      <button class="primary-btn" onclick="hAddReminder()">${S.rmEditId?'💾 Save changes':'⏰ Save Reminder'}</button>
 
       <div style="font-size:12px;color:var(--text-secondary);line-height:1.5;margin-top:6px;text-align:center">Reminders disappear once you tick the box, or after midnight on the chosen date — whichever comes first.</div>
     </div>
@@ -7942,6 +7938,40 @@ window.editEventFromModal=function(id){
     startDate:ev.startDate||'',
     notes:ev.notes||''
   };
+  go('addEvent');
+};
+
+// Duplicate: same field copy as edit, but NO _editId — Save creates a new event doc.
+// User lands on the Add Event form with all fields pre-filled, then can change anything before saving.
+window.duplicateEventFromModal=function(id){
+  const ev=S.events.find(x=>x.id===id);
+  if(!ev)return;
+  closeEventModal();
+  const todayStr=fd(new Date());
+  S.ef={
+    // No _editId — saving will create a new doc
+    title:(ev.title||'')+' (copy)',
+    emoji:ev.emoji||'📅',
+    freq:ev.freq||'once',
+    days:ev.days&&typeof ev.days==='object'?{...ev.days}:{Mon:false,Tue:false,Wed:false,Thu:false,Fri:false,Sat:false,Sun:false},
+    packItems:Array.isArray(ev.packItems)?[...ev.packItems]:[],
+    category:ev.category||'',
+    sport:ev.sport||'',
+    participantIds:Array.isArray(ev.participantIds)&&ev.participantIds.length
+      ? [...ev.participantIds]
+      : [ev.childId,ev.adultUid].filter(Boolean),
+    location:ev.location||'',
+    time:ev.time||'',
+    dropoff:ev.dropoff||'',
+    pickup:ev.pickup||'',
+    // For one-off events, default the duplicate's date to today (user can change).
+    // For recurring events, preserve the recurrence pattern but reset the start date.
+    date:(ev.freq==='once'||!ev.freq)?todayStr:'',
+    startDate:(ev.freq&&ev.freq!=='once')?todayStr:'',
+    endDate:'',
+    notes:ev.notes||''
+  };
+  notify('Duplicating event — change anything before saving','📋');
   go('addEvent');
 };
 window.tPack=async(cid,iid,val)=>{try{await fupd(['children',cid,'packing',iid],{checked:val===true||val==='true'});}catch(ex){notify('Save failed: '+(ex.message||ex),'⚠️');}};
@@ -9004,9 +9034,7 @@ window.hAddReminder=async function(){
   const err=document.getElementById('rmErr');
   if(!text){if(err)err.textContent='Enter what to remember';return;}
   if(!date){if(err)err.textContent='Choose a date';return;}
-  // Build forKeys array (e.g. ["child:abc","adult:xyz"]). Empty = family-wide.
   const forKeys=Array.isArray(S.rmFor)?[...S.rmFor]:[];
-  // Legacy single fields kept for back-compat:
   let childId='',adultUid='';
   const firstChild=forKeys.find(k=>k.startsWith('child:'));
   const firstAdult=forKeys.find(k=>k.startsWith('adult:'));
@@ -9014,15 +9042,23 @@ window.hAddReminder=async function(){
   if(firstAdult)adultUid=firstAdult.replace('adult:','');
   const mode=S.rmMode==='ongoing'?'ongoing':'ondate';
   try{
-    await fadd(['reminders'],{
-      text,date,mode,forKeys,childId,adultUid,notes,
-      done:false,createdBy:S.user?.uid||''
-    });
-    S.rmFor=[]; // reset for next time
-    S.rmMode='ondate'; // reset to default
-    S.rmText=''; S.rmDate=''; S.rmNotes=''; // clear cached form values
+    if(S.rmEditId){
+      // Edit existing
+      await fupd(['reminders',S.rmEditId],{text,date,mode,forKeys,childId,adultUid,notes});
+      S.rmEditId=null;
+      notify('Reminder updated ⏰');
+    }else{
+      // Create new
+      await fadd(['reminders'],{
+        text,date,mode,forKeys,childId,adultUid,notes,
+        done:false,createdBy:S.user?.uid||''
+      });
+      notify('Reminder saved ⏰');
+    }
+    S.rmFor=[];
+    S.rmMode='ondate';
+    S.rmText=''; S.rmDate=''; S.rmNotes='';
     back();
-    notify('Reminder saved ⏰');
   }catch(ex){if(err)err.textContent='Error: '+ex.message;}
 };
 window.setRmMode=function(m){
@@ -9154,7 +9190,8 @@ window.openEventModal=function(eventId){
 
       <div style="display:flex;gap:8px;margin-top:16px">
         <button onclick="editEventFromModal('${eventId}')" style="flex:2;padding:13px;border-radius:12px;background:var(--navy);border:none;color:#fff;font-size:14px;font-weight:700;cursor:pointer;font-family:inherit">✏️ Edit</button>
-        <button onclick="deleteEventFromModal('${eventId}')" style="flex:1;padding:13px;border-radius:12px;background:#FF3B30;border:none;color:#fff;font-size:14px;font-weight:700;cursor:pointer;font-family:inherit">🗑️ Delete</button>
+        <button onclick="duplicateEventFromModal('${eventId}')" style="flex:1;padding:13px;border-radius:12px;background:#34C759;border:none;color:#fff;font-size:14px;font-weight:700;cursor:pointer;font-family:inherit">📋 Duplicate</button>
+        <button onclick="deleteEventFromModal('${eventId}')" style="flex:1;padding:13px;border-radius:12px;background:#FF3B30;border:none;color:#fff;font-size:14px;font-weight:700;cursor:pointer;font-family:inherit">🗑️</button>
       </div>
     </div>`;
 
@@ -9174,6 +9211,195 @@ window.closeEventModal=function(){
     setTimeout(function(){if(m.parentNode)m.remove();},140);
   }
 };
+
+// ── LONG-PRESS / RIGHT-CLICK CONTEXT MENU ─────────────────
+// Universal handler for events + reminders. Mobile: hold finger 500ms.
+// Desktop: right-click. Pops a small action sheet with Edit / Duplicate / Delete.
+//
+// Usage in a row: data-longpress="event:abc123" or data-longpress="reminder:xyz789"
+// Plus oncontextmenu="hbHandleContext(event,this);return false"
+//
+// Touch handlers attach automatically via document delegation (set up below).
+
+window._lpTimer=null;
+window._lpStartXY=null;
+
+function hbShowContextMenu(x,y,kind,id){
+  // Remove any existing menu
+  hbCloseContextMenu();
+  const item=kind==='event'?S.events.find(e=>e.id===id):S.reminders.find(r=>r.id===id);
+  if(!item)return;
+  // Reminders that are virtual (birthdays/parent days) shouldn't get a context menu
+  if(kind==='reminder'&&item._isBirthday)return;
+
+  const isReminder=kind==='reminder';
+  const title=isReminder?(item.text||'Reminder'):(item.title||'Event');
+
+  const menu=document.createElement('div');
+  menu.id='hb-context-menu';
+  menu.style.cssText='position:fixed;z-index:10000;background:var(--card);border-radius:14px;box-shadow:0 8px 30px rgba(0,0,0,0.25);border:1px solid var(--row-border);padding:8px;min-width:200px;animation:hbFadeIn 0.12s ease-out;font-family:inherit';
+
+  // Position the menu — flip if it would overflow
+  const vw=window.innerWidth;
+  const vh=window.innerHeight;
+  const menuW=210,menuH=isReminder?140:180;
+  const left=Math.min(Math.max(8,x),vw-menuW-8);
+  const top=Math.min(Math.max(8,y),vh-menuH-8);
+  menu.style.left=left+'px';
+  menu.style.top=top+'px';
+
+  // Truncate the title for the header
+  const shortTitle=title.length>30?title.slice(0,30)+'…':title;
+
+  let buttons='';
+  if(kind==='event'){
+    buttons=`
+      <button onclick="hbCtxAction('edit','${id}')" style="width:100%;text-align:left;padding:11px 14px;border:none;background:transparent;color:var(--text);font-size:14px;font-weight:600;cursor:pointer;font-family:inherit;border-radius:8px;display:flex;align-items:center;gap:10px">
+        <span style="font-size:16px">✏️</span><span>Edit</span>
+      </button>
+      <button onclick="hbCtxAction('duplicate','${id}')" style="width:100%;text-align:left;padding:11px 14px;border:none;background:transparent;color:var(--text);font-size:14px;font-weight:600;cursor:pointer;font-family:inherit;border-radius:8px;display:flex;align-items:center;gap:10px">
+        <span style="font-size:16px">📋</span><span>Duplicate</span>
+      </button>
+      <div style="height:1px;background:var(--row-border);margin:4px 0"></div>
+      <button onclick="hbCtxAction('delete','${id}')" style="width:100%;text-align:left;padding:11px 14px;border:none;background:transparent;color:#FF3B30;font-size:14px;font-weight:600;cursor:pointer;font-family:inherit;border-radius:8px;display:flex;align-items:center;gap:10px">
+        <span style="font-size:16px">🗑️</span><span>Delete</span>
+      </button>`;
+  }else{
+    // Reminders: Edit + Delete only (no duplicate — reminders are one-time tasks)
+    buttons=`
+      <button onclick="hbCtxAction('edit-reminder','${id}')" style="width:100%;text-align:left;padding:11px 14px;border:none;background:transparent;color:var(--text);font-size:14px;font-weight:600;cursor:pointer;font-family:inherit;border-radius:8px;display:flex;align-items:center;gap:10px">
+        <span style="font-size:16px">✏️</span><span>Edit reminder</span>
+      </button>
+      <div style="height:1px;background:var(--row-border);margin:4px 0"></div>
+      <button onclick="hbCtxAction('delete-reminder','${id}')" style="width:100%;text-align:left;padding:11px 14px;border:none;background:transparent;color:#FF3B30;font-size:14px;font-weight:600;cursor:pointer;font-family:inherit;border-radius:8px;display:flex;align-items:center;gap:10px">
+        <span style="font-size:16px">🗑️</span><span>Delete</span>
+      </button>`;
+  }
+
+  menu.innerHTML=`
+    <div style="padding:8px 14px 6px;font-size:11px;color:var(--text-secondary);font-weight:600;text-transform:uppercase;letter-spacing:0.5px;border-bottom:1px solid var(--row-border);margin-bottom:4px">${shortTitle}</div>
+    ${buttons}
+  `;
+
+  // Backdrop to capture taps outside
+  const backdrop=document.createElement('div');
+  backdrop.id='hb-context-backdrop';
+  backdrop.style.cssText='position:fixed;inset:0;z-index:9999;background:transparent';
+  backdrop.onclick=hbCloseContextMenu;
+  backdrop.addEventListener('contextmenu',function(e){e.preventDefault();hbCloseContextMenu();});
+
+  document.body.appendChild(backdrop);
+  document.body.appendChild(menu);
+
+  // Haptic feedback on mobile
+  if(navigator.vibrate)try{navigator.vibrate(8);}catch(e){}
+}
+
+window.hbCloseContextMenu=function(){
+  const m=document.getElementById('hb-context-menu');
+  const b=document.getElementById('hb-context-backdrop');
+  if(m)m.remove();
+  if(b)b.remove();
+};
+
+window.hbCtxAction=function(action,id){
+  hbCloseContextMenu();
+  if(action==='edit'){
+    // Match the modal's edit flow — populate S.ef and go to addEvent
+    const ev=S.events.find(x=>x.id===id);
+    if(!ev)return;
+    S.ef={
+      _editId:id,
+      title:ev.title||'',
+      emoji:ev.emoji||'📅',
+      freq:ev.freq||'once',
+      days:ev.days&&typeof ev.days==='object'?{...ev.days}:{Mon:false,Tue:false,Wed:false,Thu:false,Fri:false,Sat:false,Sun:false},
+      packItems:Array.isArray(ev.packItems)?[...ev.packItems]:[],
+      category:ev.category||'',
+      sport:ev.sport||'',
+      participantIds:Array.isArray(ev.participantIds)&&ev.participantIds.length?[...ev.participantIds]:[ev.childId,ev.adultUid].filter(Boolean),
+      location:ev.location||'',
+      time:ev.time||'',
+      dropoff:ev.dropoff||'',
+      pickup:ev.pickup||'',
+      date:ev.date||'',
+      endDate:ev.endDate||'',
+      startDate:ev.startDate||'',
+      notes:ev.notes||''
+    };
+    go('addEvent');
+  }else if(action==='duplicate'){
+    duplicateEventFromModal(id);
+  }else if(action==='delete'){
+    deleteEventFromModal(id);
+  }else if(action==='edit-reminder'){
+    // Reminder edit uses the same form — populate S.rm* state and set _editId
+    const r=S.reminders.find(x=>x.id===id);
+    if(!r)return;
+    S.rmText=r.text||'';
+    S.rmDate=r.date||fd(new Date());
+    S.rmMode=r.mode||'ondate';
+    S.rmFor=Array.isArray(r.forKeys)?[...r.forKeys]:[];
+    S.rmNotes=r.notes||'';
+    S.rmEditId=id; // signal hAddReminder to update instead of create
+    go('addReminder');
+  }else if(action==='delete-reminder'){
+    if(!confirm('Delete this reminder?'))return;
+    fdel(['reminders',id]).then(()=>notify('Reminder deleted','🗑️')).catch(e=>notify('Delete failed: '+e.message,'⚠️'));
+  }
+};
+
+// Document-level event delegation for long-press detection.
+// Hooks into elements with data-longpress="kind:id"
+document.addEventListener('touchstart',function(e){
+  const target=e.target.closest('[data-longpress]');
+  if(!target)return;
+  const t=e.touches[0];
+  window._lpStartXY={x:t.clientX,y:t.clientY};
+  if(window._lpTimer)clearTimeout(window._lpTimer);
+  window._lpTimer=setTimeout(function(){
+    const lp=target.getAttribute('data-longpress')||'';
+    const [kind,id]=lp.split(':');
+    if(!kind||!id)return;
+    // Long-press triggered — show menu, prevent click that would otherwise follow
+    target._lpFired=true;
+    hbShowContextMenu(window._lpStartXY.x,window._lpStartXY.y,kind,id);
+  },500);
+},{passive:true});
+
+document.addEventListener('touchmove',function(e){
+  if(!window._lpStartXY||!window._lpTimer)return;
+  const t=e.touches[0];
+  const dx=Math.abs(t.clientX-window._lpStartXY.x);
+  const dy=Math.abs(t.clientY-window._lpStartXY.y);
+  // Cancel long-press if user is scrolling
+  if(dx>10||dy>10){
+    clearTimeout(window._lpTimer);
+    window._lpTimer=null;
+  }
+},{passive:true});
+
+document.addEventListener('touchend',function(e){
+  if(window._lpTimer){clearTimeout(window._lpTimer);window._lpTimer=null;}
+  // If long-press fired, swallow the click that follows
+  const target=e.target.closest('[data-longpress]');
+  if(target&&target._lpFired){
+    e.preventDefault();
+    e.stopPropagation();
+    setTimeout(function(){target._lpFired=false;},50);
+  }
+},{passive:false});
+
+// Right-click on desktop = context menu
+document.addEventListener('contextmenu',function(e){
+  const target=e.target.closest('[data-longpress]');
+  if(!target)return;
+  const lp=target.getAttribute('data-longpress')||'';
+  const [kind,id]=lp.split(':');
+  if(!kind||!id)return;
+  e.preventDefault();
+  hbShowContextMenu(e.clientX,e.clientY,kind,id);
+});
 
 // ── ACTIVITY MODAL ──────────────────────────────────
 // Opens a bottom-sheet showing all recurring events of a given title (e.g. "Swimming"),
