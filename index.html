@@ -1155,6 +1155,19 @@ function sEditFamily(){
       <div style="display:flex;flex-direction:column;gap:12px">
         <input class="input" id="ef-name" type="text" placeholder="Your name" value="${m.name||''}"/>
         <input class="input" id="ef-fname" type="text" placeholder="Family name" value="${S.family.name||''}"/>
+        <div style="font-size:13px;color:#8E8E93;margin-top:4px">🎂 Birthday (optional — shows in Reminders 10 days out)</div>
+        <input class="input" id="ef-dob" type="date" value="${m.dob||''}"/>
+        <div style="background:#fff;border-radius:10px;padding:12px 14px;margin-top:4px">
+          <div style="font-size:13px;color:#1C1C1E;font-weight:600;margin-bottom:8px">🌸 Annual reminders (optional)</div>
+          <label style="display:flex;align-items:center;gap:10px;font-size:13px;color:#1C1C1E;cursor:pointer;padding:6px 0">
+            <input type="checkbox" id="ef-mum" ${m.celebrateMothersDay?'checked':''} style="width:18px;height:18px;accent-color:#FF6B9D;cursor:pointer"/>
+            <span>Mother's Day reminder (2nd Sunday of May)</span>
+          </label>
+          <label style="display:flex;align-items:center;gap:10px;font-size:13px;color:#1C1C1E;cursor:pointer;padding:6px 0">
+            <input type="checkbox" id="ef-dad" ${m.celebrateFathersDay?'checked':''} style="width:18px;height:18px;accent-color:#007AFF;cursor:pointer"/>
+            <span>Father's Day reminder (1st Sunday of September)</span>
+          </label>
+        </div>
         <div style="font-size:15px;font-weight:600;margin-top:4px">Your colour</div>
         <div id="ef-color-grid">${renderColourGrid('efc',m.color||NAVY,"pickColorTo('ef-color','ef-color-grid','efc','HEX')")}</div>
         <input type="hidden" id="ef-color" value="${m.color||NAVY}"/>
@@ -1196,6 +1209,19 @@ function sAddCaregiver(){
           <option value="View">View Only</option>
         </select>
         <input class="input" id="ac-email" type="email" placeholder="Email (optional - for invites)"/>
+        <div style="font-size:13px;color:#8E8E93;margin-top:4px">🎂 Birthday (optional)</div>
+        <input class="input" id="ac-dob" type="date"/>
+        <div style="background:#F2F2F7;border-radius:10px;padding:12px 14px">
+          <div style="font-size:13px;color:#1C1C1E;font-weight:600;margin-bottom:8px">🌸 Annual reminders (optional)</div>
+          <label style="display:flex;align-items:center;gap:10px;font-size:13px;color:#1C1C1E;cursor:pointer;padding:6px 0">
+            <input type="checkbox" id="ac-mum" style="width:18px;height:18px;accent-color:#FF6B9D;cursor:pointer"/>
+            <span>Mother's Day (2nd Sun of May)</span>
+          </label>
+          <label style="display:flex;align-items:center;gap:10px;font-size:13px;color:#1C1C1E;cursor:pointer;padding:6px 0">
+            <input type="checkbox" id="ac-dad" style="width:18px;height:18px;accent-color:#007AFF;cursor:pointer"/>
+            <span>Father's Day (1st Sun of September)</span>
+          </label>
+        </div>
         <div style="font-size:15px;font-weight:600;margin-top:4px">Profile colour</div>
         <div id="ac-color-grid">${renderColourGrid('acc',COLORS[0],"pickColorTo('ac-color','ac-color-grid','acc','HEX')")}</div>
         <input type="hidden" id="ac-color" value="${COLORS[0]}"/>
@@ -1245,6 +1271,19 @@ function sEditCaregiver(){
         </select>
         ${isMe?`<input class="input" id="ec-fname" type="text" placeholder="Family name" value="${S.family?.name||''}"/>
         <div style="font-size:12px;color:#8E8E93;margin-top:-6px;padding-left:4px">Family name (only you can edit)</div>`:''}
+        <div style="font-size:13px;color:#8E8E93;margin-top:4px">🎂 Birthday (optional)</div>
+        <input class="input" id="ec-dob" type="date" value="${m.dob||''}"/>
+        <div style="background:#F2F2F7;border-radius:10px;padding:12px 14px">
+          <div style="font-size:13px;color:#1C1C1E;font-weight:600;margin-bottom:8px">🌸 Annual reminders (optional)</div>
+          <label style="display:flex;align-items:center;gap:10px;font-size:13px;color:#1C1C1E;cursor:pointer;padding:6px 0">
+            <input type="checkbox" id="ec-mum" ${m.celebrateMothersDay?'checked':''} style="width:18px;height:18px;accent-color:#FF6B9D;cursor:pointer"/>
+            <span>Mother's Day (2nd Sun of May)</span>
+          </label>
+          <label style="display:flex;align-items:center;gap:10px;font-size:13px;color:#1C1C1E;cursor:pointer;padding:6px 0">
+            <input type="checkbox" id="ec-dad" ${m.celebrateFathersDay?'checked':''} style="width:18px;height:18px;accent-color:#007AFF;cursor:pointer"/>
+            <span>Father's Day (1st Sun of September)</span>
+          </label>
+        </div>
         <div style="font-size:15px;font-weight:600;margin-top:4px">Profile colour</div>
         <div id="ec-color-grid">${renderColourGrid('ecc',m.color||NAVY,"pickColorTo('ec-color','ec-color-grid','ecc','HEX')")}</div>
         <input type="hidden" id="ec-color" value="${m.color||NAVY}"/>
@@ -1323,18 +1362,18 @@ function sToday(){
     }
     return true;
   }).filter(ev=>{
-    // When viewing today, hide events with an EXPLICIT end time that has already passed.
-    // For events without an explicit end time (e.g. "7:30 AM" only), always show — we
-    // can't accurately know when they finish, so keep them visible all day.
+    // When viewing today, hide events that have finished.
+    // - Events with an explicit end time use that end time.
+    // - Events with only a start time use a default duration of 90 minutes.
     if(!isViewToday)return true;
     if(!ev.time)return true; // no time set → show all day
-    // Only hide if the time string contains an explicit end (e.g. "9-10am", "3:30pm – 4:30pm")
-    const hasExplicitEnd=/\s*(?:to|-|–|—|until|till)\s+/i.test(String(ev.time));
-    if(!hasExplicitEnd)return true; // start-only times always show
     const range=parseTimeRange(ev.time);
     if(!range)return true; // unparseable → show
+    const hasExplicitEnd=/\s*(?:to|-|–|—|until|till)\s+/i.test(String(ev.time));
+    // For events without explicit end, fall back to start + 90 minutes
+    const effectiveEnd=hasExplicitEnd?range.end:(range.start+90);
     const nowMins=new Date().getHours()*60+new Date().getMinutes();
-    return nowMins<range.end; // hide once end time has passed
+    return nowMins<effectiveEnd; // hide once effective end has passed
   }).sort((a,b)=>parseTimeToMinutes(a.time)-parseTimeToMinutes(b.time));
 
   // Shopping list summary
@@ -1542,45 +1581,100 @@ function sToday(){
 
       <!-- REMINDERS for the day being viewed (now BELOW activities, ABOVE dinners) -->
       ${(()=>{
-        // Compute birthday "virtual reminders" for anyone with a DOB ≤10 days away.
+        // Compute virtual reminders (birthdays, parent days) for the next 10 days.
         // These are NOT stored — re-computed each render. Mixed into the dueReminders list.
         const birthdayReminders=[];
         if(isViewToday){
           const allPeople=[
             ...S.children.map(c=>({id:c.id,name:c.name,color:c.color,photo:c.photoURL,dob:c.dob,kind:'child'})),
-            ...members().map(m=>({id:m.uid,name:m.name,color:m.color,photo:m.photoURL,dob:m.dob,kind:'adult'}))
+            ...members().map(m=>({id:m.uid,name:m.name,color:m.color,photo:m.photoURL,dob:m.dob,
+              celebrateMothersDay:m.celebrateMothersDay,celebrateFathersDay:m.celebrateFathersDay,
+              kind:'adult'}))
           ];
           const today0=new Date();today0.setHours(0,0,0,0);
+
+          // Helper: compute the Nth Sunday of a given month/year (0-indexed month).
+          // Returns a Date at midnight, or null if invalid.
+          const nthSundayOf=(year,month,n)=>{
+            const first=new Date(year,month,1);
+            const firstSunOffset=(7-first.getDay())%7;
+            const firstSunday=1+firstSunOffset;
+            const targetDay=firstSunday+(n-1)*7;
+            const d=new Date(year,month,targetDay);
+            d.setHours(0,0,0,0);
+            return d;
+          };
+
+          // Helper: push a virtual reminder if the date is ≤10 days away
+          const maybePush=(reminder)=>{
+            const daysAway=Math.round((reminder._date-today0)/86400000);
+            if(daysAway<0||daysAway>10)return;
+            reminder.daysAway=daysAway;
+            reminder.countdown=daysAway===0?'🎉 Today!':daysAway===1?'Tomorrow':'in '+daysAway+' days';
+            reminder.date=fd(reminder._date);
+            delete reminder._date;
+            birthdayReminders.push(reminder);
+          };
+
           allPeople.forEach(p=>{
-            if(!p.dob)return;
-            const dobParts=String(p.dob).split('-');
-            if(dobParts.length!==3)return;
-            const bMonth=parseInt(dobParts[1],10)-1;
-            const bDay=parseInt(dobParts[2],10);
-            if(isNaN(bMonth)||isNaN(bDay))return;
-            // Compute next occurrence (this year if upcoming, next year if past)
-            const thisYear=today0.getFullYear();
-            let next=new Date(thisYear,bMonth,bDay);
-            next.setHours(0,0,0,0);
-            if(next<today0)next=new Date(thisYear+1,bMonth,bDay);
-            const daysAway=Math.round((next-today0)/86400000);
-            if(daysAway<0||daysAway>10)return; // ≤10 day window only
-            // Compute age they'll turn (DOB year is preserved)
-            const dobYear=parseInt(dobParts[0],10);
-            const ageThen=isNaN(dobYear)?null:(next.getFullYear()-dobYear);
-            const countdown=daysAway===0?'🎉 Today!':daysAway===1?'Tomorrow':'in '+daysAway+' days';
-            const firstName=p.name.split(' ')[0];
-            birthdayReminders.push({
-              _isBirthday:true,
-              id:'bday-'+p.id,
-              text:'🎂 '+firstName+"'s birthday"+(ageThen?' (turning '+ageThen+')':''),
-              date:fd(next),
-              daysAway,
-              countdown,
-              person:p,
-              tcol:p.color||NAVY,
-              forKeys:[p.kind+':'+p.id]
-            });
+            // === BIRTHDAY ===
+            if(p.dob){
+              const dobParts=String(p.dob).split('-');
+              if(dobParts.length===3){
+                const bMonth=parseInt(dobParts[1],10)-1;
+                const bDay=parseInt(dobParts[2],10);
+                if(!isNaN(bMonth)&&!isNaN(bDay)){
+                  const thisYear=today0.getFullYear();
+                  let next=new Date(thisYear,bMonth,bDay);
+                  next.setHours(0,0,0,0);
+                  if(next<today0)next=new Date(thisYear+1,bMonth,bDay);
+                  const dobYear=parseInt(dobParts[0],10);
+                  const ageThen=isNaN(dobYear)?null:(next.getFullYear()-dobYear);
+                  const firstName=p.name.split(' ')[0];
+                  maybePush({
+                    _isBirthday:true,
+                    _date:next,
+                    id:'bday-'+p.id,
+                    text:'🎂 '+firstName+"'s birthday"+(ageThen?' (turning '+ageThen+')':''),
+                    person:p,
+                    tcol:p.color||NAVY,
+                    forKeys:[p.kind+':'+p.id]
+                  });
+                }
+              }
+            }
+            // === MOTHER'S DAY (Australia: 2nd Sunday of May) ===
+            if(p.celebrateMothersDay){
+              const thisYear=today0.getFullYear();
+              let next=nthSundayOf(thisYear,4,2); // May = month 4 (0-indexed)
+              if(next<today0)next=nthSundayOf(thisYear+1,4,2);
+              const firstName=p.name.split(' ')[0];
+              maybePush({
+                _isBirthday:true,
+                _date:next,
+                id:'mum-'+p.id,
+                text:"🌸 Mother's Day — "+firstName,
+                person:p,
+                tcol:'#FF6B9D',
+                forKeys:[p.kind+':'+p.id]
+              });
+            }
+            // === FATHER'S DAY (Australia: 1st Sunday of September) ===
+            if(p.celebrateFathersDay){
+              const thisYear=today0.getFullYear();
+              let next=nthSundayOf(thisYear,8,1); // September = month 8 (0-indexed)
+              if(next<today0)next=nthSundayOf(thisYear+1,8,1);
+              const firstName=p.name.split(' ')[0];
+              maybePush({
+                _isBirthday:true,
+                _date:next,
+                id:'dad-'+p.id,
+                text:"👔 Father's Day — "+firstName,
+                person:p,
+                tcol:'#007AFF',
+                forKeys:[p.kind+':'+p.id]
+              });
+            }
           });
         }
 
@@ -1607,15 +1701,19 @@ function sToday(){
         return `<div class="sh" style="margin-bottom:6px">⏰ Reminders</div>
         <div class="card" style="margin-bottom:14px">
           ${dueReminders.map((r,i)=>{
-            // Birthday rows render differently — no checkbox, no delete X, tappable to profile
+            // Virtual rows (birthdays, parent days) render differently — no checkbox, no delete X
             if(r._isBirthday){
               const p=r.person;
               const profileParams=p.kind==='adult'?`{kind:'adult',uid:'${p.id}'}`:`{kind:'child',childId:'${p.id}'}`;
               const badgeBg=r.daysAway===0?'#FF3B30':r.daysAway<=3?'#FF9500':r.tcol;
+              // Pull leading emoji from text for display in icon circle
+              const iconMatch=String(r.text||'').match(/^(\p{Extended_Pictographic})/u);
+              const icon=iconMatch?iconMatch[1]:'🎉';
+              const cleanText=String(r.text||'').replace(/^(\p{Extended_Pictographic})\s*/u,'');
               return `<div class="row" onclick="go('personProfile',${profileParams})" style="border-bottom:${i<dueReminders.length-1?'1px solid var(--row-border)':'none'};cursor:pointer;background:linear-gradient(90deg,${r.tcol}10,transparent)">
-                <div style="width:36px;height:36px;border-radius:18px;background:${r.tcol}18;border:2px solid ${r.tcol};display:flex;align-items:center;justify-content:center;font-size:18px;flex-shrink:0">🎂</div>
+                <div style="width:36px;height:36px;border-radius:18px;background:${r.tcol}18;border:2px solid ${r.tcol};display:flex;align-items:center;justify-content:center;font-size:18px;flex-shrink:0">${icon}</div>
                 <div style="flex:1;min-width:0">
-                  <div style="font-size:15px;color:var(--text);font-weight:700">${r.text}</div>
+                  <div style="font-size:15px;color:var(--text);font-weight:700">${cleanText}</div>
                   <div style="display:flex;align-items:center;gap:6px;margin-top:3px">
                     <span style="font-size:11px;font-weight:700;padding:2px 8px;border-radius:8px;background:${badgeBg};color:#fff">${r.countdown}</span>
                     <span style="font-size:11px;color:var(--text-secondary)">${new Date(r.date+'T12:00').toLocaleDateString('en-AU',{weekday:'short',day:'numeric',month:'short'})}</span>
@@ -7317,13 +7415,16 @@ window.hAddCaregiver=async function(){
   const role=document.getElementById('ac-role')?.value||'Member';
   const email=document.getElementById('ac-email')?.value?.trim();
   const color=document.getElementById('ac-color')?.value||NAVY;
+  const dob=document.getElementById('ac-dob')?.value||'';
+  const celebrateMothersDay=document.getElementById('ac-mum')?.checked||false;
+  const celebrateFathersDay=document.getElementById('ac-dad')?.checked||false;
   const err=document.getElementById('acerr');
   if(!name){if(err)err.textContent='Please enter a name';return;}
   // Use a placeholder ID until they sign up
   const placeholderId='pending_'+Date.now()+'_'+Math.random().toString(36).slice(2,7);
   try{
     await updateDoc(doc(db,'families',S.familyId),{
-      ['members.'+placeholderId]:{name,role,relationship:rel,color,email:email||'',pending:true}
+      ['members.'+placeholderId]:{name,role,relationship:rel,color,email:email||'',dob,celebrateMothersDay,celebrateFathersDay,pending:true}
     });
     back();notify(name+' added! ✅ Share family code to invite them','👥');
   }catch(ex){if(err)err.textContent=ex.message;}
@@ -7359,7 +7460,10 @@ window.hSaveCaregiver=async function(uid){
       ['members.'+uid+'.role']:role,
       ['members.'+uid+'.color']:color,
       ['members.'+uid+'.relationship']:rel,
-      ['members.'+uid+'.photoURL']:photoURL
+      ['members.'+uid+'.photoURL']:photoURL,
+      ['members.'+uid+'.dob']:document.getElementById('ec-dob')?.value||'',
+      ['members.'+uid+'.celebrateMothersDay']:document.getElementById('ec-mum')?.checked||false,
+      ['members.'+uid+'.celebrateFathersDay']:document.getElementById('ec-dad')?.checked||false
     };
     if(fname)updates.name=fname;
     await updateDoc(doc(db,'families',S.familyId),updates);
@@ -7384,12 +7488,18 @@ window.hSaveEditFamily=async function(){
   const name=document.getElementById('ef-name')?.value?.trim();
   const fname=document.getElementById('ef-fname')?.value?.trim();
   const color=document.getElementById('ef-color')?.value||NAVY;
+  const dob=document.getElementById('ef-dob')?.value||'';
+  const celebrateMothersDay=document.getElementById('ef-mum')?.checked||false;
+  const celebrateFathersDay=document.getElementById('ef-dad')?.checked||false;
   const err=document.getElementById('eferr');
   if(!name){if(err)err.textContent='Please enter your name';return;}
   try{
     await updateDoc(doc(db,'families',fid()),{
       ['members.'+S.user.uid+'.name']:name,
       ['members.'+S.user.uid+'.color']:color,
+      ['members.'+S.user.uid+'.dob']:dob,
+      ['members.'+S.user.uid+'.celebrateMothersDay']:celebrateMothersDay,
+      ['members.'+S.user.uid+'.celebrateFathersDay']:celebrateFathersDay,
       ...(fname?{name:fname}:{})
     });
     if(S.user.displayName!==name){
