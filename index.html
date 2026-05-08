@@ -4903,11 +4903,10 @@ window.dismissBundle=async function(bundleId){
 // === INBOX SETUP SCREEN — show forwarding address + instructions ===
 function sInboxSetup(){
   try{
-  // Prefer the friendly inbound address; fall back to Postmark address if DNS not set up
+  // DNS is now live for in.ourhomebase.com.au — use friendly address as primary for ALL families.
+  // Postmark long address still works as a fallback but is hidden from UI now.
   const friendly=S.family?.inboundAddress||'';
-  const postmark=S.family?.postmarkInboundAddress||'';
-  const activeAddress=postmark||friendly;
-  const hasDNS=false; // TODO: when DNS is verified, set this to true and use friendly address
+  const activeAddress=friendly; // always show the friendly address now
 
   return `<div style="min-height:100%;display:flex;flex-direction:column;background:var(--bg)">
     <div style="background:var(--card);padding:14px 16px;display:flex;align-items:center;border-bottom:1px solid var(--row-border)">
@@ -4928,12 +4927,11 @@ function sInboxSetup(){
       <!-- YOUR ADDRESS -->
       <div class="sh" style="margin-bottom:6px">YOUR FORWARDING ADDRESS</div>
       <div class="card" style="margin-bottom:16px;padding:16px">
-        <div style="font-size:11px;color:var(--text-secondary);margin-bottom:6px;font-weight:600">${hasDNS?'PRIMARY':'TEMPORARY (until DNS is set up)'}</div>
-        <div style="background:var(--bg);border-radius:10px;padding:12px;margin-bottom:10px;display:flex;align-items:center;gap:8px">
-          <code style="flex:1;font-family:Menlo,monospace;font-size:12px;color:var(--text);word-break:break-all">${activeAddress||'(not yet assigned — refresh)'}</code>
-          ${activeAddress?`<button onclick="copyInboundAddress('${activeAddress.replace(/'/g,'\\\'')}')" style="padding:6px 12px;border-radius:8px;background:var(--navy);border:none;color:#fff;font-size:12px;font-weight:700;cursor:pointer;font-family:inherit;flex-shrink:0">📋 Copy</button>`:''}
+        <div style="background:var(--bg);border-radius:10px;padding:12px;display:flex;align-items:center;gap:8px">
+          <code style="flex:1;font-family:Menlo,monospace;font-size:13px;color:var(--text);word-break:break-all;font-weight:600">${activeAddress||'(generating — please wait)'}</code>
+          ${activeAddress?`<button onclick="copyInboundAddress('${activeAddress.replace(/'/g,'\\\'')}')" style="padding:8px 14px;border-radius:8px;background:var(--navy);border:none;color:#fff;font-size:12px;font-weight:700;cursor:pointer;font-family:inherit;flex-shrink:0">📋 Copy</button>`:''}
         </div>
-        ${friendly&&friendly!==activeAddress?`<div style="font-size:11px;color:var(--text-secondary);line-height:1.5">Future address (after DNS): <code style="font-family:Menlo,monospace;font-size:11px;color:var(--text)">${friendly}</code></div>`:''}
+        <div style="font-size:11px;color:var(--text-secondary);line-height:1.5;margin-top:8px">This is your private forwarding address. Forward any email here and the AI extracts events automatically.</div>
       </div>
 
       <!-- HOW IT WORKS -->
