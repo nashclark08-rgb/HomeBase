@@ -1643,38 +1643,42 @@ function sToday(){
                 }
               }
             }
-            // === MOTHER'S DAY (Australia: 2nd Sunday of May) ===
-            if(p.celebrateMothersDay){
-              const thisYear=today0.getFullYear();
-              let next=nthSundayOf(thisYear,4,2); // May = month 4 (0-indexed)
-              if(next<today0)next=nthSundayOf(thisYear+1,4,2);
-              const firstName=p.name.split(' ')[0];
-              maybePush({
-                _isBirthday:true,
-                _date:next,
-                id:'mum-'+p.id,
-                text:"🌸 Mother's Day — "+firstName,
-                person:p,
-                tcol:'#FF6B9D',
-                forKeys:[p.kind+':'+p.id]
-              });
-            }
-            // === FATHER'S DAY (Australia: 1st Sunday of September) ===
-            if(p.celebrateFathersDay){
-              const thisYear=today0.getFullYear();
-              let next=nthSundayOf(thisYear,8,1); // September = month 8 (0-indexed)
-              if(next<today0)next=nthSundayOf(thisYear+1,8,1);
-              const firstName=p.name.split(' ')[0];
-              maybePush({
-                _isBirthday:true,
-                _date:next,
-                id:'dad-'+p.id,
-                text:"👔 Father's Day — "+firstName,
-                person:p,
-                tcol:'#007AFF',
-                forKeys:[p.kind+':'+p.id]
-              });
-            }
+          // === MOTHER'S DAY (Australia: 2nd Sunday of May) ===
+          if(p.celebrateMothersDay){
+            const thisYear=today0.getFullYear();
+            let next=nthSundayOf(thisYear,4,2); // May = month 4 (0-indexed)
+            if(next<today0)next=nthSundayOf(thisYear+1,4,2);
+            const firstName=p.name.split(' ')[0];
+            const daysAway=Math.round((next-today0)/86400000);
+            console.log('[parent-day] '+firstName+' has Mother\u0027s Day flag. Next:',next.toDateString(),'days away:',daysAway,(daysAway>=0&&daysAway<=10)?'✅ will show':'❌ outside 10-day window');
+            maybePush({
+              _isBirthday:true,
+              _date:next,
+              id:'mum-'+p.id,
+              text:"🌸 Mother's Day — "+firstName,
+              person:p,
+              tcol:'#FF6B9D',
+              forKeys:[p.kind+':'+p.id]
+            });
+          }
+          // === FATHER'S DAY (Australia: 1st Sunday of September) ===
+          if(p.celebrateFathersDay){
+            const thisYear=today0.getFullYear();
+            let next=nthSundayOf(thisYear,8,1); // September = month 8 (0-indexed)
+            if(next<today0)next=nthSundayOf(thisYear+1,8,1);
+            const firstName=p.name.split(' ')[0];
+            const daysAway=Math.round((next-today0)/86400000);
+            console.log('[parent-day] '+firstName+' has Father\u0027s Day flag. Next:',next.toDateString(),'days away:',daysAway,(daysAway>=0&&daysAway<=10)?'✅ will show':'❌ outside 10-day window');
+            maybePush({
+              _isBirthday:true,
+              _date:next,
+              id:'dad-'+p.id,
+              text:"👔 Father's Day — "+firstName,
+              person:p,
+              tcol:'#007AFF',
+              forKeys:[p.kind+':'+p.id]
+            });
+          }
           });
         }
 
