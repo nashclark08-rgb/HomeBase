@@ -372,6 +372,85 @@ function findConflicts(draft,excludeId){
   });
 }
 
+// ── UPCOMING CLASH DETECTION ──────────────────────
+// Scan the next `daysAhead` days and find events that clash by time
+// (same participant + overlapping times, OR same dropoff/pickup person + overlap).
+// Used to surface clashes as virtual Reminders a week out so adults can sort logistics.
+//
+// Returns: array of { date, dateStr, events:[ev1, ev2], reason }
+function findUpcomingClashes(daysAhead){
+  daysAhead=daysAhead||7;
+  const today=new Date();today.setHours(0,0,0,0);
+  const clashes=[];
+  const seen=new Set(); // de-dupe pair-on-date
+
+  for(let d=0;d<=daysAhead;d++){
+    const checkDate=new Date(today);checkDate.setDate(today.getDate()+d);
+    const dateStr=fd(checkDate);
+    const dayName=DAYSH[checkDate.getDay()];
+
+    // Find all events occurring on this date
+    const eventsOnDate=S.events.filter(ev=>{
+      if(!ev.freq||ev.freq==='once')return ev.date===dateStr;
+      // Recurring: check days + start/end window
+      if(!ev.days||!ev.days[dayName])return false;
+      const sd=ev.startDate||ev.date;
+      if(sd&&dateStr<sd)return false;
+      if(ev.endDate&&dateStr>ev.endDate)return false;
+      return true;
+    });
+
+    if(eventsOnDate.length<2)continue;
+
+    // Pairwise check
+    for(let i=0;i<eventsOnDate.length;i++){
+      for(let j=i+1;j<eventsOnDate.length;j++){
+        const a=eventsOnDate[i],b=eventsOnDate[j];
+        const aRange=parseTimeRange(a.time);
+        const bRange=parseTimeRange(b.time);
+        // All-day events trigger the all-day "vs" comparison only with other timed events on same date — skip strict time overlap
+        // Skip if either has unparseable time (we can't tell) — but keep all-day flagged events
+        if(!aRange||!bRange)continue;
+        // Time overlap?
+        const overlap=aRange.start<aRange.end&&bRange.start<bRange.end&&aRange.start<bRange.end&&bRange.start<aRange.end;
+        if(!overlap)continue;
+
+        // Determine reason for the clash:
+        const aIds=Array.isArray(a.participantIds)&&a.participantIds.length?a.participantIds:[a.childId,a.adultUid].filter(Boolean);
+        const bIds=Array.isArray(b.participantIds)&&b.participantIds.length?b.participantIds:[b.childId,b.adultUid].filter(Boolean);
+        const sharedPerson=aIds.find(id=>bIds.includes(id));
+
+        // Driver/host clash: same adult on dropoff/pickup duty for both
+        const aDuties=[a.dropoff,a.pickup].filter(Boolean);
+        const bDuties=[b.dropoff,b.pickup].filter(Boolean);
+        const sharedDuty=aDuties.find(d=>bDuties.includes(d));
+
+        if(!sharedPerson&&!sharedDuty)continue;
+
+        const pairKey=dateStr+':'+[a.id,b.id].sort().join('|');
+        if(seen.has(pairKey))continue;
+        seen.add(pairKey);
+
+        let reason='';
+        if(sharedPerson){
+          const c=S.children.find(x=>x.id===sharedPerson);
+          const m=members().find(x=>x.uid===sharedPerson);
+          const personName=(c?c.name:m?m.name:'someone').split(' ')[0];
+          reason=personName+' is in both';
+        }else if(sharedDuty){
+          reason=sharedDuty+' is on duty for both';
+        }
+
+        const daysAway=d;
+        clashes.push({date:dateStr,daysAway,events:[a,b],reason});
+      }
+    }
+  }
+
+  return clashes;
+}
+
+
 // ── STATE ────────────────────────────────────────
 const S={
   user:null,familyId:null,family:null,
@@ -1363,9 +1442,11 @@ function sToday(){
     return true;
   }).filter(ev=>{
     // When viewing today, hide events that have finished.
+    // - All-day events never hide.
     // - Events with an explicit end time use that end time.
     // - Events with only a start time use a default duration of 90 minutes.
     if(!isViewToday)return true;
+    if(ev.allDay)return true;
     if(!ev.time)return true; // no time set → show all day
     const range=parseTimeRange(ev.time);
     if(!range)return true; // unparseable → show
@@ -1617,6 +1698,7 @@ function sToday(){
           };
 
           allPeople.forEach(p=>{
+            if(p.kind==='adult')console.log('[parent-day]',p.name,'dob:',p.dob||'(none)','mum:',!!p.celebrateMothersDay,'dad:',!!p.celebrateFathersDay);
             // === BIRTHDAY ===
             if(p.dob){
               const dobParts=String(p.dob).split('-');
@@ -1680,6 +1762,28 @@ function sToday(){
             });
           }
           });
+
+          // === CLASH DETECTION ===
+          // Surface scheduling clashes happening within the next 7 days as virtual reminders.
+          // Gives the family time to sort out logistics before the day arrives.
+          try{
+            const upcomingClashes=findUpcomingClashes(7);
+            upcomingClashes.forEach(c=>{
+              const aTitle=c.events[0].title||'Event';
+              const bTitle=c.events[1].title||'Event';
+              const dateD=new Date(c.date+'T12:00');
+              maybePush({
+                _isBirthday:true, // reuse the virtual-reminder render path
+                _isClash:true,
+                _date:dateD,
+                id:'clash-'+c.events[0].id+'-'+c.events[1].id,
+                text:'⚠️ Clash: '+aTitle+' vs '+bTitle,
+                subtext:c.reason,
+                tcol:'#FF9500',
+                forKeys:[]
+              });
+            });
+          }catch(e){console.warn('[clash-detect] failed',e);}
         }
 
         const realReminders=(S.reminders||[]).filter(r=>{
@@ -1707,6 +1811,23 @@ function sToday(){
           ${dueReminders.map((r,i)=>{
             // Virtual rows (birthdays, parent days) render differently — no checkbox, no delete X
             if(r._isBirthday){
+              // Clash row: open the first clashing event's modal so the user can act
+              if(r._isClash){
+                const firstEvId=String(r.id||'').replace(/^clash-/,'').split('-')[0];
+                const badgeBg=r.daysAway===0?'#FF3B30':r.daysAway<=3?'#FF6B00':r.tcol;
+                return `<div class="row" onclick="openEventModal('${firstEvId}')" style="border-bottom:${i<dueReminders.length-1?'1px solid var(--row-border)':'none'};cursor:pointer;background:linear-gradient(90deg,${r.tcol}15,transparent)">
+                  <div style="width:36px;height:36px;border-radius:18px;background:${r.tcol}18;border:2px solid ${r.tcol};display:flex;align-items:center;justify-content:center;font-size:18px;flex-shrink:0">⚠️</div>
+                  <div style="flex:1;min-width:0">
+                    <div style="font-size:14px;color:var(--text);font-weight:700;line-height:1.3">${String(r.text||'').replace(/^⚠️\s*/,'')}</div>
+                    ${r.subtext?`<div style="font-size:11px;color:var(--text-secondary);font-weight:600;margin-top:2px">${r.subtext}</div>`:''}
+                    <div style="display:flex;align-items:center;gap:6px;margin-top:3px">
+                      <span style="font-size:11px;font-weight:700;padding:2px 8px;border-radius:8px;background:${badgeBg};color:#fff">${r.countdown}</span>
+                      <span style="font-size:11px;color:var(--text-secondary)">${new Date(r.date+'T12:00').toLocaleDateString('en-AU',{weekday:'short',day:'numeric',month:'short'})}</span>
+                    </div>
+                  </div>
+                  <span style="color:${r.tcol};font-size:18px;opacity:0.7">›</span>
+                </div>`;
+              }
               const p=r.person;
               const profileParams=p.kind==='adult'?`{kind:'adult',uid:'${p.id}'}`:`{kind:'child',childId:'${p.id}'}`;
               const badgeBg=r.daysAway===0?'#FF3B30':r.daysAway<=3?'#FF9500':r.tcol;
@@ -1957,7 +2078,14 @@ function sAddEvent(){
 
         <!-- Structured time picker -->
         <div>
-          <div style="font-size:14px;font-weight:600;margin-bottom:8px">⏰ Time</div>
+          <div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:8px">
+            <div style="font-size:14px;font-weight:600">⏰ Time</div>
+            <label style="display:flex;align-items:center;gap:8px;cursor:pointer;user-select:none">
+              <input type="checkbox" id="eallday" ${ef.allDay?'checked':''} onchange="toggleAllDay()" style="width:18px;height:18px;accent-color:var(--navy);cursor:pointer"/>
+              <span style="font-size:13px;font-weight:600;color:var(--text)">All-day event</span>
+            </label>
+          </div>
+          <div id="etime-pickers" style="display:${ef.allDay?'none':'block'}">
           <div style="display:flex;gap:6px;align-items:center">
             <select class="input" id="etime-h-start" style="flex:1">
               ${Array.from({length:12},(_,i)=>{const h=i+1;return `<option value="${h}" ${h===timeParts.sH?'selected':''}>${h}</option>`;}).join('')}
@@ -1986,6 +2114,7 @@ function sAddEvent(){
             <select class="input" id="etime-p-end" style="flex:0.8">
               <option value="am" ${timeParts.eP==='am'?'selected':''}>AM</option><option value="pm" ${timeParts.eP==='pm'?'selected':''}>PM</option>
             </select>
+          </div>
           </div>
         </div>
 
@@ -5158,7 +5287,7 @@ function renderEventRow(ev,isLast,isPast){
     <div style="width:40px;height:40px;border-radius:10px;background:${col}15;display:flex;align-items:center;justify-content:center;font-size:22px;flex-shrink:0">${ev.emoji||'📅'}</div>
     <div style="flex:1;min-width:0">
       <div style="font-size:15px;font-weight:600;color:var(--text)">${ev.title}${catChip}</div>
-      <div style="font-size:12px;color:var(--text-secondary)">${ev.freq&&ev.freq!=='once'?'🔄 '+ev.freq:ev.date||''}${ev.time?' · '+ev.time:''}</div>
+      <div style="font-size:12px;color:var(--text-secondary)">${ev.freq&&ev.freq!=='once'?'🔄 '+ev.freq:ev.date||''}${ev.allDay?' · All day':ev.time?' · '+ev.time:''}</div>
       ${ev.dropoff||ev.pickup?`<div style="font-size:11px;color:${col};font-weight:500">${ev.dropoff?'🚗 '+ev.dropoff:''}${ev.dropoff&&ev.pickup?' · ':''}${ev.pickup?'🏠 '+ev.pickup:''}</div>`:''}
       ${avatars?`<div style="display:flex;align-items:center;gap:4px;margin-top:3px">${avatars}<span style="font-size:11px;color:var(--text-secondary);margin-left:2px">${names}</span></div>`:''}
     </div>
@@ -7581,6 +7710,14 @@ window.toggleEndTime=function(){
     row.style.display='flex';
   }
 };
+// All-day toggle: hides the time pickers entirely. Save will record allDay:true and an empty time string.
+window.toggleAllDay=function(){
+  const cb=document.getElementById('eallday');
+  const pickers=document.getElementById('etime-pickers');
+  if(!cb||!pickers)return;
+  S.ef.allDay=cb.checked;
+  pickers.style.display=cb.checked?'none':'block';
+};
 window.toggleParticipant=function(id){
   if(!Array.isArray(S.ef.participantIds))S.ef.participantIds=[];
   const idx=S.ef.participantIds.indexOf(id);
@@ -7743,6 +7880,10 @@ window.hSaveEvent=async()=>{
       if(cat)saveEmoji=cat.emoji;
     }
 
+    // Honour the all-day toggle: skip the time picker entirely when ticked.
+    const allDay=document.getElementById('eallday')?.checked||false;
+    const timeStr=allDay?'':buildTimeString();
+
     const eventData={
       title,emoji:saveEmoji,
       participantIds,
@@ -7752,7 +7893,8 @@ window.hSaveEvent=async()=>{
       startDate:ef.freq!=='once'?$('estartdate')?.value||fd(today):'',
       endDate:ef.freq!=='once'?$('eenddate')?.value||'':'',
       days:ef.freq!=='once'?{...ef.days}:{},
-      time:buildTimeString(),
+      time:timeStr,
+      allDay,
       category:ef.category||'',
       sport:sportValue,
       location:$('eloc')?.value?.trim()||'',
