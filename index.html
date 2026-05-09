@@ -649,7 +649,7 @@ function downloadICS(events,filename){
   setTimeout(()=>{document.body.removeChild(a);URL.revokeObjectURL(url);},100);
 }
 
-function members(){return Object.entries(S.family&&S.family.members||{}).map(([uid,m])=>({uid,name:m.name,role:m.role,color:m.color||NAVY,relationship:m.relationship||'',photoURL:m.photoURL||'',phone:m.phone||'',email:m.email||'',personalCode:m.personalCode||''}));}
+function members(){return Object.entries(S.family&&S.family.members||{}).map(([uid,m])=>({uid,name:m.name,role:m.role,color:m.color||NAVY,relationship:m.relationship||'',photoURL:m.photoURL||'',phone:m.phone||'',email:m.email||'',personalCode:m.personalCode||'',dob:m.dob||'',celebrateMothersDay:!!m.celebrateMothersDay,celebrateFathersDay:!!m.celebrateFathersDay}));}
 
 async function fw(){
   if(S.weather)return;
