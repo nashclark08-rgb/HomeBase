@@ -2065,7 +2065,12 @@ function sToday(){
                 <div style="flex:1;min-width:0">
                   <div style="font-size:15px;color:var(--text);font-weight:500;${r.done?'text-decoration:line-through':''}">${r.text}</div>
                   ${dueLabel}
-                  ${targets.length===0?`<div style="font-size:11px;color:var(--text-secondary);font-weight:600;margin-top:3px">👨‍👩‍👧‍👦 Family-wide</div>`:`<div style="display:flex;align-items:center;gap:4px;margin-top:3px;flex-wrap:wrap">${targets.slice(0,4).map(t=>av(t.name,t.color,18,t.photo)).join('')}<span style="font-size:11px;color:${tcol};font-weight:600;margin-left:2px">${targets.map(t=>t.name.split(' ')[0]).join(', ')}${targets.length>4?' +'+(targets.length-4):''}</span></div>`}
+                  ${(()=>{
+                    const list=targets.length>0?targets:[...members().map(m=>({name:m.name||'Adult',color:m.color||NAVY,photo:m.photoURL})),...S.children.map(c=>({name:c.name||'Child',color:c.color||NAVY,photo:c.photoURL}))];
+                    if(list.length===0)return '';
+                    const labelCol=targets.length>0?tcol:'var(--text-secondary)';
+                    return `<div style="display:flex;align-items:center;gap:4px;margin-top:3px;flex-wrap:wrap">${list.slice(0,4).map(t=>av(t.name,t.color,18,t.photo)).join('')}<span style="font-size:11px;color:${labelCol};font-weight:600;margin-left:2px">${list.map(t=>t.name.split(' ')[0]).join(', ')}${list.length>4?' +'+(list.length-4):''}</span></div>`;
+                  })()}
                   ${r.notes?`<div style="font-size:11px;color:var(--text-secondary);font-style:italic;margin-top:2px">${r.notes}</div>`:''}
                 </div>
                 <button onclick="dReminder('${r.id}')" style="color:#FF3B30;font-size:18px;opacity:0.5;border:none;background:none;cursor:pointer">×</button>
@@ -2403,9 +2408,9 @@ function sCalendar(){
     : allWDates;
   const sel=S.calDate||todayStr;
 
-  // Helper: get events for a specific date
+  // Helper: get events for a specific date, respecting active filters (person + category)
   function eventsOnDate(ds){
-    return S.events.filter(ev=>{
+    let evs=S.events.filter(ev=>{
       if(!ev.freq||ev.freq==='once')return ev.date===ds;
       if(Array.isArray(ev.skipDates)&&ev.skipDates.includes(ds))return false;
       const start=new Date((ev.startDate||ev.date||ds)+'T12:00');
@@ -2414,24 +2419,95 @@ function sCalendar(){
       if(d<start||(end&&d>end))return false;
       const dn=DAYSH[d.getDay()];
       return ev.days&&ev.days[dn];
-    }).sort((a,b)=>parseTimeToMinutes(a.time)-parseTimeToMinutes(b.time));
+    });
+    if(S.calFilterPerson){
+      const pid=S.calFilterPerson;
+      evs=evs.filter(ev=>{
+        const hasParticipants=(Array.isArray(ev.participantIds)&&ev.participantIds.length>0)||ev.adultUid||ev.childId;
+        if(!hasParticipants)return true;
+        if(ev.adultUid===pid||ev.childId===pid)return true;
+        if(Array.isArray(ev.participantIds)&&ev.participantIds.includes(pid))return true;
+        return false;
+      });
+    }
+    if(S.calFilterCategory){
+      evs=evs.filter(ev=>ev.category===S.calFilterCategory);
+    }
+    return evs.sort((a,b)=>parseTimeToMinutes(a.time)-parseTimeToMinutes(b.time));
   }
 
   const dayEvs=eventsOnDate(sel);
 
-  // Render a person's events (child OR adult) for this day as a single colour-block card
-  function personEventsBlock(person, events, isAdult){
-    const col=person?.color||NAVY;
-    const personName=person?person.name:'Family';
-    const personFirst=person?person.name.split(' ')[0]:'Family';
-    const profileKind=isAdult?'adult':'child';
-    const profileParams=isAdult?`{kind:'adult',uid:'${person.id}'}`:`{kind:'child',childId:'${person.id}'}`;
+  // Group events by their participant set so multi-person events show ONCE
+  // (with all names listed) instead of being duplicated under each person.
+  // Family-wide events (no specific tags) are treated as "everyone".
+  function groupEventsByParticipants(events){
+    const allMemberIds=[...S.children.map(c=>c.id),...members().map(m=>m.uid)];
+    const groups=new Map();
+    events.forEach(ev=>{
+      let participants=[];
+      if(Array.isArray(ev.participantIds)&&ev.participantIds.length>0){
+        participants=ev.participantIds.slice();
+      }else if(ev.adultUid){
+        participants=[ev.adultUid];
+      }else if(ev.childId){
+        participants=[ev.childId];
+      }else{
+        participants=allMemberIds.slice();
+      }
+      const key=participants.slice().sort().join(',');
+      if(!groups.has(key))groups.set(key,{participants,events:[]});
+      groups.get(key).events.push(ev);
+    });
+    const arr=[];
+    groups.forEach(({participants,events})=>{
+      const people=participants.map(pid=>{
+        const c=S.children.find(ch=>ch.id===pid);
+        if(c)return{id:c.id,name:c.name,color:c.color||NAVY,photoURL:c.photoURL,isAdult:false};
+        const a=members().find(m=>m.uid===pid);
+        if(a)return{id:a.uid,name:a.name,color:a.color||NAVY,photoURL:a.photoURL,isAdult:true};
+        return null;
+      }).filter(Boolean);
+      if(people.length===0)return;
+      const earliest=Math.min(...events.map(e=>parseTimeToMinutes(e.time)));
+      arr.push({people,events,earliest});
+    });
+    arr.sort((a,b)=>a.earliest-b.earliest);
+    return arr;
+  }
+
+  // Render an events card for one participant set. Solo = full avatar with the
+  // person's colour; group = stacked avatars + names + neutral navy block.
+  function eventsBlock(people,events){
+    const isMulti=people.length>1;
+    const primary=people[0];
+    const col=isMulti?NAVY:(primary.color||NAVY);
+    const firstNames=people.map(p=>p.name.split(' ')[0]);
+    const allFamily=people.length===([...S.children,...members()].length);
+    const headerText=allFamily?'WHOLE FAMILY':(firstNames.length<=3?firstNames.join(' & '):firstNames.slice(0,2).join(', ')+' +'+(firstNames.length-2)).toUpperCase();
+    const profileParams=primary.isAdult?`{kind:'adult',uid:'${primary.id}'}`:`{kind:'child',childId:'${primary.id}'}`;
+
+    const rightSide=isMulti
+      ? `<div style="width:90px;background:rgba(255,255,255,0.15);display:flex;flex-direction:column;align-items:center;justify-content:center;padding:12px 6px;gap:6px">
+          <div style="display:flex;flex-wrap:wrap;justify-content:center;gap:3px;max-width:80px">
+            ${people.slice(0,4).map(p=>p.photoURL
+              ?`<div style="width:30px;height:30px;border-radius:15px;border:2px solid #fff;background-image:url('${p.photoURL}');background-size:cover;background-position:center"></div>`
+              :`<div style="width:30px;height:30px;border-radius:15px;background:#fff;display:flex;align-items:center;justify-content:center;color:${p.color};font-size:11px;font-weight:800;border:2px solid #fff">${p.name.split(' ').map(n=>n[0]).slice(0,2).join('').toUpperCase()}</div>`
+            ).join('')}
+          </div>
+          ${people.length>4?`<div style="font-size:10px;color:rgba(255,255,255,0.85);font-weight:600">+${people.length-4} more</div>`:''}
+        </div>`
+      : `<div onclick="go('personProfile',${profileParams})" style="width:90px;background:rgba(255,255,255,0.15);display:flex;flex-direction:column;align-items:center;justify-content:center;cursor:pointer;padding:12px 6px">
+          ${primary.photoURL?`<div style="width:64px;height:64px;border-radius:32px;border:3px solid #fff;background-image:url('${primary.photoURL}');background-size:cover;background-position:center;margin-bottom:6px;box-shadow:0 4px 12px rgba(0,0,0,0.2)"></div>`:`<div style="width:64px;height:64px;border-radius:32px;background:#fff;display:flex;align-items:center;justify-content:center;color:${col};font-size:22px;font-weight:800;margin-bottom:6px;box-shadow:0 4px 12px rgba(0,0,0,0.2)">${primary.name.split(' ').map(n=>n[0]).slice(0,2).join('').toUpperCase()}</div>`}
+          <div style="font-size:12px;font-weight:800;color:#fff;text-align:center;line-height:1.1;letter-spacing:0.2px">${firstNames[0]}</div>
+        </div>`;
+
     return `<div style="width:calc(100% - 32px);margin:0 16px 12px;background:${col};border-radius:16px;box-shadow:var(--shadow-md);overflow:hidden;display:flex;align-items:stretch;color:#fff">
       <div style="flex:1;padding:14px 14px 14px 18px;min-width:0">
-        ${person?`<div onclick="go('personProfile',${profileParams})" style="display:flex;align-items:center;gap:8px;margin-bottom:10px;cursor:pointer;padding-bottom:8px;border-bottom:1px solid rgba(255,255,255,0.25)">
-          <div style="font-size:13px;font-weight:800;color:#fff;letter-spacing:0.3px">${personFirst.toUpperCase()}</div>
-          <div style="font-size:11px;color:rgba(255,255,255,0.8);font-weight:500">· ${events.length} ${events.length===1?'event':'events'}</div>
-        </div>`:''}
+        <div style="display:flex;align-items:center;gap:8px;margin-bottom:10px;padding-bottom:8px;border-bottom:1px solid rgba(255,255,255,0.25)">
+          <div style="font-size:13px;font-weight:800;color:#fff;letter-spacing:0.3px;flex:1;min-width:0;overflow:hidden;text-overflow:ellipsis;white-space:nowrap">${headerText}</div>
+          <div style="font-size:11px;color:rgba(255,255,255,0.8);font-weight:500;flex-shrink:0">${events.length} ${events.length===1?'event':'events'}</div>
+        </div>
         <div style="display:flex;flex-direction:column;gap:10px">
           ${events.map((ev,i)=>`<div onclick="openEventModal('${ev.id}')" data-longpress="event:${ev.id}" style="${i>0?'padding-top:10px;border-top:1px solid rgba(255,255,255,0.18)':''};cursor:pointer">
             <div style="display:flex;align-items:center;gap:8px;margin-bottom:4px;flex-wrap:wrap">
@@ -2450,65 +2526,8 @@ function sCalendar(){
           </div>`).join('')}
         </div>
       </div>
-      ${person?`<div onclick="go('personProfile',${profileParams})" style="width:90px;background:rgba(255,255,255,0.15);display:flex;flex-direction:column;align-items:center;justify-content:center;cursor:pointer;padding:12px 6px">
-        ${person.photoURL?`<div style="width:64px;height:64px;border-radius:32px;border:3px solid #fff;background-image:url('${person.photoURL}');background-size:cover;background-position:center;margin-bottom:6px;box-shadow:0 4px 12px rgba(0,0,0,0.2)"></div>`:`<div style="width:64px;height:64px;border-radius:32px;background:#fff;display:flex;align-items:center;justify-content:center;color:${col};font-size:22px;font-weight:800;margin-bottom:6px;box-shadow:0 4px 12px rgba(0,0,0,0.2)">${person.name.split(' ').map(n=>n[0]).slice(0,2).join('').toUpperCase()}</div>`}
-        <div style="font-size:12px;font-weight:800;color:#fff;text-align:center;line-height:1.1;letter-spacing:0.2px">${personFirst}</div>
-      </div>`:''}
+      ${rightSide}
     </div>`;
-  }
-  // Backwards-compat alias
-  function childEventsBlock(child, events){return personEventsBlock(child, events, false);}
-
-  // Group day events by child
-  function groupEventsByChild(events){
-    const childGroups=new Map();
-    const adultGroups=new Map();
-    const familyGroup=[];
-    events.forEach(ev=>{
-      // New model: participantIds is the source of truth if present
-      if(Array.isArray(ev.participantIds)&&ev.participantIds.length>0){
-        ev.participantIds.forEach(pid=>{
-          // Determine if it's a child or adult
-          const c=S.children.find(ch=>ch.id===pid);
-          const a=members().find(m=>m.uid===pid);
-          if(c){
-            if(!childGroups.has(pid))childGroups.set(pid,[]);
-            childGroups.get(pid).push(ev);
-          }else if(a){
-            if(!adultGroups.has(pid))adultGroups.set(pid,[]);
-            adultGroups.get(pid).push(ev);
-          }
-        });
-      }else if(ev.adultUid){
-        if(!adultGroups.has(ev.adultUid))adultGroups.set(ev.adultUid,[]);
-        adultGroups.get(ev.adultUid).push(ev);
-      }else if(ev.childId){
-        if(!childGroups.has(ev.childId))childGroups.set(ev.childId,[]);
-        childGroups.get(ev.childId).push(ev);
-      }else{
-        familyGroup.push(ev);
-      }
-    });
-    const arr=[];
-    childGroups.forEach((evs,cid)=>{
-      const child=S.children.find(c=>c.id===cid);
-      const earliest=Math.min(...evs.map(e=>parseTimeToMinutes(e.time)));
-      arr.push({person:child,isAdult:false,events:evs,earliest});
-    });
-    adultGroups.forEach((evs,uid)=>{
-      const m=members().find(x=>x.uid===uid);
-      if(m){
-        const person={id:m.uid,name:m.name,color:m.color,photoURL:m.photoURL};
-        const earliest=Math.min(...evs.map(e=>parseTimeToMinutes(e.time)));
-        arr.push({person,isAdult:true,events:evs,earliest});
-      }
-    });
-    if(familyGroup.length){
-      const earliest=Math.min(...familyGroup.map(e=>parseTimeToMinutes(e.time)));
-      arr.push({person:null,isAdult:false,events:familyGroup,earliest});
-    }
-    arr.sort((a,b)=>a.earliest-b.earliest);
-    return arr;
   }
 
   return `
@@ -2541,10 +2560,24 @@ function sCalendar(){
     </div>
 
     <div class="scroll-view" style="padding:14px 0 80px">
+      ${(()=>{
+        const chip=(active,onclick,label)=>'<button onclick="'+onclick+'" style="padding:6px 12px;border-radius:14px;border:'+(active?'none':'1px solid var(--border)')+';background:'+(active?'var(--navy)':'var(--card)')+';color:'+(active?'#fff':'var(--text)')+';font-size:12px;font-weight:600;cursor:pointer;font-family:inherit;flex-shrink:0;white-space:nowrap">'+label+'</button>';
+        const adults=members();
+        const kids=Array.isArray(S.children)?S.children:[];
+        const peopleChips=chip(!S.calFilterPerson,"S.calFilterPerson='';render()","All people")
+          +adults.map(m=>chip(S.calFilterPerson===m.uid,"S.calFilterPerson='"+m.uid+"';render()",(m.name||'Adult').split(' ')[0])).join('')
+          +kids.map(c=>chip(S.calFilterPerson===c.id,"S.calFilterPerson='"+c.id+"';render()",(c.name||'Child').split(' ')[0])).join('');
+        const cats=[['','All types'],['school','🏫 School'],['sport','⚽ Sport'],['music','🎵 Music'],['medical','🏥 Medical'],['social','🎉 Social']];
+        const catChips=cats.map(([v,l])=>chip(S.calFilterCategory===v||(!S.calFilterCategory&&!v),"S.calFilterCategory='"+v+"';render()",l)).join('');
+        const anyActive=S.calFilterPerson||S.calFilterCategory;
+        const clearBtn=anyActive?'<button onclick="S.calFilterPerson=\'\';S.calFilterCategory=\'\';render()" style="padding:4px 10px;border-radius:12px;border:none;background:transparent;color:var(--navy);font-size:11px;font-weight:700;cursor:pointer;font-family:inherit;text-decoration:underline">Clear</button>':'';
+        return '<div style="display:flex;gap:6px;overflow-x:auto;padding:0 16px 6px;scrollbar-width:none;-webkit-overflow-scrolling:touch">'+peopleChips+'</div>'
+          +'<div style="display:flex;gap:6px;overflow-x:auto;padding:0 16px 10px;scrollbar-width:none;-webkit-overflow-scrolling:touch;align-items:center">'+catChips+clearBtn+'</div>';
+      })()}
       ${view==='day'?`
         ${dayEvs.length===0?`<div style="text-align:center;padding:60px 20px"><div style="font-size:56px;margin-bottom:14px">🎉</div><div style="font-size:18px;font-weight:700;margin-bottom:6px;color:var(--text)">Nothing on!</div><div style="font-size:15px;color:var(--text-secondary)">Tap + to add an event</div></div>`:
           `<div class="sh" style="margin-bottom:10px">${new Date(sel+'T12:00').toLocaleDateString('en-AU',{weekday:'long',day:'numeric',month:'long'})}</div>
-          ${groupEventsByChild(dayEvs).map(g=>personEventsBlock(g.person,g.events,g.isAdult)).join('')}`
+          ${groupEventsByParticipants(dayEvs).map(g=>eventsBlock(g.people,g.events)).join('')}`
         }
       `:view==='coverage'?(()=>{
         // COVERAGE GRID: Adults × Days, count of drop-offs/pick-ups per cell
