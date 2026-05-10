@@ -417,7 +417,30 @@ function findUpcomingClashes(daysAhead){
         if(!aRange||!bRange)continue;
         // Time overlap?
         const overlap=aRange.start<aRange.end&&bRange.start<bRange.end&&aRange.start<bRange.end&&bRange.start<aRange.end;
-        if(!overlap)continue;
+
+        // === TRAVEL-BUFFER CLASH ===
+        // Even when clock windows don't strictly overlap, two events can clash if
+        // they're back-to-back at different physical locations. Example: netball
+        // ending 9:30am in Echuca, hockey starting 9:30am in Wodonga — 70km apart.
+        // Rule: if the gap between events is less than TRAVEL_BUFFER_MIN AND both
+        // events have a location AND the locations differ, treat as a clash.
+        // Skipped when either location is missing (no info → no signal, avoids noise).
+        const TRAVEL_BUFFER_MIN=30;
+        let travelClash=false;
+        if(!overlap){
+          const aLoc=String(a.location||'').trim().toLowerCase();
+          const bLoc=String(b.location||'').trim().toLowerCase();
+          if(aLoc&&bLoc&&aLoc!==bLoc){
+            // Compute non-negative gap between the two ranges
+            const gap=aRange.end<=bRange.start
+              ?(bRange.start-aRange.end)
+              :bRange.end<=aRange.start
+                ?(aRange.start-bRange.end)
+                :-1;
+            if(gap>=0&&gap<TRAVEL_BUFFER_MIN)travelClash=true;
+          }
+        }
+        if(!overlap&&!travelClash)continue;
 
         // Skip clashes where BOTH events are school-related — kids are at school
         // every weekday, so e.g. "Maths class vs PE class" would falsely flag every day.
@@ -445,7 +468,11 @@ function findUpcomingClashes(daysAhead){
         const c=S.children.find(x=>x.id===sharedPerson);
         const m=members().find(x=>x.uid===sharedPerson);
         const personName=(c?c.name:m?m.name:'someone').split(' ')[0];
-        const reason=personName+' is in both';
+        // Travel clashes get a different reason so the user knows it's a logistics
+        // problem (different venues, not enough buffer) rather than literal double-booking.
+        const reason=travelClash
+          ?personName+' can\'t reach both venues in time'
+          :personName+' is in both';
 
         const daysAway=d;
         clashes.push({date:dateStr,daysAway,events:[a,b],reason,pairKey:safePairKey});
