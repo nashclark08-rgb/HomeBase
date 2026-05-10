@@ -537,7 +537,7 @@ function ck(){return '<svg width="14" height="10" viewBox="0 0 14 10"><polyline 
 function tog(val,fn){return '<button class="toggle" style="background:'+(val?'#34C759':'#E5E5EA')+'" onclick="'+fn+'"><div class="thumb" style="left:'+(val?22:2)+'px"></div></button>';}
 
 function notify(msg,icon){
-  icon=icon||'🏠';
+  icon=icon||'';
   if(S.nTimer)clearTimeout(S.nTimer);
   S.notif={msg,icon};
   // If this looks like a save confirmation, record the timestamp
@@ -548,7 +548,14 @@ function notify(msg,icon){
   document.querySelectorAll('.notif').forEach(e=>e.remove());
   const el=document.createElement('div');el.className='notif';
   el.onclick=()=>{S.notif=null;el.remove();};
-  el.innerHTML='<div style="display:flex;gap:10px;align-items:flex-start"><div style="width:34px;height:34px;border-radius:10px;background:'+NAVY+';display:flex;align-items:center;justify-content:center;font-size:16px">'+icon+'</div><div style="flex:1"><div style="font-size:13px;font-weight:700;color:#fff;margin-bottom:2px">HomeBase</div><div style="font-size:13px;color:rgba(255,255,255,0.88);line-height:1.4">'+msg+'</div></div></div>';
+  // Use the actual brand logo (apple-touch-icon) instead of the generic 🏠 emoji.
+  // The optional icon param now appears as a small badge in the top-right of the
+  // logo so callers can still signal context (✅, ⚠️, etc) without losing the brand.
+  const logoSrc=(document.querySelector('link[rel=apple-touch-icon]')||{}).href||'';
+  const logoHtml=logoSrc
+    ?'<div style="position:relative;width:34px;height:34px;flex-shrink:0"><img src="'+logoSrc+'" style="width:34px;height:34px;border-radius:8px;display:block"/>'+(icon?'<div style="position:absolute;top:-4px;right:-4px;width:18px;height:18px;border-radius:9px;background:#fff;display:flex;align-items:center;justify-content:center;font-size:11px;box-shadow:0 1px 3px rgba(0,0,0,0.3)">'+icon+'</div>':'')+'</div>'
+    :'<div style="width:34px;height:34px;border-radius:10px;background:'+NAVY+';display:flex;align-items:center;justify-content:center;font-size:16px;flex-shrink:0">'+(icon||'🏠')+'</div>';
+  el.innerHTML='<div style="display:flex;gap:10px;align-items:flex-start">'+logoHtml+'<div style="flex:1"><div style="font-size:13px;font-weight:700;color:#fff;margin-bottom:2px">HomeBase</div><div style="font-size:13px;color:rgba(255,255,255,0.88);line-height:1.4">'+msg+'</div></div></div>';
   $('screen').appendChild(el);
   S.nTimer=setTimeout(()=>{S.notif=null;el.remove();renderLastSaved();},6000);
   renderLastSaved();
@@ -1815,6 +1822,8 @@ function sToday(){
                 _isBirthday:true, // reuse the virtual-reminder render path
                 _isClash:true,
                 _clashPairKey:c.pairKey, // used by ack handler to persist dismissal
+                _ev1Id:c.events[0].id,
+                _ev2Id:c.events[1].id,
                 _date:dateD,
                 id:'clash-'+c.events[0].id+'-'+c.events[1].id,
                 text:'⚠️ Clash: '+aTitle+' vs '+bTitle,
@@ -1851,23 +1860,30 @@ function sToday(){
           ${dueReminders.map((r,i)=>{
             // Virtual rows (birthdays, parent days) render differently — no checkbox, no delete X
             if(r._isBirthday){
-              // Clash row: open the first clashing event's modal so the user can act
+              // Clash row: open the clash action sheet listing BOTH conflicting
+              // events so the user can pick which one to skip. The clash date is
+              // known up-front so the skip flow doesn't need a date picker.
               if(r._isClash){
-                const firstEvId=String(r.id||'').replace(/^clash-/,'').split('-')[0];
+                // Prefer the explicit IDs stored on the reminder over parsing r.id —
+                // event IDs theoretically could contain dashes, parsing wouldn't be safe.
+                const ev1Id=r._ev1Id||'';
+                const ev2Id=r._ev2Id||'';
                 const badgeBg=r.daysAway===0?'#FF3B30':r.daysAway<=3?'#FF6B00':r.tcol;
                 const ackKey=r._clashPairKey||'';
+                const clashDate=r.date||'';
+                const openClashHandler=`showClashActionSheet('${ackKey.replace(/'/g,'\\\'')}','${ev1Id}','${ev2Id}','${clashDate}')`;
                 return `<div class="row" style="border-bottom:${i<dueReminders.length-1?'1px solid var(--row-border)':'none'};background:linear-gradient(90deg,${r.tcol}15,transparent)">
                   <div class="cb" onclick="ackClash('${ackKey.replace(/'/g,'\\\'')}')" title="Tick once sorted" style="border-color:${r.tcol};cursor:pointer"></div>
-                  <div style="flex:1;min-width:0;cursor:pointer" onclick="openEventModal('${firstEvId}')">
+                  <div style="flex:1;min-width:0;cursor:pointer" onclick="${openClashHandler}">
                     <div style="font-size:14px;color:var(--text);font-weight:700;line-height:1.3">${String(r.text||'').replace(/^⚠️\s*/,'')}</div>
                     ${r.subtext?`<div style="font-size:11px;color:var(--text-secondary);font-weight:600;margin-top:2px">${r.subtext}</div>`:''}
                     <div style="display:flex;align-items:center;gap:6px;margin-top:3px;flex-wrap:wrap">
                       <span style="font-size:11px;font-weight:700;padding:2px 8px;border-radius:8px;background:${badgeBg};color:#fff">${r.countdown}</span>
                       <span style="font-size:11px;color:var(--text-secondary)">${new Date(r.date+'T12:00').toLocaleDateString('en-AU',{weekday:'short',day:'numeric',month:'short'})}</span>
-                      <span style="font-size:10px;color:var(--text-secondary);font-style:italic">· tap ✓ once sorted</span>
+                      <span style="font-size:10px;color:var(--text-secondary);font-style:italic">· tap to resolve</span>
                     </div>
                   </div>
-                  <span onclick="openEventModal('${firstEvId}')" style="color:${r.tcol};font-size:18px;opacity:0.7;cursor:pointer">›</span>
+                  <span onclick="${openClashHandler}" style="color:${r.tcol};font-size:18px;opacity:0.7;cursor:pointer">›</span>
                 </div>`;
               }
               const p=r.person;
@@ -8121,6 +8137,164 @@ window.deleteEventFromModal=async function(id){
   showRecurringDeleteSheet(ev);
 };
 
+// === CLASH ACTION SHEET ===
+// When the user taps a clash reminder, show a sheet with BOTH conflicting events
+// so they can pick which one to skip — rather than the prior behaviour of opening
+// just the first event's modal. Clash date is known up-front, so we can skip the
+// "which date?" picker that the recurring delete sheet would normally show.
+window.showClashActionSheet=function(pairKey,ev1Id,ev2Id,clashDateStr){
+  const ev1=S.events.find(e=>e.id===ev1Id);
+  const ev2=S.events.find(e=>e.id===ev2Id);
+  if(!ev1||!ev2){notify('Clash events not found','⚠️');return;}
+
+  const overlay=document.createElement('div');
+  overlay.id='clash-action-overlay';
+  overlay.style.cssText='position:fixed;inset:0;background:rgba(0,0,0,0.45);z-index:9999;display:flex;align-items:flex-end;justify-content:center;animation:hbFadeIn 0.18s ease-out';
+  if(!document.getElementById('hbPickerKeyframes')){
+    const st=document.createElement('style');st.id='hbPickerKeyframes';
+    st.textContent='@keyframes hbFadeIn{from{opacity:0}to{opacity:1}}@keyframes hbSlideUp{from{transform:translateY(20px);opacity:0}to{transform:translateY(0);opacity:1}}';
+    document.head.appendChild(st);
+  }
+  const closeSheet=()=>{const m=document.getElementById('clash-action-overlay');if(m)m.remove();};
+  overlay.onclick=function(e){if(e.target===overlay)closeSheet();};
+
+  const sheet=document.createElement('div');
+  sheet.style.cssText='background:var(--card);border-radius:20px 20px 0 0;width:100%;max-width:560px;animation:hbSlideUp 0.24s cubic-bezier(.22,.61,.36,1);box-shadow:0 -8px 32px rgba(0,0,0,0.18);padding:20px;max-height:85vh;overflow-y:auto';
+  sheet.onclick=function(e){e.stopPropagation();};
+
+  const dateLabel=new Date(clashDateStr+'T12:00').toLocaleDateString('en-AU',{weekday:'long',day:'numeric',month:'long'});
+
+  const eventCard=(ev,which)=>{
+    const people=peopleForEvent(ev);
+    const personLabel=people.length===0?'Family':people.map(p=>p.name.split(' ')[0]).join(', ');
+    const col=people[0]?.color||NAVY;
+    const safeTitle=(ev.title||'').replace(/'/g,'&#39;').replace(/"/g,'&quot;');
+    const isRecurring=ev.freq&&ev.freq!=='once';
+    return `<div style="background:var(--bg);border-radius:12px;padding:14px;margin-bottom:10px;border-left:4px solid ${col}">
+      <div style="display:flex;align-items:flex-start;gap:10px;margin-bottom:10px">
+        <div style="width:36px;height:36px;border-radius:18px;background:${col}18;border:2px solid ${col};display:flex;align-items:center;justify-content:center;font-size:16px;flex-shrink:0">${ev.emoji||'📅'}</div>
+        <div style="flex:1;min-width:0">
+          <div style="font-size:15px;font-weight:700;color:var(--text);overflow:hidden;text-overflow:ellipsis;white-space:nowrap">${ev.title||'Event'}</div>
+          <div style="font-size:12px;color:${col};font-weight:600">${personLabel}</div>
+          <div style="font-size:11px;color:var(--text-secondary);margin-top:2px">${ev.time||'All day'}${ev.location?' · 📍 '+ev.location:''}</div>
+        </div>
+      </div>
+      <div style="display:flex;gap:8px">
+        <button onclick="skipOccurrenceFromClash('${ev.id}','${clashDateStr}','${safeTitle}',${isRecurring?'true':'false'})" style="flex:2;padding:10px;border-radius:9px;background:#FF9500;border:none;color:#fff;font-size:13px;font-weight:700;cursor:pointer;font-family:inherit">${isRecurring?'📅 Skip this date':'🗑️ Cancel this event'}</button>
+        <button onclick="document.getElementById('clash-action-overlay').remove();openEventModal('${ev.id}')" style="flex:1;padding:10px;border-radius:9px;background:var(--card);border:1px solid var(--border);color:var(--text);font-size:13px;font-weight:600;cursor:pointer;font-family:inherit">View</button>
+      </div>
+    </div>`;
+  };
+
+  sheet.innerHTML=`
+    <div style="width:40px;height:4px;background:#D1D1D6;border-radius:2px;margin:0 auto 16px"></div>
+    <div style="font-size:18px;font-weight:800;color:var(--text);margin-bottom:4px">⚠️ Clash on ${dateLabel}</div>
+    <div style="font-size:13px;color:var(--text-secondary);margin-bottom:16px;line-height:1.4">Pick which event to skip or cancel. Tap "View" to see full details first.</div>
+    ${eventCard(ev1,'a')}
+    ${eventCard(ev2,'b')}
+    <button onclick="document.getElementById('clash-action-overlay').remove()" style="width:100%;padding:12px;border-radius:10px;background:var(--bg);border:none;color:var(--text);font-size:14px;font-weight:600;cursor:pointer;font-family:inherit;margin-top:6px">Cancel</button>
+  `;
+
+  overlay.appendChild(sheet);
+  document.body.appendChild(overlay);
+};
+
+// Skip a single occurrence of an event on a known date (called from clash sheet).
+// For recurring events: adds the date to skipDates. For one-off: soft-deletes.
+// After the skip, prompts the user whether they want a reminder to inform someone
+// (e.g. the coach, school, friend's parent) that the family member won't attend.
+window.skipOccurrenceFromClash=async function(eventId,dateStr,evTitle,isRecurring){
+  const ev=S.events.find(x=>x.id===eventId);
+  if(!ev){notify('Event not found','⚠️');return;}
+  try{
+    if(isRecurring===true||isRecurring==='true'){
+      const skipDates=Array.isArray(ev.skipDates)?[...ev.skipDates]:[];
+      if(!skipDates.includes(dateStr))skipDates.push(dateStr);
+      await fupd(['events',eventId],{skipDates});
+    }else{
+      // One-off: soft-delete the entire event
+      await fupd(['events',eventId],{deleted:true,deletedAt:Date.now()});
+    }
+    document.getElementById('clash-action-overlay')?.remove();
+    notify('Skipped on '+dateStr,'✅');
+    // Determine the participants for the inform-reminder default text
+    const ppl=peopleForEvent(ev);
+    const personName=ppl.length>0?ppl.map(p=>p.name.split(' ')[0]).join(' & '):'';
+    showInformReminderPrompt(evTitle,personName,dateStr);
+  }catch(ex){notify('Skip failed: '+(ex.message||ex),'⚠️');}
+};
+
+// === INFORM REMINDER PROMPT ===
+// Asks the user whether they want a reminder to tell someone (e.g. a coach,
+// teacher, friend's parent) that the family member is no longer attending.
+// Defaults the reminder date to today so it surfaces immediately. The user
+// can later edit it via the Reminders UI if they want it on a different day.
+window.showInformReminderPrompt=function(evTitle,personName,clashDateStr){
+  const overlay=document.createElement('div');
+  overlay.id='inform-reminder-overlay';
+  overlay.style.cssText='position:fixed;inset:0;background:rgba(0,0,0,0.45);z-index:9999;display:flex;align-items:flex-end;justify-content:center;animation:hbFadeIn 0.18s ease-out';
+  const closeSheet=()=>{const m=document.getElementById('inform-reminder-overlay');if(m)m.remove();};
+  overlay.onclick=function(e){if(e.target===overlay)closeSheet();};
+
+  const sheet=document.createElement('div');
+  sheet.style.cssText='background:var(--card);border-radius:20px 20px 0 0;width:100%;max-width:560px;animation:hbSlideUp 0.24s cubic-bezier(.22,.61,.36,1);box-shadow:0 -8px 32px rgba(0,0,0,0.18);padding:20px';
+  sheet.onclick=function(e){e.stopPropagation();};
+
+  const safeTitle=(evTitle||'').replace(/'/g,'&#39;').replace(/"/g,'&quot;');
+  const safePerson=(personName||'').replace(/'/g,'&#39;').replace(/"/g,'&quot;');
+  const dateLabel=new Date(clashDateStr+'T12:00').toLocaleDateString('en-AU',{weekday:'short',day:'numeric',month:'short'});
+
+  sheet.innerHTML=`
+    <div style="width:40px;height:4px;background:#D1D1D6;border-radius:2px;margin:0 auto 16px"></div>
+    <div style="font-size:18px;font-weight:800;color:var(--text);margin-bottom:6px">Tell someone?</div>
+    <div style="font-size:13px;color:var(--text-secondary);margin-bottom:16px;line-height:1.4">Need a reminder to let someone know ${safePerson?safePerson+' won\'t':'they won\'t'} be at <strong>${safeTitle}</strong> on ${dateLabel}?</div>
+
+    <label style="font-size:12px;color:var(--text-secondary);font-weight:600;display:block;margin-bottom:6px">Tell who? (e.g. coach, teacher, friend's parent)</label>
+    <input id="inform-name" type="text" placeholder="Name" autocomplete="off" style="width:100%;padding:11px;border-radius:9px;border:1px solid var(--border);background:var(--bg);color:var(--text);font-family:inherit;font-size:14px;margin-bottom:14px;box-sizing:border-box"/>
+
+    <div style="display:flex;gap:8px">
+      <button onclick="document.getElementById('inform-reminder-overlay').remove()" style="flex:1;padding:12px;border-radius:10px;background:var(--bg);border:none;color:var(--text);font-size:14px;font-weight:600;cursor:pointer;font-family:inherit">Not now</button>
+      <button onclick="saveInformReminder('${safeTitle}','${safePerson}','${clashDateStr}')" style="flex:2;padding:12px;border-radius:10px;background:var(--navy);border:none;color:#fff;font-size:14px;font-weight:700;cursor:pointer;font-family:inherit">⏰ Add reminder</button>
+    </div>
+  `;
+
+  overlay.appendChild(sheet);
+  document.body.appendChild(overlay);
+  setTimeout(()=>{const i=document.getElementById('inform-name');if(i)i.focus();},100);
+};
+
+window.saveInformReminder=async function(evTitle,personName,clashDateStr){
+  const nameInput=document.getElementById('inform-name');
+  const tellWho=(nameInput?.value||'').trim();
+  if(!tellWho){
+    if(nameInput){nameInput.style.borderColor='#FF3B30';nameInput.focus();}
+    notify('Enter who to tell','⚠️');
+    return;
+  }
+  // Reminder defaults to today so it shows up immediately and the user can act on it.
+  // They can edit the date later via the Reminders UI if they want it sooner/later.
+  const todayStr=fd(new Date());
+  const subject=personName||'they';
+  const verb=personName?'won\'t be at':'won\'t be at';
+  const dateLabel=new Date(clashDateStr+'T12:00').toLocaleDateString('en-AU',{weekday:'short',day:'numeric',month:'short'});
+  const text='Tell '+tellWho+': '+subject+' '+verb+' '+evTitle+' ('+dateLabel+')';
+  try{
+    await fadd(['reminders'],{
+      text,
+      date:todayStr,
+      mode:'ondate',
+      forKeys:[],
+      childId:null,
+      adultUid:null,
+      notes:'Auto-created from clash skip',
+      done:false,
+      createdBy:S.user?.uid||''
+    });
+    document.getElementById('inform-reminder-overlay')?.remove();
+    notify('Reminder added ⏰');
+  }catch(ex){notify('Save failed: '+(ex.message||ex),'⚠️');}
+};
+
 // Bottom sheet asking how to delete a recurring event
 function showRecurringDeleteSheet(ev){
   const overlay=document.createElement('div');
@@ -8707,7 +8881,7 @@ function scheduleDayBeforeNotif(pd){
     setTimeout(function(){
       try{
         const typeLabel={playdate:'Play Date',sleepover:'Sleep Over',birthday:'Birthday Party'}[pd.type]||'Event';
-        new Notification('🎉 Tomorrow: '+typeLabel,{body:(pd.title||'')+(pd.time?' · '+pd.time:'')+(pd.location?' · '+pd.location:''),tag:'pd-'+pd.date,icon:'data:image/png;base64,iVBORw0KGgo='});
+        new Notification('🎉 Tomorrow: '+typeLabel,{body:(pd.title||'')+(pd.time?' · '+pd.time:'')+(pd.location?' · '+pd.location:''),tag:'pd-'+pd.date,icon:(document.querySelector('link[rel=apple-touch-icon]')||{}).href||''});
       }catch(e){}
     },delay);
   }
@@ -9013,7 +9187,7 @@ function sendDailyNotif(){
     body=shortItems.join(' · ');
     if(allEvs.length>3)body+=' +'+(allEvs.length-3)+' more';
   }
-  new Notification(title,{body:body,icon:'data:image/png;base64,iVBORw0KGgo=',tag:'hb-daily',renotify:false});
+  new Notification(title,{body:body,icon:(document.querySelector('link[rel=apple-touch-icon]')||{}).href||'',tag:'hb-daily',renotify:false});
 }
 
 window.saveNotifTime=async function(){
