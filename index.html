@@ -1987,8 +1987,15 @@ function sToday(){
           const db=b.date||'9999-12-31';
           return da.localeCompare(db);
         });
-        if(dueReminders.length===0)return '';
+        const quickAddCard=`<div class="card" style="margin-bottom:8px;padding:10px 12px;display:flex;gap:8px;align-items:center">
+          <input id="todayQuickReminderInput" type="text" placeholder="Add a reminder for the family…" onkeydown="if(event.key==='Enter')quickAddReminder()" style="flex:1;padding:9px 12px;border:1px solid var(--border);border-radius:10px;font-size:14px;font-family:inherit;background:var(--input-bg);color:var(--text);outline:none"/>
+          <button onclick="quickAddReminder()" style="padding:9px 14px;border-radius:10px;background:var(--navy);border:none;color:#fff;font-size:13px;font-weight:700;cursor:pointer;font-family:inherit;flex-shrink:0">+ Add</button>
+        </div>`;
+        if(dueReminders.length===0){
+          return `<div class="sh" style="margin-bottom:6px">⏰ Reminders</div>${quickAddCard}`;
+        }
         return `<div class="sh" style="margin-bottom:6px">⏰ Reminders</div>
+        ${quickAddCard}
         <div class="card" style="margin-bottom:14px">
           ${dueReminders.map((r,i)=>{
             // Virtual rows (birthdays, parent days) render differently — no checkbox, no delete X
@@ -2431,7 +2438,11 @@ function sCalendar(){
       });
     }
     if(S.calFilterCategory){
-      evs=evs.filter(ev=>ev.category===S.calFilterCategory);
+      const f=S.calFilterCategory;
+      evs=evs.filter(ev=>{
+        if(f==='sport')return ev.category==='sport-games'||ev.category==='sport-training';
+        return ev.category===f;
+      });
     }
     return evs.sort((a,b)=>parseTimeToMinutes(a.time)-parseTimeToMinutes(b.time));
   }
@@ -2513,7 +2524,12 @@ function sCalendar(){
             <div style="display:flex;align-items:center;gap:8px;margin-bottom:4px;flex-wrap:wrap">
               <span style="font-size:20px">${ev.emoji||'📅'}</span>
               <span style="font-size:15px;font-weight:700;color:#fff;flex:1;min-width:0">${ev.title}</span>
-              ${ev.category==='school'?'<span style="font-size:10px;font-weight:700;padding:2px 7px;border-radius:8px;background:rgba(255,255,255,0.25);color:#fff">🏫 SCHOOL</span>':ev.category==='sport'?'<span style="font-size:10px;font-weight:700;padding:2px 7px;border-radius:8px;background:rgba(255,255,255,0.25);color:#fff">⚽ SPORT</span>':ev.category==='music'?'<span style="font-size:10px;font-weight:700;padding:2px 7px;border-radius:8px;background:rgba(255,255,255,0.25);color:#fff">🎵 MUSIC</span>':ev.category==='medical'?'<span style="font-size:10px;font-weight:700;padding:2px 7px;border-radius:8px;background:rgba(255,255,255,0.25);color:#fff">🏥 MEDICAL</span>':ev.category==='social'?'<span style="font-size:10px;font-weight:700;padding:2px 7px;border-radius:8px;background:rgba(255,255,255,0.25);color:#fff">🎉 SOCIAL</span>':''}
+              ${(()=>{
+                const c=ev.category;
+                const map={'school':'🏫 SCHOOL','school-extra':'🎒 AFTER SCHOOL','sport-games':'⚽ SPORT','sport-training':'⚽ SPORT','music':'🎵 MUSIC','medical':'🏥 MEDICAL','social':'🎉 SOCIAL'};
+                const lbl=map[c];
+                return lbl?'<span style="font-size:10px;font-weight:700;padding:2px 7px;border-radius:8px;background:rgba(255,255,255,0.25);color:#fff">'+lbl+'</span>':'';
+              })()}
               <button onclick="event.stopPropagation();dEvent('${ev.id}')" style="color:#fff;font-size:18px;opacity:0.6;border:none;background:none;cursor:pointer;padding:0 4px">×</button>
             </div>
             <div style="font-size:12px;color:rgba(255,255,255,0.92);line-height:1.5">
@@ -2567,7 +2583,7 @@ function sCalendar(){
         const peopleChips=chip(!S.calFilterPerson,"S.calFilterPerson='';render()","All people")
           +adults.map(m=>chip(S.calFilterPerson===m.uid,"S.calFilterPerson='"+m.uid+"';render()",(m.name||'Adult').split(' ')[0])).join('')
           +kids.map(c=>chip(S.calFilterPerson===c.id,"S.calFilterPerson='"+c.id+"';render()",(c.name||'Child').split(' ')[0])).join('');
-        const cats=[['','All types'],['school','🏫 School'],['sport','⚽ Sport'],['music','🎵 Music'],['medical','🏥 Medical'],['social','🎉 Social']];
+        const cats=[['','All types'],['sport','⚽ Sport'],['school','🏫 School'],['school-extra','🎒 After school'],['music','🎵 Music'],['social','🎉 Social'],['medical','🏥 Medical']];
         const catChips=cats.map(([v,l])=>chip(S.calFilterCategory===v||(!S.calFilterCategory&&!v),"S.calFilterCategory='"+v+"';render()",l)).join('');
         const anyActive=S.calFilterPerson||S.calFilterCategory;
         const clearBtn=anyActive?'<button onclick="S.calFilterPerson=\'\';S.calFilterCategory=\'\';render()" style="padding:4px 10px;border-radius:12px;border:none;background:transparent;color:var(--navy);font-size:11px;font-weight:700;cursor:pointer;font-family:inherit;text-decoration:underline">Clear</button>':'';
@@ -2695,6 +2711,7 @@ const EV_CATEGORIES=[
   {id:'sport-games',emoji:'🏆',label:'Sport Games',color:'#FF6B35'},
   {id:'sport-training',emoji:'🏃',label:'Sport Training',color:'#5856D6'},
   {id:'school',emoji:'🏫',label:'School',color:'#1C3A6B'},
+  {id:'school-extra',emoji:'🎒',label:'After school',color:'#00C7BE'},
   {id:'music',emoji:'🎵',label:'Music',color:'#AF52DE'},
   {id:'work',emoji:'💼',label:'Work',color:'#5A5A5C'},
   {id:'social',emoji:'🎉',label:'Social',color:'#FF6B9D'},
@@ -9730,6 +9747,32 @@ window.dHandoff=async function(id){
   try{await fdel(['handoffs',id]);notify('Removed');}catch(ex){notify('Error: '+ex.message,'❌');}
 };
 
+// Quick-add a family-wide reminder from the Today page input. No date, anytime mode.
+window.quickAddReminder=async function(){
+  const inp=document.getElementById('todayQuickReminderInput');
+  if(!inp)return;
+  const text=inp.value.trim();
+  if(!text)return;
+  if(!S.familyId){notify('No family loaded','⚠️');return;}
+  try{
+    await fadd(['reminders'],{
+      text,
+      date:'',
+      mode:'anytime',
+      forKeys:[],
+      childId:'',
+      adultUid:'',
+      notes:'',
+      done:false,
+      createdBy:S.user?.uid||''
+    });
+    inp.value='';
+    notify('Reminder added ⏰','✅');
+  }catch(ex){
+    console.error('[HomeBase] quickAddReminder failed',ex);
+    notify('Could not add reminder: '+(ex.message||ex),'❌');
+  }
+};
 window.hAddReminder=async function(){
   const text=document.getElementById('rmText')?.value?.trim()||'';
   const date=document.getElementById('rmDate')?.value||'';
