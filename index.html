@@ -66,6 +66,12 @@ body{font-family:-apple-system,BlinkMacSystemFont,system-ui,sans-serif;backgroun
 .sh{padding:8px 16px 4px;font-size:12px;font-weight:700;color:#8E8E93;text-transform:uppercase;letter-spacing:0.6px}
 .row{display:flex;align-items:center;gap:12px;padding:13px 16px;border-bottom:1px solid var(--row-border)}
 .row:last-child{border-bottom:none}
+.hb-swipe-wrap{position:relative;overflow:hidden}
+.hb-swipe-row{position:relative;background:var(--card);z-index:1;will-change:transform;transition:transform 0.2s ease}
+.hb-swipe-row.hb-swiping{transition:none}
+.hb-swipe-bg{position:absolute;top:0;bottom:0;width:55%;display:flex;align-items:center;color:#fff;font-weight:700;font-size:14px;pointer-events:none;z-index:0}
+.hb-swipe-bg-done{left:0;background:#34C759;justify-content:flex-start;padding-left:24px}
+.hb-swipe-bg-delete{right:0;background:#FF3B30;justify-content:flex-end;padding-right:24px}
 .btn{border:none;cursor:pointer;font-family:inherit;background:none;padding:0}
 .back-btn{display:flex;align-items:center;gap:4px;color:#1C3A6B;font-size:15px;font-weight:500;border:none;background:none;cursor:pointer;font-family:inherit}
 .primary-btn{width:100%;padding:15px;border:none;border-radius:12px;background:#1C3A6B;color:#fff;font-size:17px;font-weight:600;cursor:pointer;font-family:inherit;letter-spacing:-0.2px;transition:opacity 0.15s,transform 0.1s}
@@ -192,6 +198,93 @@ let messaging=null;
 // Detect platform — iOS PWA push has special requirements
 const isIOS=/iPad|iPhone|iPod/.test(navigator.userAgent);
 const isStandalonePWA=window.matchMedia('(display-mode: standalone)').matches||window.navigator.standalone===true;
+
+// iOS Safari users not yet installed: nudge them to Add to Home Screen.
+// Push notifications and several app features only work in PWA mode on iOS.
+(function showIosInstallNudge(){
+  try{
+    if(!isIOS||isStandalonePWA)return;
+    if(localStorage.getItem('hb_install_dismissed')==='1')return;
+    setTimeout(()=>{
+      if(document.getElementById('ios-install-nudge'))return;
+      const banner=document.createElement('div');
+      banner.id='ios-install-nudge';
+      banner.style.cssText='position:fixed;bottom:max(80px,calc(env(safe-area-inset-bottom) + 70px));left:12px;right:12px;background:#1C3A6B;color:#fff;border-radius:14px;padding:14px 16px;z-index:9999;box-shadow:0 8px 32px rgba(0,0,0,0.3);display:flex;gap:12px;align-items:flex-start;animation:hbInstallSlideIn 0.35s ease-out';
+      banner.innerHTML=
+        '<div style="font-size:26px;line-height:1">📲</div>'+
+        '<div style="flex:1;font-size:13px;line-height:1.45">'+
+          '<div style="font-weight:700;margin-bottom:4px;font-size:14px">Install HomeBase</div>'+
+          '<div style="opacity:0.92">Tap the <strong>Share</strong> icon below, then <strong>"Add to Home Screen"</strong>. Push notifications and offline mode need this.</div>'+
+        '</div>'+
+        '<button aria-label="Dismiss" onclick="document.getElementById(\'ios-install-nudge\').remove();try{localStorage.setItem(\'hb_install_dismissed\',\'1\')}catch(e){}" style="background:none;border:none;color:#fff;font-size:22px;line-height:1;cursor:pointer;padding:0 2px;opacity:0.75;font-family:inherit">&times;</button>';
+      // Inject animation keyframes once
+      if(!document.getElementById('hb-install-anim')){
+        const st=document.createElement('style');
+        st.id='hb-install-anim';
+        st.textContent='@keyframes hbInstallSlideIn{from{transform:translateY(120%);opacity:0}to{transform:translateY(0);opacity:1}}';
+        document.head.appendChild(st);
+      }
+      (document.body||document.documentElement).appendChild(banner);
+    },1500);
+  }catch(e){}
+})();
+
+// Swipe gestures: swipe-right on a .hb-swipe-row marks done, swipe-left deletes.
+// Reads data-swipe-id on the wrap (e.g. "reminder:abc") and dispatches to the matching handler.
+(function setupSwipeGestures(){
+  const THRESHOLD=80;
+  const MAX=160;
+  let row=null,startX=0,startY=0,dx=0,axis=null;
+
+  const release=(commit)=>{
+    if(!row)return;
+    const wrap=row.closest('.hb-swipe-wrap');
+    const id=wrap?.dataset?.swipeId||'';
+    const [type,itemId]=id.split(':');
+    row.classList.remove('hb-swiping');
+    if(commit==='done'){
+      row.style.transform='translateX(100%)';
+      setTimeout(()=>{ if(type==='reminder'&&typeof tReminder==='function')tReminder(itemId,true); },180);
+    }else if(commit==='delete'){
+      row.style.transform='translateX(-100%)';
+      setTimeout(()=>{ if(type==='reminder'&&typeof dReminder==='function')dReminder(itemId); },180);
+    }else{
+      row.style.transform='translateX(0)';
+    }
+    row=null;dx=0;axis=null;
+  };
+
+  document.addEventListener('touchstart',(e)=>{
+    const r=e.target.closest('.hb-swipe-row');
+    if(!r)return;
+    if(e.target.closest('button,.cb,input,a,select,textarea'))return;
+    row=r;startX=e.touches[0].clientX;startY=e.touches[0].clientY;dx=0;axis=null;
+    row.classList.add('hb-swiping');
+  },{passive:true});
+
+  document.addEventListener('touchmove',(e)=>{
+    if(!row)return;
+    const tdx=e.touches[0].clientX-startX;
+    const tdy=e.touches[0].clientY-startY;
+    if(!axis){
+      if(Math.abs(tdy)>10&&Math.abs(tdy)>Math.abs(tdx)){axis='y';row.classList.remove('hb-swiping');row=null;return;}
+      if(Math.abs(tdx)>10){axis='x';}
+    }
+    if(axis!=='x')return;
+    dx=Math.max(-MAX,Math.min(MAX,tdx));
+    row.style.transform='translateX('+dx+'px)';
+  },{passive:true});
+
+  document.addEventListener('touchend',()=>{
+    if(!row)return;
+    if(dx>THRESHOLD)release('done');
+    else if(dx<-THRESHOLD)release('delete');
+    else release(null);
+  });
+
+  document.addEventListener('touchcancel',()=>{ if(row)release(null); });
+})();
+
 async function initMessaging(){
   try{
     const supported=await isMessagingSupported();
@@ -1964,15 +2057,19 @@ function sToday(){
               const dStr=DAYSH[dDate.getDay()]+' '+dDate.getDate()+' '+MONTHS[dDate.getMonth()];
               dueLabel=`<div style="font-size:11px;font-weight:700;color:${isDueToday?'#FF3B30':tcol};margin-top:3px">${isDueToday?'🔴 Due today · '+dStr:'📅 Due '+dStr}</div>`;
             }
-            return `<div class="row" data-longpress="reminder:${r.id}" style="border-bottom:${i<dueReminders.length-1?'1px solid var(--row-border)':'none'};${r.done?'opacity:0.55':''}">
-              <div class="cb ${r.done?'on':''}" onclick="tReminder('${r.id}',${!r.done})" style="${r.done?'background:'+tcol+';border:none':'border-color:'+tcol}">${r.done?ck():''}</div>
-              <div style="flex:1;min-width:0">
-                <div style="font-size:15px;color:var(--text);font-weight:500;${r.done?'text-decoration:line-through':''}">${r.text}</div>
-                ${dueLabel}
-                ${targets.length===0?`<div style="font-size:11px;color:var(--text-secondary);font-weight:600;margin-top:3px">👨‍👩‍👧‍👦 Family-wide</div>`:`<div style="display:flex;align-items:center;gap:4px;margin-top:3px;flex-wrap:wrap">${targets.slice(0,4).map(t=>av(t.name,t.color,18,t.photo)).join('')}<span style="font-size:11px;color:${tcol};font-weight:600;margin-left:2px">${targets.map(t=>t.name.split(' ')[0]).join(', ')}${targets.length>4?' +'+(targets.length-4):''}</span></div>`}
-                ${r.notes?`<div style="font-size:11px;color:var(--text-secondary);font-style:italic;margin-top:2px">${r.notes}</div>`:''}
+            return `<div class="hb-swipe-wrap" data-swipe-id="reminder:${r.id}" style="${i<dueReminders.length-1?'border-bottom:1px solid var(--row-border)':''}">
+              <div class="hb-swipe-bg hb-swipe-bg-done">✓ Done</div>
+              <div class="hb-swipe-bg hb-swipe-bg-delete">Delete</div>
+              <div class="row hb-swipe-row" data-longpress="reminder:${r.id}" style="border-bottom:none;${r.done?'opacity:0.55':''}">
+                <div class="cb ${r.done?'on':''}" onclick="tReminder('${r.id}',${!r.done})" style="${r.done?'background:'+tcol+';border:none':'border-color:'+tcol}">${r.done?ck():''}</div>
+                <div style="flex:1;min-width:0">
+                  <div style="font-size:15px;color:var(--text);font-weight:500;${r.done?'text-decoration:line-through':''}">${r.text}</div>
+                  ${dueLabel}
+                  ${targets.length===0?`<div style="font-size:11px;color:var(--text-secondary);font-weight:600;margin-top:3px">👨‍👩‍👧‍👦 Family-wide</div>`:`<div style="display:flex;align-items:center;gap:4px;margin-top:3px;flex-wrap:wrap">${targets.slice(0,4).map(t=>av(t.name,t.color,18,t.photo)).join('')}<span style="font-size:11px;color:${tcol};font-weight:600;margin-left:2px">${targets.map(t=>t.name.split(' ')[0]).join(', ')}${targets.length>4?' +'+(targets.length-4):''}</span></div>`}
+                  ${r.notes?`<div style="font-size:11px;color:var(--text-secondary);font-style:italic;margin-top:2px">${r.notes}</div>`:''}
+                </div>
+                <button onclick="dReminder('${r.id}')" style="color:#FF3B30;font-size:18px;opacity:0.5;border:none;background:none;cursor:pointer">×</button>
               </div>
-              <button onclick="dReminder('${r.id}')" style="color:#FF3B30;font-size:18px;opacity:0.5;border:none;background:none;cursor:pointer">×</button>
             </div>`;
           }).join('')}
         </div>`;
@@ -6499,15 +6596,27 @@ function sSettings(){
   +'</div>'
   // Family Sports + Teams
   +'<div class="sh" style="margin-bottom:6px">📥 Email Inbox</div>'
-  +'<div class="card" style="margin-bottom:12px;cursor:pointer" onclick="go(\'inboxSetup\')">'
-  +'<div style="padding:14px 16px;display:flex;align-items:center;gap:12px">'
+  +'<div class="card" style="margin-bottom:12px">'
+  +'<div style="padding:14px 16px;display:flex;align-items:center;gap:12px;cursor:pointer" onclick="go(\'inboxSetup\')">'
   +'<div style="width:38px;height:38px;border-radius:19px;background:linear-gradient(135deg,#AF52DE,#5856D6);display:flex;align-items:center;justify-content:center;font-size:18px;flex-shrink:0">📬</div>'
   +'<div style="flex:1;min-width:0">'
   +'<div style="font-size:14px;font-weight:700;color:var(--text)">Forward emails to extract events</div>'
-  +'<div style="font-size:11px;color:var(--text-secondary);margin-top:2px">View your address + setup guides</div>'
+  +'<div style="font-size:11px;color:var(--text-secondary);margin-top:2px">Tap for setup guides + how it works</div>'
   +'</div>'
   +'<span style="color:var(--text-secondary);font-size:18px">›</span>'
   +'</div>'
+  +(()=>{
+    const addr=S.family?.inboundAddress||'';
+    if(!addr) return '<div style="padding:0 16px 14px;font-size:11px;color:var(--text-secondary);font-style:italic">Your forwarding address is being generated…</div>';
+    const safe=addr.replace(/'/g,"\\'");
+    return '<div style="padding:0 16px 14px;border-top:1px solid var(--row-border);padding-top:12px">'
+      +'<div style="font-size:10px;color:var(--text-secondary);margin-bottom:6px;letter-spacing:0.6px;text-transform:uppercase;font-weight:700">Your forwarding address</div>'
+      +'<div style="background:var(--bg);border-radius:10px;padding:10px 12px;display:flex;align-items:center;gap:8px">'
+        +'<code style="flex:1;font-family:Menlo,monospace;font-size:12px;color:var(--text);word-break:break-all;font-weight:600">'+addr+'</code>'
+        +'<button onclick="event.stopPropagation();copyInboundAddress(\''+safe+'\')" style="padding:6px 12px;border-radius:8px;background:var(--navy);border:none;color:#fff;font-size:11px;font-weight:700;cursor:pointer;font-family:inherit;flex-shrink:0">📋</button>'
+      +'</div>'
+    +'</div>';
+  })()
   +'</div>'
   +'<div class="sh" style="margin-bottom:6px">🏃 Family Sports & Teams</div>'
   +'<div class="card" style="margin-bottom:12px">'
@@ -6564,9 +6673,13 @@ function sSettings(){
   +'<div class="sh" style="margin-bottom:6px">📆 iOS Calendar Sync</div>'
   +'<div class="card" style="margin-bottom:12px">'
   +'<div style="padding:14px 16px;border-bottom:1px solid var(--row-border)">'
-  +'<div style="font-size:14px;font-weight:600;margin-bottom:6px">Add events to Apple Calendar</div>'
-  +'<div style="font-size:13px;color:var(--text-secondary);line-height:1.5;margin-bottom:8px">Tap below to download a calendar file. On iPhone, open the file → Calendar will import all your HomeBase events including recurring ones.</div>'
-  +'<div style="font-size:12px;color:var(--text-secondary);line-height:1.5;background:var(--bg);padding:10px;border-radius:8px"><strong>💡 Tip:</strong> Re-download anytime to refresh. For automatic live sync (subscribe URL), Firebase Cloud Functions need to be set up first.</div>'
+  +'<div style="font-size:14px;font-weight:600;margin-bottom:6px">🔄 Live sync (recommended)</div>'
+  +'<div style="font-size:13px;color:var(--text-secondary);line-height:1.5;margin-bottom:10px">Subscribe once and iOS Calendar refreshes every few hours — new HomeBase events appear automatically, no re-download needed.</div>'
+  +'<button onclick="showSubscribeUrl()" style="width:100%;padding:12px 16px;border-radius:12px;background:#1C3A6B;border:none;color:#fff;font-size:14px;font-weight:600;cursor:pointer;font-family:inherit">🔗 Subscribe in iPhone Calendar</button>'
+  +'</div>'
+  +'<div style="padding:14px 16px;border-bottom:1px solid var(--row-border)">'
+  +'<div style="font-size:14px;font-weight:600;margin-bottom:6px">📥 One-time download</div>'
+  +'<div style="font-size:13px;color:var(--text-secondary);line-height:1.5">A snapshot file. Importing into Calendar gives a frozen copy — re-download to get new events.</div>'
   +'</div>'
   +'<button onclick="exportAllToCalendar()" style="width:100%;padding:14px 16px;color:var(--navy);font-size:15px;font-weight:600;text-align:left;border:none;background:none;cursor:pointer;font-family:inherit">📥 Download .ics Calendar File</button>'
   +'</div>'
@@ -6729,15 +6842,19 @@ function sPersonProfile(){
               const dStr=DAYSH[dDate.getDay()]+' '+dDate.getDate()+' '+MONTHS[dDate.getMonth()];
               dueLabel=`<div style="font-size:11px;font-weight:700;color:${isDueToday?'#FF3B30':color};margin-top:3px">${isDueToday?'🔴 Due today · '+dStr:'📅 Due '+dStr}</div>`;
             }
-            return `<div class="row" data-longpress="reminder:${r.id}" style="border-bottom:${i<personReminders.length-1?'1px solid var(--row-border)':'none'};${r.done?'opacity:0.55':''}">
-            <div class="cb ${r.done?'on':''}" onclick="tReminder('${r.id}',${!r.done})" style="${r.done?'background:'+color+';border:none':'border-color:'+color}">${r.done?ck():''}</div>
-            <div style="flex:1">
-              <div style="font-size:15px;font-weight:500;color:var(--text);${r.done?'text-decoration:line-through':''}">${r.text}</div>
-              ${dueLabel}
-              ${r.notes?`<div style="font-size:11px;color:var(--text-secondary);font-style:italic;margin-top:2px">${r.notes}</div>`:''}
-            </div>
-            <button onclick="dReminder('${r.id}')" style="color:#FF3B30;font-size:18px;opacity:0.5;border:none;background:none;cursor:pointer">×</button>
-          </div>`;
+            return `<div class="hb-swipe-wrap" data-swipe-id="reminder:${r.id}" style="${i<personReminders.length-1?'border-bottom:1px solid var(--row-border)':''}">
+              <div class="hb-swipe-bg hb-swipe-bg-done">✓ Done</div>
+              <div class="hb-swipe-bg hb-swipe-bg-delete">Delete</div>
+              <div class="row hb-swipe-row" data-longpress="reminder:${r.id}" style="border-bottom:none;${r.done?'opacity:0.55':''}">
+                <div class="cb ${r.done?'on':''}" onclick="tReminder('${r.id}',${!r.done})" style="${r.done?'background:'+color+';border:none':'border-color:'+color}">${r.done?ck():''}</div>
+                <div style="flex:1">
+                  <div style="font-size:15px;font-weight:500;color:var(--text);${r.done?'text-decoration:line-through':''}">${r.text}</div>
+                  ${dueLabel}
+                  ${r.notes?`<div style="font-size:11px;color:var(--text-secondary);font-style:italic;margin-top:2px">${r.notes}</div>`:''}
+                </div>
+                <button onclick="dReminder('${r.id}')" style="color:#FF3B30;font-size:18px;opacity:0.5;border:none;background:none;cursor:pointer">×</button>
+              </div>
+            </div>`;
           }).join('')}
           <button onclick="go('addReminder')" style="width:100%;padding:13px 16px;border-top:1px solid var(--row-border);background:none;border-left:none;border-right:none;border-bottom:none;color:${color};font-size:14px;font-weight:600;cursor:pointer;font-family:inherit;text-align:center">+ Add Reminder</button>
         </div>`;
@@ -9333,6 +9450,23 @@ window.exportAllToCalendar=function(){
   });
   downloadICS(allEvs,'homebase-'+(S.family?.name||'family').replace(/\s/g,'-').toLowerCase());
   notify('✅ Exported! Open the .ics file on your iPhone to add to Calendar','📆');
+};
+window.showSubscribeUrl=async function(){
+  if(!S.familyId){notify('No family loaded','⚠️');return;}
+  notify('Getting your subscribe link…','🔗');
+  try{
+    const fn=httpsCallable(functions,'getCalendarSubscribeUrl');
+    const result=await fn({familyId:S.familyId});
+    const url=result.data?.url;
+    if(!url){notify('Could not get URL','❌');return;}
+    try{await navigator.clipboard.writeText(url);}catch(e){}
+    const webcalUrl=url.replace(/^https?:\/\//,'webcal://');
+    notify('Link copied. Opening Calendar…','📅');
+    setTimeout(()=>{window.location.href=webcalUrl;},600);
+  }catch(ex){
+    console.error('[HomeBase] subscribe URL failed',ex);
+    notify('Could not generate link: '+(ex.message||ex),'❌');
+  }
 };
 window.toggleNightMode=function(){
   S.nightMode=!S.nightMode;
