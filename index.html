@@ -206,15 +206,51 @@ async function initMessaging(){
     return true;
   }catch(ex){console.error('[HomeBase] FCM init failed',ex);return false;}
 }
-// Listen for "open this URL" messages from the service worker (when user taps a notification)
+// Route a notification URL like "/?notif=event&id=ABC" to the right tab
+function handleNotifUrl(url){
+  try{
+    const qs=(url||'').split('?')[1]||'';
+    const params=new URLSearchParams(qs);
+    const n=params.get('notif');
+    if(!n) return;
+    const tabMap={
+      reminder:'today',
+      event:'events',
+      event_upcoming:'events',
+      playdate:'events',
+      handoff:'today',
+      morning:'today',
+      email_pending:'today'
+    };
+    const tab=tabMap[n];
+    if(tab && typeof setTab==='function'){setTab(tab);}
+  }catch(e){console.warn('[HomeBase] handleNotifUrl failed',e);}
+}
+
+// Warm tap: SW posts a message when the user taps a notification with the app open
 if('serviceWorker' in navigator){
   navigator.serviceWorker.addEventListener('message',(event)=>{
     if(event.data?.type==='NOTIFICATION_CLICK'&&event.data?.url){
-      // Could route to a specific screen here based on URL
-      console.log('[HomeBase] Notification tapped:',event.data.url);
+      handleNotifUrl(event.data.url);
     }
   });
 }
+
+// Cold start: app launched from a notification — parse ?notif=... and apply once render is ready
+(function applyColdStartNotif(){
+  try{
+    const params=new URLSearchParams(window.location.search);
+    const n=params.get('notif');
+    if(!n) return;
+    // Strip notif/id from URL so refresh doesn't re-trigger
+    params.delete('notif');params.delete('id');
+    const cleanSearch=params.toString();
+    const newUrl=window.location.pathname+(cleanSearch?'?'+cleanSearch:'')+window.location.hash;
+    window.history.replaceState({},'',newUrl);
+    // Defer until setTab + state are wired up (after sign-in render)
+    setTimeout(()=>handleNotifUrl('?notif='+n),1500);
+  }catch(e){}
+})();
 
 const NAVY='#1C3A6B';
 // === APP URL ===
