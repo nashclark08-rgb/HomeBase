@@ -9072,8 +9072,7 @@ window.useDeviceLocation=()=>{
   },()=>{notify('Could not get location. Please enter manually.','⚠️');});
 };
 window.requestNotifPerm=async function(){
-  // DIAGNOSTIC VERSION - shows alert popups at every step so we can see where it fails
-  const diag=(msg)=>{try{alert('🔔 '+msg);}catch(e){}};
+  const diag=(msg)=>{try{console.log('[HomeBase FCM] '+msg);}catch(e){}};
 
   diag('Step 1: Function called');
 
@@ -9177,7 +9176,7 @@ window.requestNotifPerm=async function(){
   }catch(ex){
     console.error('[HomeBase] FCM enable failed',ex);
     diag('ERROR at registration: '+(ex.message||ex)+'\n\nName: '+(ex.name||'')+'\nCode: '+(ex.code||''));
-    notify('Push setup failed - see alert above','⚠️');
+    notify('Push setup failed - check browser console for details','⚠️');
     render();
   }
 };
