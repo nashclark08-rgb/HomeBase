@@ -6672,16 +6672,30 @@ function sSettings(){
   // Sign out
   +'<div class="sh" style="margin-bottom:6px">📆 iOS Calendar Sync</div>'
   +'<div class="card" style="margin-bottom:12px">'
-  +'<div style="padding:14px 16px;border-bottom:1px solid var(--row-border)">'
-  +'<div style="font-size:14px;font-weight:600;margin-bottom:6px">🔄 Live sync (recommended)</div>'
-  +'<div style="font-size:13px;color:var(--text-secondary);line-height:1.5;margin-bottom:10px">Subscribe once and iOS Calendar refreshes every few hours — new HomeBase events appear automatically, no re-download needed.</div>'
-  +'<button onclick="showSubscribeUrl()" style="width:100%;padding:12px 16px;border-radius:12px;background:#1C3A6B;border:none;color:#fff;font-size:14px;font-weight:600;cursor:pointer;font-family:inherit">🔗 Subscribe in iPhone Calendar</button>'
+  +'<div style="padding:14px 16px 10px">'
+  +'<div style="font-size:13px;color:var(--text-secondary);line-height:1.5">Each tap below adds a separate calendar to iOS, auto-refreshed every few hours. Colour-code and toggle them independently in the Calendar app.</div>'
   +'</div>'
-  +'<div style="padding:14px 16px;border-bottom:1px solid var(--row-border)">'
-  +'<div style="font-size:14px;font-weight:600;margin-bottom:6px">📥 One-time download</div>'
-  +'<div style="font-size:13px;color:var(--text-secondary);line-height:1.5">A snapshot file. Importing into Calendar gives a frozen copy — re-download to get new events.</div>'
-  +'</div>'
-  +'<button onclick="exportAllToCalendar()" style="width:100%;padding:14px 16px;color:var(--navy);font-size:15px;font-weight:600;text-align:left;border:none;background:none;cursor:pointer;font-family:inherit">📥 Download .ics Calendar File</button>'
+  +(()=>{
+    const adults=(typeof members==='function')?members():[];
+    const kids=Array.isArray(S.children)?S.children:[];
+    const people=[
+      {id:'',label:'Whole family',isFamily:true,color:NAVY},
+      ...adults.map(m=>({id:m.uid,label:m.name||'Adult',color:m.color||NAVY,photo:m.photoURL||null})),
+      ...kids.map(c=>({id:c.id,label:c.name||'Child',color:c.color||NAVY,photo:c.photoURL||null}))
+    ];
+    return people.map((p,i)=>{
+      const last=i===people.length-1;
+      const safeId=String(p.id).replace(/'/g,"\\'");
+      const avatar=p.isFamily
+        ?'<div style="width:34px;height:34px;border-radius:17px;background:'+NAVY+';display:flex;align-items:center;justify-content:center;font-size:16px;flex-shrink:0;color:#fff">👪</div>'
+        :av(p.label,p.color,34,p.photo);
+      return '<div class="row" style="border-bottom:'+(last?'none':'1px solid var(--row-border)')+';padding:12px 16px;gap:12px">'
+        +avatar
+        +'<div style="flex:1;font-size:15px;font-weight:500;color:var(--text);min-width:0;overflow:hidden;text-overflow:ellipsis;white-space:nowrap">'+p.label+'</div>'
+        +'<button onclick="showSubscribeUrl(\''+safeId+'\')" style="padding:8px 12px;border-radius:10px;background:var(--navy);border:none;color:#fff;font-size:12px;font-weight:700;cursor:pointer;font-family:inherit;flex-shrink:0">+ Subscribe</button>'
+        +'</div>';
+    }).join('');
+  })()
   +'</div>'
   +'<div class="sh" style="margin-bottom:6px">🌙 Appearance</div>'
   +'<div class="card" style="margin-bottom:12px">'
@@ -9451,12 +9465,14 @@ window.exportAllToCalendar=function(){
   downloadICS(allEvs,'homebase-'+(S.family?.name||'family').replace(/\s/g,'-').toLowerCase());
   notify('✅ Exported! Open the .ics file on your iPhone to add to Calendar','📆');
 };
-window.showSubscribeUrl=async function(){
+window.showSubscribeUrl=async function(personId){
   if(!S.familyId){notify('No family loaded','⚠️');return;}
   notify('Getting your subscribe link…','🔗');
   try{
     const fn=httpsCallable(functions,'getCalendarSubscribeUrl');
-    const result=await fn({familyId:S.familyId});
+    const payload={familyId:S.familyId};
+    if(personId)payload.person=personId;
+    const result=await fn(payload);
     const url=result.data?.url;
     if(!url){notify('Could not get URL','❌');return;}
     try{await navigator.clipboard.writeText(url);}catch(e){}
