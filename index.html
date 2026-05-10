@@ -2565,7 +2565,7 @@ function sCalendar(){
     <div class="scroll-view" style="padding:14px 0 80px">
       ${(()=>{
         const chip=(active,onclick,label)=>'<button onclick="'+onclick+'" style="padding:6px 12px;border-radius:14px;border:'+(active?'none':'1px solid var(--border)')+';background:'+(active?'var(--navy)':'var(--card)')+';color:'+(active?'#fff':'var(--text)')+';font-size:12px;font-weight:600;cursor:pointer;font-family:inherit;flex-shrink:0;white-space:nowrap">'+label+'</button>';
-        const adults=members();
+        const adults=coreMembers();
         const kids=Array.isArray(S.children)?S.children:[];
         const peopleChips=chip(!S.calFilterPerson,"S.calFilterPerson='';render()","All people")
           +adults.map(m=>chip(S.calFilterPerson===m.uid,"S.calFilterPerson='"+m.uid+"';render()",(m.name||'Adult').split(' ')[0])).join('')
