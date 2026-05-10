@@ -758,65 +758,12 @@ function getViewDate(){
   return d;
 }
 function getViewDateStr(){return fd(getViewDate());}
-function genICS(events){
-  // Generate iCalendar file content
-  const fmt=d=>{
-    const pad=n=>String(n).padStart(2,'0');
-    return d.getFullYear()+pad(d.getMonth()+1)+pad(d.getDate())+'T'+pad(d.getHours())+pad(d.getMinutes())+'00';
-  };
-  let ics='BEGIN:VCALENDAR\r\nVERSION:2.0\r\nPRODID:-//HomeBase//EN\r\nCALSCALE:GREGORIAN\r\n';
-  events.forEach(ev=>{
-    if(!ev.date&&!ev.startDate)return;
-    const d=ev.date||ev.startDate;
-    const start=new Date(d+'T09:00');
-    const end=new Date(d+'T10:00');
-    // Try to parse time
-    if(ev.time){
-      const tm=ev.time.match(/(\d{1,2})[:\.]?(\d{0,2})\s*(am|pm)?/i);
-      if(tm){
-        let h=parseInt(tm[1]);
-        if(tm[3]&&tm[3].toLowerCase()==='pm'&&h<12)h+=12;
-        start.setHours(h,parseInt(tm[2]||'0'));
-        end.setHours(h+1,parseInt(tm[2]||'0'));
-      }
-    }
-    ics+='BEGIN:VEVENT\r\n';
-    ics+='UID:hb-'+(ev.id||Date.now())+'@homebase\r\n';
-    ics+='DTSTAMP:'+fmt(new Date())+'\r\n';
-    ics+='DTSTART:'+fmt(start)+'\r\n';
-    ics+='DTEND:'+fmt(end)+'\r\n';
-    ics+='SUMMARY:'+(ev.emoji||'')+(ev.emoji?' ':'')+(ev.title||'Event').replace(/[\n\r]/g,' ')+'\r\n';
-    if(ev.location)ics+='LOCATION:'+ev.location.replace(/[\n\r]/g,' ')+'\r\n';
-    let desc=[];
-    if(ev.dropoff)desc.push('Drop-off: '+ev.dropoff);
-    if(ev.pickup)desc.push('Pick-up: '+ev.pickup);
-    if(ev.notes)desc.push(ev.notes);
-    if(desc.length)ics+='DESCRIPTION:'+desc.join(' \\n ').replace(/[\n\r]/g,' ')+'\r\n';
-    if(ev.freq==='weekly'){
-      const days=Object.keys(ev.days||{}).filter(k=>ev.days[k]).map(d=>d.toUpperCase().slice(0,2)).join(',');
-      if(days)ics+='RRULE:FREQ=WEEKLY;BYDAY='+days+(ev.endDate?';UNTIL='+fmt(new Date(ev.endDate+'T23:59')):'')+'\r\n';
-    }else if(ev.freq==='fortnightly'){
-      const days=Object.keys(ev.days||{}).filter(k=>ev.days[k]).map(d=>d.toUpperCase().slice(0,2)).join(',');
-      if(days)ics+='RRULE:FREQ=WEEKLY;INTERVAL=2;BYDAY='+days+(ev.endDate?';UNTIL='+fmt(new Date(ev.endDate+'T23:59')):'')+'\r\n';
-    }
-    ics+='END:VEVENT\r\n';
-  });
-  ics+='END:VCALENDAR\r\n';
-  return ics;
-}
-function downloadICS(events,filename){
-  const ics=genICS(events);
-  const blob=new Blob([ics],{type:'text/calendar;charset=utf-8'});
-  const url=URL.createObjectURL(blob);
-  const a=document.createElement('a');
-  a.href=url;
-  a.download=(filename||'homebase-events')+'.ics';
-  document.body.appendChild(a);
-  a.click();
-  setTimeout(()=>{document.body.removeChild(a);URL.revokeObjectURL(url);},100);
-}
-
 function members(){return Object.entries(S.family&&S.family.members||{}).map(([uid,m])=>({uid,name:m.name,role:m.role,color:m.color||NAVY,relationship:m.relationship||'',photoURL:m.photoURL||'',phone:m.phone||'',email:m.email||'',personalCode:m.personalCode||'',dob:m.dob||'',celebrateMothersDay:!!m.celebrateMothersDay,celebrateFathersDay:!!m.celebrateFathersDay}));}
+// Adults who count as "core" family — excludes Logistics-role adults
+// (e.g. a grandparent/carer who only does drop-offs/pick-ups, not part of
+// notifications, family-wide reminders, calendar subscriptions, etc.)
+function coreMembers(){return members().filter(m=>m.role!=='Logistics');}
+function isLogisticsRole(m){return m&&m.role==='Logistics';}
 
 async function fw(){
   if(S.weather)return;
@@ -1527,6 +1474,7 @@ function sEditCaregiver(){
         <select class="input" id="ec-role">
           ${['Member','Admin','Logistics','View'].map(r=>`<option value="${r}" ${m.role===r?'selected':''}>${r}</option>`).join('')}
         </select>
+        <div style="font-size:12px;color:#8E8E93;margin-top:-6px;padding-left:4px;line-height:1.4">🚗 <strong>Logistics</strong> = drop-off/pick-up only. They won't get push notifications, family-wide reminders, or appear in calendar subscriptions.</div>
         ${isMe?`<input class="input" id="ec-fname" type="text" placeholder="Family name" value="${S.family?.name||''}"/>
         <div style="font-size:12px;color:#8E8E93;margin-top:-6px;padding-left:4px">Family name (only you can edit)</div>`:''}
         <div style="font-size:13px;color:#8E8E93;margin-top:4px">🎂 Birthday (optional)</div>
@@ -2073,7 +2021,7 @@ function sToday(){
                   <div style="font-size:15px;color:var(--text);font-weight:500;${r.done?'text-decoration:line-through':''}">${r.text}</div>
                   ${dueLabel}
                   ${(()=>{
-                    const list=targets.length>0?targets:[...members().map(m=>({name:m.name||'Adult',color:m.color||NAVY,photo:m.photoURL})),...S.children.map(c=>({name:c.name||'Child',color:c.color||NAVY,photo:c.photoURL}))];
+                    const list=targets.length>0?targets:[...coreMembers().map(m=>({name:m.name||'Adult',color:m.color||NAVY,photo:m.photoURL})),...S.children.map(c=>({name:c.name||'Child',color:c.color||NAVY,photo:c.photoURL}))];
                     if(list.length===0)return '';
                     const labelCol=targets.length>0?tcol:'var(--text-secondary)';
                     return `<div style="display:flex;align-items:center;gap:4px;margin-top:3px;flex-wrap:wrap">${list.slice(0,4).map(t=>av(t.name,t.color,18,t.photo)).join('')}<span style="font-size:11px;color:${labelCol};font-weight:600;margin-left:2px">${list.map(t=>t.name.split(' ')[0]).join(', ')}${list.length>4?' +'+(list.length-4):''}</span></div>`;
@@ -2415,6 +2363,43 @@ function sCalendar(){
     : allWDates;
   const sel=S.calDate||todayStr;
 
+  // Helper: synthetic birthday events for a given date, derived from each family
+  // member's `dob`. Treated as 'social' category, owned by the birthday person.
+  function birthdayEventsOnDate(ds){
+    const target=new Date(ds+'T12:00');
+    const tMonth=target.getMonth();
+    const tDay=target.getDate();
+    const tYear=target.getFullYear();
+    const all=[
+      ...S.children.map(c=>({id:c.id,name:c.name,dob:c.dob,kind:'child'})),
+      ...coreMembers().map(m=>({id:m.uid,name:m.name,dob:m.dob,kind:'adult'}))
+    ];
+    const out=[];
+    all.forEach(p=>{
+      if(!p.dob)return;
+      const parts=String(p.dob).split('-');
+      if(parts.length!==3)return;
+      const m=parseInt(parts[1],10)-1;
+      const d=parseInt(parts[2],10);
+      if(m!==tMonth||d!==tDay)return;
+      const dobYear=parseInt(parts[0],10);
+      const age=isNaN(dobYear)?null:(tYear-dobYear);
+      const firstName=String(p.name||'').split(' ')[0]||'';
+      const ev={
+        id:'bday-virtual-'+p.id+'-'+tYear,
+        title:firstName+"'s birthday"+(age?' · turning '+age:''),
+        emoji:'🎂',
+        time:'',
+        date:ds,
+        category:'social',
+        _isBirthday:true
+      };
+      if(p.kind==='child')ev.childId=p.id;else ev.adultUid=p.id;
+      out.push(ev);
+    });
+    return out;
+  }
+
   // Helper: get events for a specific date, respecting active filters (person + category)
   function eventsOnDate(ds){
     let evs=S.events.filter(ev=>{
@@ -2427,6 +2412,8 @@ function sCalendar(){
       const dn=DAYSH[d.getDay()];
       return ev.days&&ev.days[dn];
     });
+    // Mix in synthetic birthdays so they appear alongside real events
+    evs=evs.concat(birthdayEventsOnDate(ds));
     if(S.calFilterPerson){
       const pid=S.calFilterPerson;
       evs=evs.filter(ev=>{
@@ -2453,7 +2440,7 @@ function sCalendar(){
   // (with all names listed) instead of being duplicated under each person.
   // Family-wide events (no specific tags) are treated as "everyone".
   function groupEventsByParticipants(events){
-    const allMemberIds=[...S.children.map(c=>c.id),...members().map(m=>m.uid)];
+    const allMemberIds=[...S.children.map(c=>c.id),...coreMembers().map(m=>m.uid)];
     const groups=new Map();
     events.forEach(ev=>{
       let participants=[];
@@ -2494,7 +2481,7 @@ function sCalendar(){
     const primary=people[0];
     const col=isMulti?NAVY:(primary.color||NAVY);
     const firstNames=people.map(p=>p.name.split(' ')[0]);
-    const allFamily=people.length===([...S.children,...members()].length);
+    const allFamily=people.length===([...S.children,...coreMembers()].length);
     const headerText=allFamily?'WHOLE FAMILY':(firstNames.length<=3?firstNames.join(' & '):firstNames.slice(0,2).join(', ')+' +'+(firstNames.length-2)).toUpperCase();
     const profileParams=primary.isAdult?`{kind:'adult',uid:'${primary.id}'}`:`{kind:'child',childId:'${primary.id}'}`;
 
@@ -6570,13 +6557,17 @@ function sFamily(){
           const isMe=m.uid===S.user?.uid;
           const rel=m.relationship||'';
           const hasCode=!!m.personalCode;
+          const isLog=isLogisticsRole(m);
+          const roleBadge=isLog
+            ?'<span title="Drop-off / pick-up only — no notifications, calendar, or family-wide reminders" style="font-size:11px;font-weight:700;padding:2px 10px;border-radius:20px;background:#FF950018;color:#C76A00;display:inline-flex;align-items:center;gap:3px">🚗 Logistics only</span>'
+            :'<span style="font-size:11px;font-weight:700;padding:2px 10px;border-radius:20px;background:#1C3A6B18;color:#1C3A6B">'+m.role+'</span>';
           return `<div style="display:flex;align-items:center;gap:12px;padding:13px 16px;border-bottom:1px solid #F2F2F7">
             <div onclick="go('personProfile',{kind:'adult',uid:'${m.uid}',fromFamily:true})" style="display:flex;align-items:center;gap:12px;flex:1;cursor:pointer">
               ${av(m.name,m.color,48,m.photoURL)}
               <div style="flex:1">
                 <div style="font-size:17px;font-weight:600">${m.name}${isMe?' (You)':''}</div>
                 <div style="display:flex;gap:6px;margin-top:2px;flex-wrap:wrap;align-items:center">
-                  <span style="font-size:11px;font-weight:700;padding:2px 10px;border-radius:20px;background:#1C3A6B18;color:#1C3A6B">${m.role}</span>
+                  ${roleBadge}
                   ${rel?`<span style="font-size:11px;font-weight:600;padding:2px 10px;border-radius:20px;background:#F2F2F7;color:#8E8E93">${rel}</span>`:''}
                   ${!isMe?`<span style="font-size:11px;font-weight:600;padding:2px 8px;border-radius:20px;background:${hasCode?'#34C75920':'#FF950020'};color:${hasCode?'#1F8E3F':'#C76A00'}">${hasCode?'🔑 Code ready':'Tap to invite'}</span>`:''}
                 </div>
@@ -6726,7 +6717,7 @@ function sSettings(){
   +'<div style="font-size:13px;color:var(--text-secondary);line-height:1.5">Each tap below adds a separate calendar to iOS, auto-refreshed every few hours. Colour-code and toggle them independently in the Calendar app.</div>'
   +'</div>'
   +(()=>{
-    const adults=(typeof members==='function')?members():[];
+    const adults=(typeof coreMembers==='function')?coreMembers():[];
     const kids=Array.isArray(S.children)?S.children:[];
     const people=[
       {id:'',label:'Whole family',isFamily:true,color:NAVY},
@@ -9495,26 +9486,6 @@ window.hLeaveFamily=async function(){
     setTimeout(function(){window.location.reload();},1200);
   }catch(ex){alert('Error: '+ex.message);}
 };
-window.exportAllToCalendar=function(){
-  if(!S.events||S.events.length===0){notify('No events to export','📆');return;}
-  // Include playdates as events too
-  const allEvs=[...S.events];
-  (S.playdates||[]).forEach(pd=>{
-    if(pd.date)allEvs.push({
-      id:pd.id,
-      title:(pd.title||'Play Date'),
-      emoji:{playdate:'🎈',sleepover:'🛏',birthday:'🎂'}[pd.type]||'🎉',
-      date:pd.date,
-      time:pd.time,
-      location:pd.location,
-      notes:pd.notes,
-      dropoff:pd.dropoff,
-      pickup:pd.pickup
-    });
-  });
-  downloadICS(allEvs,'homebase-'+(S.family?.name||'family').replace(/\s/g,'-').toLowerCase());
-  notify('✅ Exported! Open the .ics file on your iPhone to add to Calendar','📆');
-};
 window.showSubscribeUrl=async function(personId){
   if(!S.familyId){notify('No family loaded','⚠️');return;}
   notify('Getting your subscribe link…','🔗');
@@ -11000,7 +10971,7 @@ onAuthStateChanged(auth,async user=>{
   },150);
   S.user=user;
   if(user){
-    try{const ud=await getDoc(doc(db,'users',user.uid));if(ud.exists()){const d=ud.data();if(d.familyId){S.familyId=d.familyId;subscribe();}if(d.notifTime)S.notifTime=d.notifTime;}}
+    try{const ud=await getDoc(doc(db,'users',user.uid));if(ud.exists()){const d=ud.data();if(d.familyId){S.familyId=d.familyId;subscribe();}if(d.notifTime){S.notifTime=d.notifTime;}else{await setDoc(doc(db,'users',user.uid),{notifTime:'07:00'},{merge:true});S.notifTime='07:00';}}}
     catch(ex){}
     // If the user is signed in, has no family, AND we have a pending invite from the URL — auto-join
     if(!S.familyId&&S.pendingInvite){
