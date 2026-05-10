@@ -395,6 +395,10 @@ function findUpcomingClashes(daysAhead){
 
     // Find all events occurring on this date
     const eventsOnDate=S.events.filter(ev=>{
+      // Skip occurrences that have been individually skipped (via the clash flow
+      // or the recurring-delete sheet). Without this, skipped clashes reappear
+      // because the recurring event still matches the day filter below.
+      if(Array.isArray(ev.skipDates)&&ev.skipDates.includes(dateStr))return false;
       if(!ev.freq||ev.freq==='once')return ev.date===dateStr;
       // Recurring: check days + start/end window
       if(!ev.days||!ev.days[dayName])return false;
@@ -2503,12 +2507,12 @@ function sCalendar(){
                   ${person?av(person.name,col,22,person.photoURL):''}
                   <div style="font-size:12px;font-weight:700;color:${col}">${personName}</div>
                 </div>
-                ${pEvs.map((ev,i)=>`<div onclick="openEventModal('${ev.id}')" style="display:flex;align-items:center;gap:8px;padding:5px 0;cursor:pointer;${i<pEvs.length-1?'border-bottom:1px solid var(--row-border)':''}">
+                ${pEvs.map((ev,i)=>`<div onclick="openEventModal('${ev.id}')" style="display:flex;align-items:center;gap:8px;padding:8px 4px;cursor:pointer;${i<pEvs.length-1?'border-bottom:1px solid var(--row-border)':''}">
                   <span style="font-size:13px;font-weight:600;color:var(--text-secondary);min-width:60px">${ev.time||`<span style="font-size:11px">All day</span>`}</span>
                   <span style="font-size:14px">${ev.emoji||'📅'}</span>
                   <span style="flex:1;font-size:14px;color:var(--text);min-width:0;overflow:hidden;text-overflow:ellipsis;white-space:nowrap">${ev.title}</span>
                   ${ev.location?`<span style="font-size:11px;color:var(--text-secondary)">📍</span>`:''}
-                  <span style="color:var(--text-secondary);font-size:16px;opacity:0.55;flex-shrink:0;font-weight:300">›</span>
+                  <span style="color:${col};font-size:18px;flex-shrink:0;font-weight:400;padding-left:4px">›</span>
                 </div>`).join('')}
               </div>`;
             }).join('')}
