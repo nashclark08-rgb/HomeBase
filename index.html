@@ -2302,6 +2302,7 @@ function sAddEvent(){
               {id:'sport-games',label:'🏆 Sport Games'},
               {id:'sport-training',label:'🏃 Sport Training'},
               {id:'school',label:'🏫 School'},
+              {id:'school-extra',label:'🎒 After school'},
               {id:'music',label:'🎵 Music'},
               {id:'work',label:'💼 Work'},
               {id:'social',label:'🎉 Social'},
@@ -2884,7 +2885,7 @@ function sEvents(){
             </div>
           `}
         </div>
-        <div class="fab"><button class="fab-btn" style="background:#1C3A6B" onclick="go('addEvent')">+</button></div>`;
+        <div class="fab"><button class="fab-btn" style="background:#1C3A6B" onclick="quickAddTypedEvent('${catId}')">+</button></div>`;
     }
 
     // Past category: show past one-offs
@@ -2983,7 +2984,7 @@ function sEvents(){
       <div class="scroll-view" style="padding:14px 16px 100px">
         ${filtered.length===0?`<div style="text-align:center;padding:40px 20px;color:var(--text-secondary);font-size:14px">No ${cat.label.toLowerCase()} events yet.</div>`:`<div class="card">${filtered.map((ev,i)=>eventRow(ev,i,filtered.length)).join('')}</div>`}
       </div>
-      <div class="fab"><button class="fab-btn" style="background:#1C3A6B" onclick="go('addEvent')">+</button></div>`;
+      <div class="fab"><button class="fab-btn" style="background:#1C3A6B" onclick="quickAddTypedEvent('${catId}')">+</button></div>`;
   }
 
   // ========== VIEW: TILES (default home) ==========
@@ -5962,14 +5963,16 @@ function sPlayDateType(tabBar,type){
     <div class="fab"><button class="fab-btn" style="background:var(--navy)" onclick="quickAddPlayDate('${type}')">+</button></div>`;
 }
 
-// Quick-add a typed event (Work / School Event / Subject) — pre-sets category
+// Quick-add an event with category pre-set. Looks up emoji from EV_CATEGORIES so adding a new
+// category in one place automatically picks the right default emoji here.
 window.quickAddTypedEvent=function(cat){
   S.ef=S.ef||{};
   S.ef.category=cat;
   S.ef.freq='once';
   S.ef.days={Mon:false,Tue:false,Wed:false,Thu:false,Fri:false,Sat:false,Sun:false};
   S.ef.packItems=[];
-  S.ef.emoji=cat==='work'?'💼':cat==='school-event'?'🏫':cat==='school-subject'?'📚':'📅';
+  const meta=EV_CATEGORIES.find(c=>c.id===cat);
+  S.ef.emoji=meta?meta.emoji:(cat==='school-event'?'🏫':cat==='school-subject'?'📚':'📅');
   S.ef.participantIds=[];
   go('addEvent');
 };
