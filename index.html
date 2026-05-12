@@ -1858,16 +1858,16 @@ function sToday(){
           const db=b.date||'9999-12-31';
           return da.localeCompare(db);
         });
-        if(dueReminders.length===0)return `<div style="display:flex;align-items:center;gap:8px;margin-bottom:8px">
-          <div class="sh" style="padding:0;flex-shrink:0">⏰ Reminders</div>
-          <input id="qrem-input" type="text" placeholder="Add a reminder for the family…" onkeydown="if(event.key==='Enter')quickAddReminder()" style="flex:1;min-width:0;padding:8px 12px;border-radius:9px;border:1px solid var(--border);background:var(--card);color:var(--text);font-family:inherit;font-size:13px;box-sizing:border-box"/>
-          <button onclick="quickAddReminder()" style="padding:8px 14px;border-radius:9px;background:var(--navy);border:none;color:#fff;font-size:13px;font-weight:600;cursor:pointer;font-family:inherit;flex-shrink:0">+ Add</button>
+        // Reminders header: simple label + Add button on one row. Tap the button
+        // to go to the full Add Reminder screen — which handles dates, people,
+        // notes, and recurrence properly. The header always renders, even when
+        // there are no due reminders, so a quick add is always one tap away.
+        const remHeader=`<div style="display:flex;align-items:center;gap:8px;margin-bottom:6px;padding:0 2px">
+          <div class="sh" style="padding:0;flex:1">⏰ Reminders</div>
+          <button onclick="go('addReminder')" style="padding:5px 12px;border-radius:8px;background:var(--navy);border:none;color:#fff;font-size:12px;font-weight:700;cursor:pointer;font-family:inherit">+ Add</button>
         </div>`;
-        return `<div style="display:flex;align-items:center;gap:8px;margin-bottom:8px">
-          <div class="sh" style="padding:0;flex-shrink:0">⏰ Reminders</div>
-          <input id="qrem-input" type="text" placeholder="Add a reminder for the family…" onkeydown="if(event.key==='Enter')quickAddReminder()" style="flex:1;min-width:0;padding:8px 12px;border-radius:9px;border:1px solid var(--border);background:var(--card);color:var(--text);font-family:inherit;font-size:13px;box-sizing:border-box"/>
-          <button onclick="quickAddReminder()" style="padding:8px 14px;border-radius:9px;background:var(--navy);border:none;color:#fff;font-size:13px;font-weight:600;cursor:pointer;font-family:inherit;flex-shrink:0">+ Add</button>
-        </div>
+        if(dueReminders.length===0)return remHeader+`<div class="card" style="margin-bottom:14px;padding:14px;text-align:center;color:var(--text-secondary);font-size:13px">No reminders due.</div>`;
+        return remHeader+`
         <div class="card" style="margin-bottom:14px">
           ${dueReminders.map((r,i)=>{
             // Virtual rows (birthdays, parent days) render differently — no checkbox, no delete X
@@ -8576,33 +8576,6 @@ window.quickAddGroc=async function(){
     // re-focus so they can keep typing more items
     setTimeout(()=>{const i=document.getElementById('todayGrocInput');if(i)i.focus();},50);
   }catch(ex){notify('Error: '+ex.message,'❌');}
-};
-// Quick-add a reminder from the inline header bar on Today.
-// Mirrors quickAddGroc's pattern. Defaults to today's date with mode='ondate'
-// so the new reminder shows up immediately in the day's Reminders card.
-// User can later tap the reminder to edit notes, change date, attach people.
-window.quickAddReminder=async function(){
-  const input=document.getElementById('qrem-input');
-  if(!input)return;
-  const text=input.value.trim();
-  if(!text){input.focus();return;}
-  try{
-    await fadd(['reminders'],{
-      text,
-      date:fd(new Date()),
-      mode:'ondate',
-      forKeys:[],
-      childId:null,
-      adultUid:null,
-      notes:'',
-      done:false,
-      createdBy:S.user?.uid||''
-    });
-    input.value='';
-    notify('Reminder added ⏰');
-    // re-focus so they can keep adding
-    setTimeout(()=>{const i=document.getElementById('qrem-input');if(i)i.focus();},50);
-  }catch(ex){notify('Error: '+(ex.message||ex),'❌');}
 };
 window._pendingUndo=null;
 window.dGroc=async id=>{
