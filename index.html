@@ -4526,7 +4526,7 @@ window.handleTimetablePdfUpload=async function(input){
       return;
     }
     S.timetablePreview={
-      subjects:subjects.map(s=>({...s,id:Math.random().toString(36).slice(2,9),_selected:false})),
+      subjects:subjects.map(s=>({...s,id:Math.random().toString(36).slice(2,9),slots:(Array.isArray(s.slots)?s.slots:[]).map(sl=>({...sl,_selected:false}))})),
       source:file.name,
       sourceKind:'pdf'
     };
@@ -4583,7 +4583,7 @@ window.handleTimetableImageUpload=async function(input){
       return;
     }
     S.timetablePreview={
-      subjects:subjects.map(s=>({...s,id:Math.random().toString(36).slice(2,9),_selected:false})),
+      subjects:subjects.map(s=>({...s,id:Math.random().toString(36).slice(2,9),slots:(Array.isArray(s.slots)?s.slots:[]).map(sl=>({...sl,_selected:false}))})),
       source:file.name+' (image)',
       sourceKind:'image'
     };
@@ -4600,6 +4600,9 @@ window.handleTimetableImageUpload=async function(input){
 };
 
 // === PREVIEW & SUBJECT PICKER ===
+// Per-slot opt-in: a subject like "PE" can occur as Practical (need uniform)
+// and Theory (don't). Parents tick individual slots, not the whole subject.
+// Subject-level master tick selects/deselects all slots in that subject.
 function sTimetablePreview(){
   const data=S.timetablePreview;
   const ti=S.timetableImport;
@@ -4618,31 +4621,70 @@ function sTimetablePreview(){
   const child=(S.children||[]).find(c=>c.id===ti.childId);
   const childName=child?child.name.split(' ')[0]:'Child';
   const childColor=child?.color||NAVY;
-  const selectedCount=data.subjects.filter(s=>s._selected).length;
-  const totalSlots=data.subjects.filter(s=>s._selected).reduce((sum,s)=>sum+(Array.isArray(s.slots)?s.slots.length:0),0);
+  // Count selected slots across all subjects (the real unit of import).
+  const allSlots=data.subjects.flatMap(s=>Array.isArray(s.slots)?s.slots:[]);
+  const selectedSlotCount=allSlots.filter(sl=>sl._selected).length;
 
   // Common subjects that parents typically WANT to track (presented as suggestions)
-  // Used to highlight rows for opt-in even if AI didn't pre-flag them
   const TRACK_SUGGESTIONS=['pe','phys ed','physical education','sport','library','music','choir','band','swimming','assembly','chapel','art','drama','french','language','german','japanese','spanish'];
   const looksTrackable=name=>{
     const lower=(name||'').toLowerCase();
     return TRACK_SUGGESTIONS.some(t=>lower.includes(t));
   };
 
-  const subjectRow=s=>{
+  // Build the visual card for one subject. Always shows each slot as its own
+  // tickable row — single-slot subjects naturally render with one row.
+  const subjectCard=s=>{
     const slots=Array.isArray(s.slots)?s.slots:[];
-    const slotSummary=slots.length===0?'No times':slots.slice(0,3).map(sl=>{
-      const wk=sl.week?' ('+sl.week+')':'';
-      return (sl.day||'?')+' '+(sl.time||'?')+wk;
-    }).join(' · ')+(slots.length>3?` +${slots.length-3} more`:'');
-    const tip=looksTrackable(s.name)?'⭐ Often worth tracking':'';
-    return `<div onclick="toggleTimetableSubject('${s.id}')" style="display:flex;align-items:center;gap:12px;padding:14px;border-bottom:1px solid var(--row-border);cursor:pointer;background:${s._selected?childColor+'12':'transparent'}">
-      <div class="cb" style="${s._selected?`background:${childColor};border:none`:`border-color:${childColor}55`};flex-shrink:0">${s._selected?'<span style="color:#fff;font-size:14px">✓</span>':''}</div>
+    const selectedCount=slots.filter(sl=>sl._selected).length;
+    const allSelected=slots.length>0&&selectedCount===slots.length;
+    const someSelected=selectedCount>0&&!allSelected;
+    const tip=looksTrackable(s.name)?'<span style="font-size:10px;color:'+childColor+';font-weight:700;letter-spacing:0.3px">⭐ OFTEN WORTH TRACKING</span>':'';
+    // Master checkbox state: empty, partial (dash), or full (tick)
+    const masterIcon=allSelected
+      ?'<span style="color:#fff;font-size:14px">✓</span>'
+      :someSelected
+        ?'<span style="color:#fff;font-size:16px;font-weight:800;line-height:0">−</span>'
+        :'';
+    const masterBg=allSelected?childColor:someSelected?childColor+'AA':'transparent';
+    const masterBorder=allSelected||someSelected?'transparent':childColor+'55';
+
+    // Header row: subject name + master tick. Tap → toggle all slots in this subject.
+    const header=`<div onclick="toggleTimetableSubjectMaster('${s.id}')" style="display:flex;align-items:center;gap:12px;padding:13px 14px;cursor:pointer;background:${someSelected||allSelected?childColor+'08':'var(--bg)'};border-bottom:1px solid var(--row-border)">
+      <div class="cb" style="background:${masterBg};border-color:${masterBorder};flex-shrink:0">${masterIcon}</div>
       <div style="flex:1;min-width:0">
-        <div style="font-size:15px;font-weight:700;color:var(--text);line-height:1.25">${s.name||'Subject'}</div>
-        <div style="font-size:11px;color:var(--text-secondary);margin-top:2px;line-height:1.4">${slotSummary}</div>
-        ${tip?`<div style="font-size:10px;color:${childColor};font-weight:600;margin-top:3px">${tip}</div>`:''}
+        <div style="display:flex;align-items:center;gap:8px;flex-wrap:wrap">
+          <div style="font-size:15px;font-weight:800;color:var(--text);line-height:1.2">${s.name||'Subject'}</div>
+          <div style="font-size:11px;color:var(--text-secondary);font-weight:600">${slots.length} period${slots.length===1?'':'s'}</div>
+        </div>
+        ${tip?'<div style="margin-top:3px">'+tip+'</div>':''}
       </div>
+    </div>`;
+
+    // Slot rows — one per period. Always indented to show grouping.
+    const slotRows=slots.map((sl,idx)=>{
+      const on=!!sl._selected;
+      const dayStr=sl.day||'?';
+      const timeStr=sl.time||'';
+      const wkStr=ti.cycle==='fortnightly'&&sl.week?'Wk '+sl.week:'';
+      const labelStr=(sl.label||'').trim();
+      // Parts shown on the slot row: day · time · week · label
+      const parts=[dayStr];
+      if(timeStr)parts.push(timeStr);
+      if(wkStr)parts.push(wkStr);
+      const meta=parts.join(' · ');
+      return `<div onclick="toggleTimetableSlot('${s.id}',${idx})" style="display:flex;align-items:center;gap:12px;padding:11px 14px 11px 30px;cursor:pointer;background:${on?childColor+'12':'transparent'};${idx<slots.length-1?'border-bottom:1px solid var(--row-border)':''}">
+        <div class="cb" style="${on?'background:'+childColor+';border:none':'border-color:'+childColor+'55'};flex-shrink:0;width:22px;height:22px;border-radius:6px">${on?'<span style="color:#fff;font-size:12px">✓</span>':''}</div>
+        <div style="flex:1;min-width:0">
+          <div style="font-size:14px;font-weight:600;color:var(--text);line-height:1.2">${meta}</div>
+          ${labelStr?`<div style="font-size:11px;color:${childColor};font-weight:700;margin-top:2px">${labelStr}</div>`:''}
+        </div>
+      </div>`;
+    }).join('');
+
+    return `<div style="background:var(--card);border-radius:12px;overflow:hidden;border:1px solid var(--row-border);margin-bottom:10px">
+      ${header}
+      ${slotRows}
     </div>`;
   };
 
@@ -4658,31 +4700,40 @@ function sTimetablePreview(){
     <div style="min-height:100%;display:flex;flex-direction:column;background:var(--bg)">
       <div style="background:var(--card);padding:14px 16px;display:flex;align-items:center;border-bottom:1px solid var(--row-border);position:sticky;top:0;z-index:10">
         <button class="back-btn" onclick="back()">${bk()} Back</button>
-        <div style="flex:1;text-align:center;font-size:17px;font-weight:600">Pick subjects</div>
+        <div style="flex:1;text-align:center;font-size:17px;font-weight:600">Pick periods</div>
         <div style="width:60px"></div>
       </div>
       <div style="background:var(--card);padding:14px 16px;border-bottom:1px solid var(--row-border)">
-        <div style="font-size:13px;color:var(--text-secondary);line-height:1.5">Found <strong>${data.subjects.length}</strong> subject${data.subjects.length===1?'':'s'} for <strong>${childName}</strong>'s ${ti.cycle} timetable. Tap the ones you want to track in HomeBase — typically PE, Library, Music, anything needing prep.</div>
+        <div style="font-size:13px;color:var(--text-secondary);line-height:1.5">Found <strong>${data.subjects.length}</strong> subject${data.subjects.length===1?'':'s'} (${allSlots.length} period${allSlots.length===1?'':'s'}) for <strong>${childName}</strong>'s ${ti.cycle} timetable. Tap individual periods — e.g. select PE Practical but skip PE Theory if there's no uniform needed.</div>
         <div style="margin-top:10px;display:flex;gap:8px">
           <button onclick="selectAllTimetableSuggested()" style="flex:1;padding:9px;border-radius:8px;background:var(--bg);border:1px solid var(--border);color:var(--text);font-size:12px;font-weight:600;cursor:pointer;font-family:inherit">⭐ Pick suggested</button>
           <button onclick="clearAllTimetable()" style="flex:1;padding:9px;border-radius:8px;background:var(--bg);border:1px solid var(--border);color:var(--text);font-size:12px;font-weight:600;cursor:pointer;font-family:inherit">Clear all</button>
         </div>
       </div>
-      <div class="scroll-view" style="padding:0 0 110px">
-        <div style="background:var(--card);margin:14px 16px;border-radius:12px;overflow:hidden;border:1px solid var(--row-border)">
-          ${sortedSubjects.map(subjectRow).join('')}
-        </div>
+      <div class="scroll-view" style="padding:14px 16px 110px">
+        ${sortedSubjects.map(subjectCard).join('')}
       </div>
       <div style="position:fixed;bottom:0;left:0;right:0;background:var(--card);border-top:1px solid var(--row-border);padding:12px 16px;padding-bottom:max(12px,env(safe-area-inset-bottom));z-index:20">
-        <button id="commit-timetable-btn" onclick="confirmTimetableImport()" ${selectedCount===0?'disabled':''} style="width:100%;padding:14px;border-radius:12px;background:${selectedCount===0?'#8E8E93':'var(--navy)'};border:none;color:#fff;font-size:15px;font-weight:700;cursor:${selectedCount===0?'not-allowed':'pointer'};font-family:inherit">${selectedCount===0?'Pick at least one subject':'✅ Add '+selectedCount+' subject'+(selectedCount===1?'':'s')+' ('+totalSlots+' weekly slot'+(totalSlots===1?'':'s')+')'}</button>
+        <button id="commit-timetable-btn" onclick="confirmTimetableImport()" ${selectedSlotCount===0?'disabled':''} style="width:100%;padding:14px;border-radius:12px;background:${selectedSlotCount===0?'#8E8E93':'var(--navy)'};border:none;color:#fff;font-size:15px;font-weight:700;cursor:${selectedSlotCount===0?'not-allowed':'pointer'};font-family:inherit">${selectedSlotCount===0?'Pick at least one period':'✅ Add '+selectedSlotCount+' period'+(selectedSlotCount===1?'':'s')+' to HomeBase'}</button>
       </div>
     </div>`;
 }
 
-window.toggleTimetableSubject=function(id){
-  const s=S.timetablePreview?.subjects?.find(x=>x.id===id);
-  if(!s)return;
-  s._selected=!s._selected;
+// Toggle a single slot (e.g. "PE Mon 9am Practical") on/off.
+window.toggleTimetableSlot=function(subjectId,slotIdx){
+  const s=S.timetablePreview?.subjects?.find(x=>x.id===subjectId);
+  if(!s||!Array.isArray(s.slots)||!s.slots[slotIdx])return;
+  s.slots[slotIdx]._selected=!s.slots[slotIdx]._selected;
+  render();
+};
+
+// Toggle ALL slots in a subject. Master logic: if any slots are off, this
+// flips them all on. If all are already on, this clears them.
+window.toggleTimetableSubjectMaster=function(subjectId){
+  const s=S.timetablePreview?.subjects?.find(x=>x.id===subjectId);
+  if(!s||!Array.isArray(s.slots))return;
+  const allOn=s.slots.length>0&&s.slots.every(sl=>sl._selected);
+  s.slots.forEach(sl=>{sl._selected=!allOn;});
   render();
 };
 
@@ -4690,21 +4741,28 @@ window.selectAllTimetableSuggested=function(){
   const TRACK_SUGGESTIONS=['pe','phys ed','physical education','sport','library','music','choir','band','swimming','assembly','chapel','art','drama','french','language','german','japanese','spanish'];
   (S.timetablePreview?.subjects||[]).forEach(s=>{
     const lower=(s.name||'').toLowerCase();
-    if(TRACK_SUGGESTIONS.some(t=>lower.includes(t)))s._selected=true;
+    if(TRACK_SUGGESTIONS.some(t=>lower.includes(t))){
+      (s.slots||[]).forEach(sl=>{sl._selected=true;});
+    }
   });
   render();
 };
 
 window.clearAllTimetable=function(){
-  (S.timetablePreview?.subjects||[]).forEach(s=>{s._selected=false;});
+  (S.timetablePreview?.subjects||[]).forEach(s=>{
+    (s.slots||[]).forEach(sl=>{sl._selected=false;});
+  });
   render();
 };
 
 // === FINAL IMPORT ===
-// Creates one recurring event per selected subject. The "slots" array on
-// each subject describes its weekly slots (day + time + optional week label
-// for fortnightly). We group slots by week-label so each subject becomes ONE
-// event with multiple days set on it where possible.
+// Creates one recurring event per selected slot group. Slots are filtered
+// by their individual _selected flag (parents may pick PE Practical but
+// skip PE Theory). After filtering, slots are grouped by (subject, time)
+// — multiple weekdays at the same time become ONE recurring event with
+// multiple day flags. Different times become separate events.
+// Slot labels (Practical/Theory/etc) are appended to the event title so
+// parents can tell them apart in the calendar.
 window.confirmTimetableImport=async function(){
   const data=S.timetablePreview;
   const ti=S.timetableImport;
@@ -4712,8 +4770,15 @@ window.confirmTimetableImport=async function(){
   if(!S.familyId){notify('No family loaded','⚠️');return;}
   const child=(S.children||[]).find(c=>c.id===ti.childId);
   if(!child){notify('Child not found','⚠️');return;}
-  const selected=data.subjects.filter(s=>s._selected);
-  if(selected.length===0){notify('Pick at least one subject','⚠️');return;}
+
+  // Build a flat list of selected slots tagged with their parent subject name
+  const selectedSlots=[];
+  data.subjects.forEach(subj=>{
+    (subj.slots||[]).forEach(sl=>{
+      if(sl._selected)selectedSlots.push({...sl,_subjectName:subj.name||'Subject'});
+    });
+  });
+  if(selectedSlots.length===0){notify('Pick at least one period','⚠️');return;}
 
   const btn=document.getElementById('commit-timetable-btn');
   if(btn){btn.disabled=true;btn.textContent='Importing…';}
@@ -4722,91 +4787,89 @@ window.confirmTimetableImport=async function(){
     monday:'Mon',tuesday:'Tue',wednesday:'Wed',thursday:'Thu',friday:'Fri',saturday:'Sat',sunday:'Sun'};
   const normaliseDay=d=>dayKeyMap[String(d||'').toLowerCase().trim()]||null;
 
-  // For fortnightly: align startDate so that week A falls on the user's
-  // chosen Monday. For weekly: just use today; the recurrence engine handles
-  // the rest based on the days flags.
   const todayStr=fd(new Date());
 
-  let success=0;let failed=0;
-  for(const subj of selected){
-    const slots=Array.isArray(subj.slots)?subj.slots:[];
-    if(slots.length===0){failed++;continue;}
+  // Build the event title — base subject name plus the label (Practical/Theory/etc)
+  // when present, so PE Practical and PE Theory show distinctly on the calendar.
+  const buildTitle=(subjectName,label,wkSuffix)=>{
+    const labelPart=(label||'').trim();
+    const base=labelPart?subjectName+' ('+labelPart+')':subjectName;
+    return wkSuffix?base+' '+wkSuffix:base;
+  };
 
-    if(ti.cycle==='weekly'){
-      // Group all slots into one event with days[] set for each unique weekday.
-      // If multiple times on the same day (e.g. PE Mon morning + Mon afternoon),
-      // create separate events — HomeBase event model is one time per event.
-      const byTime=new Map();
-      for(const sl of slots){
-        const dayKey=normaliseDay(sl.day);
-        if(!dayKey)continue;
-        const tk=sl.time||'';
-        if(!byTime.has(tk))byTime.set(tk,new Set());
-        byTime.get(tk).add(dayKey);
-      }
-      for(const [time,daySet] of byTime){
-        const days={Mon:false,Tue:false,Wed:false,Thu:false,Fri:false,Sat:false,Sun:false};
-        daySet.forEach(d=>{days[d]=true;});
-        try{
-          await fadd(['events'],{
-            title:subj.name||'Subject',
-            emoji:'📚',
-            participantIds:[child.id],childId:child.id,adultUid:'',
-            freq:'weekly',
-            date:todayStr,startDate:todayStr,endDate:'',
-            days,time,
-            category:'school-subject',
-            location:'',dropoff:'',pickup:'',
-            packItems:[],notes:'Imported from timetable'
-          });
-          success++;
-        }catch(e){failed++;console.warn('Timetable subject failed:',subj,e);}
-      }
-    }else{
-      // Fortnightly: keep Week A and Week B as SEPARATE events because the
-      // recurrence engine uses INTERVAL=2 from startDate. Week A events start
-      // on ti.weekAStart; Week B events start one week later. Each event
-      // covers all the weekdays it occurs on within its week.
-      const weekAStart=ti.weekAStart||todayStr;
-      const wbDate=new Date(weekAStart+'T12:00');wbDate.setDate(wbDate.getDate()+7);
-      const weekBStart=fd(wbDate);
-      const byWeekAndTime={A:new Map(),B:new Map()};
-      for(const sl of slots){
-        const dayKey=normaliseDay(sl.day);
-        if(!dayKey)continue;
-        const wk=String(sl.week||'A').toUpperCase().startsWith('B')?'B':'A';
-        const tk=sl.time||'';
-        if(!byWeekAndTime[wk].has(tk))byWeekAndTime[wk].set(tk,new Set());
-        byWeekAndTime[wk].get(tk).add(dayKey);
-      }
-      for(const wk of ['A','B']){
-        for(const [time,daySet] of byWeekAndTime[wk]){
-          const days={Mon:false,Tue:false,Wed:false,Thu:false,Fri:false,Sat:false,Sun:false};
-          daySet.forEach(d=>{days[d]=true;});
-          try{
-            await fadd(['events'],{
-              title:(subj.name||'Subject')+' (Wk '+wk+')',
-              emoji:'📚',
-              participantIds:[child.id],childId:child.id,adultUid:'',
-              freq:'fortnightly',
-              date:wk==='A'?weekAStart:weekBStart,
-              startDate:wk==='A'?weekAStart:weekBStart,
-              endDate:'',
-              days,time,
-              category:'school-subject',
-              location:'',dropoff:'',pickup:'',
-              packItems:[],notes:'Imported from timetable · Week '+wk
-            });
-            success++;
-          }catch(e){failed++;console.warn('Timetable subject failed:',subj,e);}
-        }
-      }
+  let success=0;let failed=0;
+
+  if(ti.cycle==='weekly'){
+    // Group by (subjectName + label + time) — slots with same labelling at
+    // same time on different days become ONE event with multiple day flags.
+    // Different labels → different events (PE Practical Mon 9am stays
+    // separate from PE Theory Wed 9am even if times match).
+    const groups=new Map();
+    for(const sl of selectedSlots){
+      const dayKey=normaliseDay(sl.day);
+      if(!dayKey)continue;
+      const key=sl._subjectName+'|'+(sl.label||'')+'|'+(sl.time||'');
+      if(!groups.has(key))groups.set(key,{subjectName:sl._subjectName,label:sl.label||'',time:sl.time||'',days:new Set()});
+      groups.get(key).days.add(dayKey);
+    }
+    for(const g of groups.values()){
+      const days={Mon:false,Tue:false,Wed:false,Thu:false,Fri:false,Sat:false,Sun:false};
+      g.days.forEach(d=>{days[d]=true;});
+      try{
+        await fadd(['events'],{
+          title:buildTitle(g.subjectName,g.label,''),
+          emoji:'📚',
+          participantIds:[child.id],childId:child.id,adultUid:'',
+          freq:'weekly',
+          date:todayStr,startDate:todayStr,endDate:'',
+          days,time:g.time,
+          category:'school-subject',
+          location:'',dropoff:'',pickup:'',
+          packItems:[],notes:'Imported from timetable'
+        });
+        success++;
+      }catch(e){failed++;console.warn('Timetable period failed:',g,e);}
+    }
+  }else{
+    // Fortnightly: Week A and Week B are separate events because the recurrence
+    // engine uses INTERVAL=2 from startDate. Group by (subjectName + label +
+    // week + time). Week A starts on ti.weekAStart; Week B starts 7 days later.
+    const weekAStart=ti.weekAStart||todayStr;
+    const wbDate=new Date(weekAStart+'T12:00');wbDate.setDate(wbDate.getDate()+7);
+    const weekBStart=fd(wbDate);
+    const groups=new Map();
+    for(const sl of selectedSlots){
+      const dayKey=normaliseDay(sl.day);
+      if(!dayKey)continue;
+      const wk=String(sl.week||'A').toUpperCase().startsWith('B')?'B':'A';
+      const key=sl._subjectName+'|'+(sl.label||'')+'|'+wk+'|'+(sl.time||'');
+      if(!groups.has(key))groups.set(key,{subjectName:sl._subjectName,label:sl.label||'',week:wk,time:sl.time||'',days:new Set()});
+      groups.get(key).days.add(dayKey);
+    }
+    for(const g of groups.values()){
+      const days={Mon:false,Tue:false,Wed:false,Thu:false,Fri:false,Sat:false,Sun:false};
+      g.days.forEach(d=>{days[d]=true;});
+      const startDate=g.week==='A'?weekAStart:weekBStart;
+      try{
+        await fadd(['events'],{
+          title:buildTitle(g.subjectName,g.label,'Wk '+g.week),
+          emoji:'📚',
+          participantIds:[child.id],childId:child.id,adultUid:'',
+          freq:'fortnightly',
+          date:startDate,startDate,endDate:'',
+          days,time:g.time,
+          category:'school-subject',
+          location:'',dropoff:'',pickup:'',
+          packItems:[],notes:'Imported from timetable · Week '+g.week
+        });
+        success++;
+      }catch(e){failed++;console.warn('Timetable period failed:',g,e);}
     }
   }
 
   S.timetablePreview=null;
   S.timetableImport=null;
-  if(failed===0){notify('Imported '+success+' subject slot'+(success===1?'':'s')+' ✅','📚');}
+  if(failed===0){notify('Imported '+success+' event'+(success===1?'':'s')+' ✅','📚');}
   else{notify('Imported '+success+' / failed '+failed,'⚠️');}
   S.screen=null;S.tab='events';S.evView='tiles';render();
 };
