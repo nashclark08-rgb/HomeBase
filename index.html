@@ -502,7 +502,7 @@ const S={
   listTab:'menu',listFilter:'all',
   evTab:'events',
   fabOpen:false,notif:null,nTimer:null,weather:null,
-  notifTime:'07:00',manualLat:'',manualLon:'',manualCity:'',nightMode:false,
+  notifTime:'07:00',notifMorning:true,notifEvents:false,notifEventLead:15,manualLat:'',manualLon:'',manualCity:'',nightMode:false,
   termDates:{t1s:'',t1e:'',t2s:'',t2e:'',t3s:'',t3e:'',t4s:'',t4e:''},
   dayOffset:0,
   toggles:{notifs:true,loc:false},unsubs:[],
@@ -1015,6 +1015,10 @@ function subscribe(){
     if(S.family&&S.family.eventsCategorizedV2!==true&&!S._migrationRunning){
       setTimeout(()=>runEventCategoryMigration(),1500);
     }
+    // Reschedule per-event reminders since the set of events may have changed.
+    // Debounced so a batch update (e.g. fixture import) only reschedules once.
+    if(window._evNotifResched)clearTimeout(window._evNotifResched);
+    window._evNotifResched=setTimeout(()=>{if(typeof scheduleEventNotifs==='function')scheduleEventNotifs();},1500);
     queueRender();
   }));
   S.unsubs.push(onSnapshot(fcol(['assessments']),s=>{S.assessments=s.docs.map(d=>({id:d.id,...d.data()}));queueRender();}));
@@ -6539,17 +6543,42 @@ function sSettings(){
   +'</div>'
   +'</div>'
   +'</div>'
-  +'<div class="sh" style="margin-bottom:6px">⏰ Daily Reminder</div>'
+  +'<div class="sh" style="margin-bottom:6px">⏰ Reminders & Alerts</div>'
   +'<div class="card" style="margin-bottom:12px">'
-  +'<div style="padding:14px 16px;border-bottom:1px solid #F2F2F7">'
-  +'<div style="font-size:15px;margin-bottom:6px">Morning notification time</div>'
-  +'<div style="font-size:13px;color:#8E8E93;margin-bottom:10px">When to send your daily summary</div>'
-  +'<div style="display:flex;gap:10px;align-items:center">'
-  +'<input class="input" id="set-notif-time" type="time" value="'+(S.notifTime||'07:00')+'" style="max-width:140px"/>'
-  +'<button onclick="saveNotifTime()" style="padding:12px 16px;border-radius:12px;background:#1C3A6B;border:none;color:#fff;font-size:14px;font-weight:600;cursor:pointer;font-family:inherit">Save</button>'
+  // === Morning summary toggle + time picker ===
+  +'<div class="row" style="padding:14px 16px">'
+  +'<span style="font-size:20px">🌅</span>'
+  +'<div style="flex:1"><div style="font-size:14px;font-weight:600">Morning summary</div><div style="font-size:12px;color:var(--text-secondary);margin-top:2px">One daily digest of today\'s events</div></div>'
+  +tog(S.notifMorning!==false,"toggleNotifMorning()")
   +'</div>'
-  +'<div style="font-size:12px;color:#34C759;margin-top:10px;font-weight:600">'+(S.notifTime?'✅ Currently set: '+S.notifTime:'⚪ Not yet saved')+'</div>'
+  +(S.notifMorning!==false?(
+    '<div style="padding:0 16px 14px;border-bottom:1px solid var(--row-border)">'
+    +'<div style="font-size:12px;color:var(--text-secondary);margin-bottom:8px">When to send</div>'
+    +'<div style="display:flex;gap:10px;align-items:center">'
+    +'<input class="input" id="set-notif-time" type="time" value="'+(S.notifTime||'07:00')+'" style="max-width:140px"/>'
+    +'<button onclick="saveNotifTime()" style="padding:10px 14px;border-radius:10px;background:var(--navy);border:none;color:#fff;font-size:13px;font-weight:600;cursor:pointer;font-family:inherit">Save</button>'
+    +'</div>'
+    +'<div style="font-size:11px;color:#34C759;margin-top:8px;font-weight:600">'+(S.notifTime?'✅ Currently set: '+S.notifTime:'⚪ Not yet saved')+'</div>'
+    +'</div>'
+  ):'<div style="border-bottom:1px solid var(--row-border)"></div>')
+  // === Per-event reminders toggle + lead-time picker ===
+  +'<div class="row" style="padding:14px 16px">'
+  +'<span style="font-size:20px">🔔</span>'
+  +'<div style="flex:1"><div style="font-size:14px;font-weight:600">Event reminders</div><div style="font-size:12px;color:var(--text-secondary);margin-top:2px">A heads-up before each timed event</div></div>'
+  +tog(S.notifEvents===true,"toggleNotifEvents()")
   +'</div>'
+  +(S.notifEvents===true?(
+    '<div style="padding:0 16px 14px">'
+    +'<div style="font-size:12px;color:var(--text-secondary);margin-bottom:8px">Notify me before each event:</div>'
+    +'<div style="display:flex;gap:6px;flex-wrap:wrap">'
+    +[5,15,30,60].map(function(m){
+      const on=(Number(S.notifEventLead)||15)===m;
+      return '<button onclick="setNotifEventLead('+m+')" style="padding:8px 14px;border-radius:9px;background:'+(on?'var(--navy)':'var(--bg)')+';border:1px solid '+(on?'var(--navy)':'var(--border)')+';color:'+(on?'#fff':'var(--text)')+';font-size:13px;font-weight:600;cursor:pointer;font-family:inherit">'+m+' min</button>';
+    }).join('')
+    +'</div>'
+    +'<div style="font-size:11px;color:var(--text-secondary);margin-top:10px;line-height:1.45">Only fires while HomeBase is open. Full-on push notifications when the app is closed are coming soon (see below).</div>'
+    +'</div>'
+  ):'')
   +'</div>'
   // Preferences
   +'<div class="sh" style="margin-bottom:6px">🔔 Notifications</div>'
@@ -9225,16 +9254,76 @@ window.requestNotifPerm=async function(){
 // Schedule daily check for notification time
 function scheduleDailyNotif(){
   if(typeof Notification==='undefined'||Notification.permission!=='granted')return;
+  // Respect the morning-summary toggle. If user has disabled morning notifs,
+  // we don't schedule anything (and any pre-existing timer is cleared below).
+  if(window._dailyNotifTimer){clearTimeout(window._dailyNotifTimer);window._dailyNotifTimer=null;}
+  if(window._dailyNotifInterval){clearInterval(window._dailyNotifInterval);window._dailyNotifInterval=null;}
+  if(S.notifMorning===false)return;
   if(!S.notifTime)return;
   const now=new Date();
   const [hh,mm]=S.notifTime.split(':').map(Number);
   const next=new Date();next.setHours(hh,mm,0,0);
   if(next<=now)next.setDate(next.getDate()+1);
   const delay=next-now;
-  setTimeout(function(){
+  window._dailyNotifTimer=setTimeout(function(){
     sendDailyNotif();
-    setInterval(sendDailyNotif,86400000);
+    window._dailyNotifInterval=setInterval(sendDailyNotif,86400000);
   },delay);
+}
+
+// === PER-EVENT REMINDERS ===
+// Schedules a local notification for each timed event today, firing
+// S.notifEventLead minutes before the event start time. Skips:
+//   - Events without a time (all-day) — nothing to anchor to
+//   - Events already past their lead-time window — too late to be useful
+//   - Anything when S.notifEvents is false or permission denied
+// Timers are stored in window._eventNotifTimers so we can cancel/reschedule
+// when the events list changes, settings change, or midnight rolls over.
+function scheduleEventNotifs(){
+  // Clear any existing timers
+  if(Array.isArray(window._eventNotifTimers)){
+    window._eventNotifTimers.forEach(function(id){try{clearTimeout(id);}catch(e){}});
+  }
+  window._eventNotifTimers=[];
+  if(typeof Notification==='undefined'||Notification.permission!=='granted')return;
+  if(S.notifEvents!==true)return;
+  const lead=Number(S.notifEventLead)||15;
+  const now=new Date();
+  const today=fd(now);
+  const dayName=DAYSH[now.getDay()];
+  // Find today's timed events (mirrors the day-view filter logic)
+  const todayEvs=(S.events||[]).filter(function(ev){
+    if(!ev.time)return false; // all-day events skipped
+    // Skip occurrences explicitly skipped via the clash flow
+    if(Array.isArray(ev.skipDates)&&ev.skipDates.includes(today))return false;
+    if(!ev.freq||ev.freq==='once')return ev.date===today;
+    if(!ev.days||!ev.days[dayName])return false;
+    const sd=ev.startDate||ev.date;
+    if(sd&&today<sd)return false;
+    if(ev.endDate&&today>ev.endDate)return false;
+    return true;
+  });
+  todayEvs.forEach(function(ev){
+    const startMin=parseTimeToMinutes(ev.time);
+    if(!Number.isFinite(startMin)||startMin<=0)return;
+    const fireAt=new Date(now);
+    const fireMin=startMin-lead;
+    fireAt.setHours(Math.floor(fireMin/60),fireMin%60,0,0);
+    const delay=fireAt-now;
+    if(delay<=0)return; // event lead window already passed
+    if(delay>86400000)return; // safety: never schedule >24h out
+    const tid=setTimeout(function(){
+      try{
+        const body=(ev.time||'')+(ev.location?' · '+ev.location:'');
+        new Notification('⏰ '+(ev.title||'Event')+' in '+lead+' min',{
+          body:body,
+          tag:'evnotif-'+ev.id,
+          icon:(document.querySelector('link[rel=apple-touch-icon]')||{}).href||''
+        });
+      }catch(e){}
+    },delay);
+    window._eventNotifTimers.push(tid);
+  });
 }
 function sendDailyNotif(){
   if(typeof Notification==='undefined'||Notification.permission!=='granted')return;
@@ -9283,6 +9372,52 @@ window.saveNotifTime=async function(){
   if(typeof scheduleDailyNotif==='function')scheduleDailyNotif();
   // Re-render so the section shows the saved value
   setTimeout(function(){render();},800);
+};
+
+// === NOTIFICATION TOGGLE HANDLERS ===
+// All three handlers persist to Firestore (cross-device) and to localStorage
+// (fast first-paint on next load), then reschedule the relevant timer.
+
+// Helper to persist a notif preference to the user doc + localStorage.
+async function persistNotifPref(field,val){
+  try{localStorage.setItem('hb_'+field,String(val));}catch(e){}
+  if(S.user&&S.user.uid){
+    try{await setDoc(doc(db,'users',S.user.uid),{[field]:val},{merge:true});}catch(e){}
+  }
+}
+
+window.toggleNotifMorning=async function(){
+  const newVal=S.notifMorning===false?true:false;
+  S.notifMorning=newVal;
+  await persistNotifPref('notifMorning',newVal);
+  // If turning on and we have no permission yet, prompt for it
+  if(newVal&&typeof Notification!=='undefined'&&Notification.permission==='default'){
+    try{await Notification.requestPermission();}catch(e){}
+  }
+  if(typeof scheduleDailyNotif==='function')scheduleDailyNotif();
+  notify(newVal?'Morning summary on ✅':'Morning summary off');
+  render();
+};
+
+window.toggleNotifEvents=async function(){
+  const newVal=S.notifEvents===true?false:true;
+  S.notifEvents=newVal;
+  await persistNotifPref('notifEvents',newVal);
+  if(newVal&&typeof Notification!=='undefined'&&Notification.permission==='default'){
+    try{await Notification.requestPermission();}catch(e){}
+  }
+  if(typeof scheduleEventNotifs==='function')scheduleEventNotifs();
+  notify(newVal?'Event reminders on ✅':'Event reminders off');
+  render();
+};
+
+window.setNotifEventLead=async function(minutes){
+  const m=Number(minutes)||15;
+  S.notifEventLead=m;
+  await persistNotifPref('notifEventLead',m);
+  if(typeof scheduleEventNotifs==='function')scheduleEventNotifs();
+  notify('Lead time: '+m+' min ✅');
+  render();
 };
 window.hDeleteFamily=async function(){
   const fname=S.family?.name||'this family';
@@ -10764,6 +10899,14 @@ try{
   if(loc){S.manualLat=loc.lat||'';S.manualLon=loc.lon||'';S.manualCity=loc.city||'';}
   const nt=localStorage.getItem('hb_notif_time');
   if(nt)S.notifTime=nt;
+  // Hydrate notification toggles from localStorage so first paint matches the
+  // user's saved settings even before Firestore round-trips.
+  const nMorn=localStorage.getItem('hb_notifMorning');
+  if(nMorn!==null)S.notifMorning=(nMorn==='true');
+  const nEvs=localStorage.getItem('hb_notifEvents');
+  if(nEvs!==null)S.notifEvents=(nEvs==='true');
+  const nLead=parseInt(localStorage.getItem('hb_notifEventLead'),10);
+  if(Number.isFinite(nLead)&&nLead>0)S.notifEventLead=nLead;
   const td=JSON.parse(localStorage.getItem('hb_terms')||'null');
   if(td)S.termDates=td;
   const nm=localStorage.getItem('hb_night_mode');
@@ -10779,7 +10922,7 @@ onAuthStateChanged(auth,async user=>{
   },150);
   S.user=user;
   if(user){
-    try{const ud=await getDoc(doc(db,'users',user.uid));if(ud.exists()){const d=ud.data();if(d.familyId){S.familyId=d.familyId;subscribe();}if(d.notifTime)S.notifTime=d.notifTime;}}
+    try{const ud=await getDoc(doc(db,'users',user.uid));if(ud.exists()){const d=ud.data();if(d.familyId){S.familyId=d.familyId;subscribe();}if(d.notifTime)S.notifTime=d.notifTime;if(typeof d.notifMorning==='boolean')S.notifMorning=d.notifMorning;if(typeof d.notifEvents==='boolean')S.notifEvents=d.notifEvents;if(typeof d.notifEventLead==='number')S.notifEventLead=d.notifEventLead;}}
     catch(ex){}
     // If the user is signed in, has no family, AND we have a pending invite from the URL — auto-join
     if(!S.familyId&&S.pendingInvite){
@@ -10794,8 +10937,8 @@ onAuthStateChanged(auth,async user=>{
         // Leave S.pendingInvite set so the family-setup screen can offer it
       }
     }
-    // Schedule daily notification
-    setTimeout(function(){scheduleDailyNotif();},2000);
+    // Schedule daily notification + per-event reminders
+    setTimeout(function(){scheduleDailyNotif();scheduleEventNotifs();},2000);
   }
   render();
 });
