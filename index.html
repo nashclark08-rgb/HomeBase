@@ -121,7 +121,7 @@ body{font-family:-apple-system,BlinkMacSystemFont,system-ui,sans-serif;backgroun
 <!-- Full-screen splash that covers everything until Firebase auth state is known -->
 <div id="hb-splash" style="position:fixed;inset:0;background:linear-gradient(180deg,#1C3A6B 0%,#15294D 100%);z-index:99999;display:flex;align-items:center;justify-content:center;flex-direction:column;transition:opacity 0.35s ease">
   <div class="hb-splash-inner" style="display:flex;flex-direction:column;align-items:center;animation:hbSplashIn 0.6s ease-out both">
-    <div style="width:96px;height:96px;border-radius:22px;background:#fff;display:flex;align-items:center;justify-content:center;box-shadow:0 18px 48px rgba(0,0,0,0.35),0 0 0 1px rgba(255,255,255,0.06);margin-bottom:22px">
+    <div id="hb-splash-tile" style="width:96px;height:96px;border-radius:22px;background:#fff;display:flex;align-items:center;justify-content:center;box-shadow:0 18px 48px rgba(0,0,0,0.35),0 0 0 1px rgba(255,255,255,0.06);margin-bottom:22px">
       <img src="data:image/png;base64,iVBORw0KGgoAAAANSUhEUgAAALQAAAC0CAYAAAA9zQYyAAAFMUlEQVR42u3dS6gVdRwH8O/VMjPSCHpypNQiKOhBJnEWPZCili1a1EpoEXFq06IHFLWIIKlNMS3aRG2KFkW7oAfVYiAskgiLrJCcCoPCNEGyvC3utW5h3qP3PObx+YBwuc6ZmfOb7/mf38ydRwIAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAADC0GSUYr15/cEuS2SQzVVm8pSIC3eQwz/7nVw9WZbFVZQS6DWE+4q2qLG5VIYFuQ5iP2F6VxVUqJdBNCPP2JFcMMelTSZZVZfGAqgl0XcP8XZK1x/myXVVZrFM9gW5am3FMVVnYFiOwTAmmH+ZRzQMj9FICuDnJ00nOSHLhiGa7pyqLc1VXoCcd5guS7BrT7D+pymKjKms5JmnXGOd9tfZDoBvVL+uptRx1CPIlSb6c9HId/TBCjyPMV04jzPPL/sgWEOhR+3SKy97U6w++tgm0HK3rZbUfAr2UIK9KcqCmq3d6VRa/2UpajmHDvLHGYU6S/fPriBF60TCfnWRPQ1b3nKosfrLVjNDHsse6GqGbPirfk+T5pq6/nUWBXhjmZ5Lc34K3sqEqi28Futth3pLkxRa9pUursvhCD93NMF/QsjAnyQ47hd0M8+aM94y5ab63Tp/UNNPBMD+W5PEOvNUVVVkcMkK3O8yPdCTMSfJ7rz+43Ajd3jBfluTzDn4Lr6nKYp8Rul1hXt/RMCfJr1qOdoX5iSTfdHlHqUs7il0YodeE9PqD2fmjOwLd4I24Mcm94vy3RwW62bbJ8L98JtAg0NTUfW2/6Fagu2eTQINAg0CDQINA00onKUE9HOtC115/8HGSq4813fztwjYYoWmClUNMc4oyCXRTnDrENKuUSaDbtJ3+VCaBboq9Q0yzXJkEuilON0IPx1GO4byRZJBkdZL9i+y8HZz/+ftRLPg4rjbZk+Ssrm+oVl8kO6JLj96pyuKmE1j2fUmePY6X7FzwrTmzYMS9+D/T/ZLk5yQnJ1l4m4KLh11Qm++FZ4RefOPfdIKve67XH5yauYfUD2PYQJ45/w899MQ/DFuT3KwSRug2OW2pbUCvP9ibfy72PerjKHr9wZ8GKAWYhNUjmMeOBcH/v2erfKXUAj0Jf4xi/3aIac5TaoFuimFuuug4tEA3xqxAC3SjLHLMfJg/0niAUBzlqFuoDyT5MXNn1x1c8F/rF0yzN3N/WFmR5PejTSPQ1MWqLH6S/pq4X5+WA4EGgQaBBoEGgUagQaCpr+sFmrbYXpXFhwJNW1zZ9ke8CTQCDQLdXXU7AewlgW6uwzVYh/01qsfdVVlsEeiGqspieZI3p7wadbnn3KVVWbzQ9q/DmXRArz+4Zv7H2SHe82zmzkuukvyW0VwJcnPmbri4bMLfGoePDFpVWXTiqbqdCPQSPgivJbl9BN8U6qzlmHqY7xpFmOfndaOKCvS0jbL3fU85J8M1hUcfUV9PcptK6KHbEOYPklw3jnnrpQV60mF+OMmTY1zEwSTnVGWxT7X10OMO85oxhzmZu8P/r6ot0JNwaIIfnlnlFuhxBmxzkgMqIdBtCPOdSd6ZwnLfFb/RW97xMF+U5P0pLX7d6rWbVu7bvU2wjdAjs3PKy3+o1x+8LIYC3SY/K4GWYxTtRl2ONFy7eu2m0/bt3va2OC7dTAeDfF6Sj5OcX7NVu6Mqi1dFUstxvH6oYZiT5BVxFOgTcdhmb68unm23MskNNfpAH7mqZK84AgAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAACfqL4inIOEXLhkPAAAAAElFTkSuQmCC" style="width:88px;height:88px" alt="HomeBase"/>
     </div>
     <div style="font-size:28px;font-weight:800;color:#fff;letter-spacing:-0.6px;margin-bottom:6px">HomeBase</div>
@@ -137,6 +137,10 @@ body{font-family:-apple-system,BlinkMacSystemFont,system-ui,sans-serif;backgroun
 </div>
 <style>
 #hb-splash.fade{opacity:0;pointer-events:none}
+/* Keep splash logo tile WHITE in dark mode — the navy house image needs a white
+   background to stay visible. The general dark-mode catch-all (line 27) would
+   otherwise flip this to dark grey, making the logo invisible. */
+[data-theme="dark"] #hb-splash-tile{background:#fff!important}
 </style>
 <div id="app">
   <div class="topbar">
@@ -1858,13 +1862,12 @@ function sToday(){
           const db=b.date||'9999-12-31';
           return da.localeCompare(db);
         });
-        // Reminders header: simple label + Add button on one row. Tap the button
-        // to go to the full Add Reminder screen — which handles dates, people,
-        // notes, and recurrence properly. The header always renders, even when
-        // there are no due reminders, so a quick add is always one tap away.
-        const remHeader=`<div style="display:flex;align-items:center;gap:8px;margin-bottom:6px;padding:0 2px">
-          <div class="sh" style="padding:0;flex:1">⏰ Reminders</div>
-          <button onclick="go('addReminder')" style="padding:5px 12px;border-radius:8px;background:var(--navy);border:none;color:#fff;font-size:12px;font-weight:700;cursor:pointer;font-family:inherit">+ Add</button>
+        // Reminders header: matches the Activities header above — same .sh class,
+        // same right-padding for the action chip. Tap +Add to open the full Add
+        // Reminder screen (handles dates, people, notes, recurrence).
+        const remHeader=`<div class="sh" style="margin-bottom:6px;display:flex;align-items:center;justify-content:space-between;padding-right:16px">
+          <span>⏰ Reminders</span>
+          <button onclick="go('addReminder')" style="font-size:11px;font-weight:700;background:var(--navy);color:#fff;padding:4px 10px;border-radius:8px;border:none;cursor:pointer;font-family:inherit;text-transform:none;letter-spacing:0">+ Add</button>
         </div>`;
         if(dueReminders.length===0)return remHeader+`<div class="card" style="margin-bottom:14px;padding:14px;text-align:center;color:var(--text-secondary);font-size:13px">No reminders due.</div>`;
         return remHeader+`
