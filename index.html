@@ -66,19 +66,6 @@ body{font-family:-apple-system,BlinkMacSystemFont,system-ui,sans-serif;backgroun
 .sh{padding:8px 16px 4px;font-size:12px;font-weight:700;color:#8E8E93;text-transform:uppercase;letter-spacing:0.6px}
 .row{display:flex;align-items:center;gap:12px;padding:13px 16px;border-bottom:1px solid var(--row-border)}
 .row:last-child{border-bottom:none}
-.hb-swipe-wrap{position:relative;overflow:hidden}
-.hb-swipe-row{position:relative;background:var(--card);z-index:1;will-change:transform;transition:transform 0.2s ease}
-.hb-swipe-row.hb-swiping{transition:none}
-.hb-swipe-bg{position:absolute;top:0;bottom:0;width:55%;display:flex;align-items:center;color:#fff;font-weight:700;font-size:14px;pointer-events:none;z-index:0}
-.hb-swipe-bg-done{left:0;background:#34C759;justify-content:flex-start;padding-left:24px}
-.hb-swipe-bg-delete{right:0;background:#FF3B30;justify-content:flex-end;padding-right:24px}
-details.hb-collapse{background:var(--card);border-radius:14px;box-shadow:var(--shadow-md);margin:0 16px 10px;overflow:hidden}
-details.hb-collapse>summary{padding:14px 16px;font-size:15px;font-weight:700;color:var(--text);cursor:pointer;list-style:none;display:flex;align-items:center;gap:10px;user-select:none}
-details.hb-collapse>summary::-webkit-details-marker{display:none}
-details.hb-collapse>summary::after{content:'▾';margin-left:auto;color:var(--text-secondary);font-size:13px;transition:transform 0.2s}
-details.hb-collapse[open]>summary::after{transform:rotate(180deg)}
-details.hb-collapse[open]>summary{border-bottom:1px solid var(--row-border)}
-details.hb-collapse>summary>.hb-summary-sub{font-size:11px;font-weight:500;color:var(--text-secondary);margin-left:6px}
 .btn{border:none;cursor:pointer;font-family:inherit;background:none;padding:0}
 .back-btn{display:flex;align-items:center;gap:4px;color:#1C3A6B;font-size:15px;font-weight:500;border:none;background:none;cursor:pointer;font-family:inherit}
 .primary-btn{width:100%;padding:15px;border:none;border-radius:12px;background:#1C3A6B;color:#fff;font-size:17px;font-weight:600;cursor:pointer;font-family:inherit;letter-spacing:-0.2px;transition:opacity 0.15s,transform 0.1s}
@@ -191,7 +178,7 @@ async function loadTesseract(){
   });
 }
 
-const fbapp=initializeApp({apiKey:"AIzaSyA2lrJJ0T_y_CBk8kOqRmwejCqHx6RVPXA",authDomain:"homebase-56151.firebaseapp.com",projectId:"homebase-56151",storageBucket:"homebase-56151.firebasestorage.app",messagingSenderId:"647157335008",appId:"1:647157335008:web:a15452fabd943bf5a8a185"});
+const fbapp=initializeApp({apiKey:"AIzaSyA2lrJJ0T_y_CBk8kOqRmwejCqHx6RVPXA",authDomain:"homebase-56151.firebaseapp.com",projectId:"homebase-56151",storageBucket:"homebase-56151.firebasestorage.app",messagingSenderId:"647157335008",appId:"1:747157335008:web:a15452fabd943bf5a8a185"});
 const auth=getAuth(fbapp);
 const db=getFirestore(fbapp);
 const storage=getStorage(fbapp);
@@ -205,93 +192,6 @@ let messaging=null;
 // Detect platform — iOS PWA push has special requirements
 const isIOS=/iPad|iPhone|iPod/.test(navigator.userAgent);
 const isStandalonePWA=window.matchMedia('(display-mode: standalone)').matches||window.navigator.standalone===true;
-
-// iOS Safari users not yet installed: nudge them to Add to Home Screen.
-// Push notifications and several app features only work in PWA mode on iOS.
-(function showIosInstallNudge(){
-  try{
-    if(!isIOS||isStandalonePWA)return;
-    if(localStorage.getItem('hb_install_dismissed')==='1')return;
-    setTimeout(()=>{
-      if(document.getElementById('ios-install-nudge'))return;
-      const banner=document.createElement('div');
-      banner.id='ios-install-nudge';
-      banner.style.cssText='position:fixed;bottom:max(80px,calc(env(safe-area-inset-bottom) + 70px));left:12px;right:12px;background:#1C3A6B;color:#fff;border-radius:14px;padding:14px 16px;z-index:9999;box-shadow:0 8px 32px rgba(0,0,0,0.3);display:flex;gap:12px;align-items:flex-start;animation:hbInstallSlideIn 0.35s ease-out';
-      banner.innerHTML=
-        '<div style="font-size:26px;line-height:1">📲</div>'+
-        '<div style="flex:1;font-size:13px;line-height:1.45">'+
-          '<div style="font-weight:700;margin-bottom:4px;font-size:14px">Install HomeBase</div>'+
-          '<div style="opacity:0.92">Tap the <strong>Share</strong> icon below, then <strong>"Add to Home Screen"</strong>. Push notifications and offline mode need this.</div>'+
-        '</div>'+
-        '<button aria-label="Dismiss" onclick="document.getElementById(\'ios-install-nudge\').remove();try{localStorage.setItem(\'hb_install_dismissed\',\'1\')}catch(e){}" style="background:none;border:none;color:#fff;font-size:22px;line-height:1;cursor:pointer;padding:0 2px;opacity:0.75;font-family:inherit">&times;</button>';
-      // Inject animation keyframes once
-      if(!document.getElementById('hb-install-anim')){
-        const st=document.createElement('style');
-        st.id='hb-install-anim';
-        st.textContent='@keyframes hbInstallSlideIn{from{transform:translateY(120%);opacity:0}to{transform:translateY(0);opacity:1}}';
-        document.head.appendChild(st);
-      }
-      (document.body||document.documentElement).appendChild(banner);
-    },1500);
-  }catch(e){}
-})();
-
-// Swipe gestures: swipe-right on a .hb-swipe-row marks done, swipe-left deletes.
-// Reads data-swipe-id on the wrap (e.g. "reminder:abc") and dispatches to the matching handler.
-(function setupSwipeGestures(){
-  const THRESHOLD=80;
-  const MAX=160;
-  let row=null,startX=0,startY=0,dx=0,axis=null;
-
-  const release=(commit)=>{
-    if(!row)return;
-    const wrap=row.closest('.hb-swipe-wrap');
-    const id=wrap?.dataset?.swipeId||'';
-    const [type,itemId]=id.split(':');
-    row.classList.remove('hb-swiping');
-    if(commit==='done'){
-      row.style.transform='translateX(100%)';
-      setTimeout(()=>{ if(type==='reminder'&&typeof tReminder==='function')tReminder(itemId,true); },180);
-    }else if(commit==='delete'){
-      row.style.transform='translateX(-100%)';
-      setTimeout(()=>{ if(type==='reminder'&&typeof dReminder==='function')dReminder(itemId); },180);
-    }else{
-      row.style.transform='translateX(0)';
-    }
-    row=null;dx=0;axis=null;
-  };
-
-  document.addEventListener('touchstart',(e)=>{
-    const r=e.target.closest('.hb-swipe-row');
-    if(!r)return;
-    if(e.target.closest('button,.cb,input,a,select,textarea'))return;
-    row=r;startX=e.touches[0].clientX;startY=e.touches[0].clientY;dx=0;axis=null;
-    row.classList.add('hb-swiping');
-  },{passive:true});
-
-  document.addEventListener('touchmove',(e)=>{
-    if(!row)return;
-    const tdx=e.touches[0].clientX-startX;
-    const tdy=e.touches[0].clientY-startY;
-    if(!axis){
-      if(Math.abs(tdy)>10&&Math.abs(tdy)>Math.abs(tdx)){axis='y';row.classList.remove('hb-swiping');row=null;return;}
-      if(Math.abs(tdx)>10){axis='x';}
-    }
-    if(axis!=='x')return;
-    dx=Math.max(-MAX,Math.min(MAX,tdx));
-    row.style.transform='translateX('+dx+'px)';
-  },{passive:true});
-
-  document.addEventListener('touchend',()=>{
-    if(!row)return;
-    if(dx>THRESHOLD)release('done');
-    else if(dx<-THRESHOLD)release('delete');
-    else release(null);
-  });
-
-  document.addEventListener('touchcancel',()=>{ if(row)release(null); });
-})();
-
 async function initMessaging(){
   try{
     const supported=await isMessagingSupported();
@@ -306,51 +206,15 @@ async function initMessaging(){
     return true;
   }catch(ex){console.error('[HomeBase] FCM init failed',ex);return false;}
 }
-// Route a notification URL like "/?notif=event&id=ABC" to the right tab
-function handleNotifUrl(url){
-  try{
-    const qs=(url||'').split('?')[1]||'';
-    const params=new URLSearchParams(qs);
-    const n=params.get('notif');
-    if(!n) return;
-    const tabMap={
-      reminder:'today',
-      event:'events',
-      event_upcoming:'events',
-      playdate:'events',
-      handoff:'today',
-      morning:'today',
-      email_pending:'today'
-    };
-    const tab=tabMap[n];
-    if(tab && typeof setTab==='function'){setTab(tab);}
-  }catch(e){console.warn('[HomeBase] handleNotifUrl failed',e);}
-}
-
-// Warm tap: SW posts a message when the user taps a notification with the app open
+// Listen for "open this URL" messages from the service worker (when user taps a notification)
 if('serviceWorker' in navigator){
   navigator.serviceWorker.addEventListener('message',(event)=>{
     if(event.data?.type==='NOTIFICATION_CLICK'&&event.data?.url){
-      handleNotifUrl(event.data.url);
+      // Could route to a specific screen here based on URL
+      console.log('[HomeBase] Notification tapped:',event.data.url);
     }
   });
 }
-
-// Cold start: app launched from a notification — parse ?notif=... and apply once render is ready
-(function applyColdStartNotif(){
-  try{
-    const params=new URLSearchParams(window.location.search);
-    const n=params.get('notif');
-    if(!n) return;
-    // Strip notif/id from URL so refresh doesn't re-trigger
-    params.delete('notif');params.delete('id');
-    const cleanSearch=params.toString();
-    const newUrl=window.location.pathname+(cleanSearch?'?'+cleanSearch:'')+window.location.hash;
-    window.history.replaceState({},'',newUrl);
-    // Defer until setTab + state are wired up (after sign-in render)
-    setTimeout(()=>handleNotifUrl('?notif='+n),1500);
-  }catch(e){}
-})();
 
 const NAVY='#1C3A6B';
 // === APP URL ===
@@ -765,12 +629,65 @@ function getViewDate(){
   return d;
 }
 function getViewDateStr(){return fd(getViewDate());}
+function genICS(events){
+  // Generate iCalendar file content
+  const fmt=d=>{
+    const pad=n=>String(n).padStart(2,'0');
+    return d.getFullYear()+pad(d.getMonth()+1)+pad(d.getDate())+'T'+pad(d.getHours())+pad(d.getMinutes())+'00';
+  };
+  let ics='BEGIN:VCALENDAR\r\nVERSION:2.0\r\nPRODID:-//HomeBase//EN\r\nCALSCALE:GREGORIAN\r\n';
+  events.forEach(ev=>{
+    if(!ev.date&&!ev.startDate)return;
+    const d=ev.date||ev.startDate;
+    const start=new Date(d+'T09:00');
+    const end=new Date(d+'T10:00');
+    // Try to parse time
+    if(ev.time){
+      const tm=ev.time.match(/(\d{1,2})[:\.]?(\d{0,2})\s*(am|pm)?/i);
+      if(tm){
+        let h=parseInt(tm[1]);
+        if(tm[3]&&tm[3].toLowerCase()==='pm'&&h<12)h+=12;
+        start.setHours(h,parseInt(tm[2]||'0'));
+        end.setHours(h+1,parseInt(tm[2]||'0'));
+      }
+    }
+    ics+='BEGIN:VEVENT\r\n';
+    ics+='UID:hb-'+(ev.id||Date.now())+'@homebase\r\n';
+    ics+='DTSTAMP:'+fmt(new Date())+'\r\n';
+    ics+='DTSTART:'+fmt(start)+'\r\n';
+    ics+='DTEND:'+fmt(end)+'\r\n';
+    ics+='SUMMARY:'+(ev.emoji||'')+(ev.emoji?' ':'')+(ev.title||'Event').replace(/[\n\r]/g,' ')+'\r\n';
+    if(ev.location)ics+='LOCATION:'+ev.location.replace(/[\n\r]/g,' ')+'\r\n';
+    let desc=[];
+    if(ev.dropoff)desc.push('Drop-off: '+ev.dropoff);
+    if(ev.pickup)desc.push('Pick-up: '+ev.pickup);
+    if(ev.notes)desc.push(ev.notes);
+    if(desc.length)ics+='DESCRIPTION:'+desc.join(' \\n ').replace(/[\n\r]/g,' ')+'\r\n';
+    if(ev.freq==='weekly'){
+      const days=Object.keys(ev.days||{}).filter(k=>ev.days[k]).map(d=>d.toUpperCase().slice(0,2)).join(',');
+      if(days)ics+='RRULE:FREQ=WEEKLY;BYDAY='+days+(ev.endDate?';UNTIL='+fmt(new Date(ev.endDate+'T23:59')):'')+'\r\n';
+    }else if(ev.freq==='fortnightly'){
+      const days=Object.keys(ev.days||{}).filter(k=>ev.days[k]).map(d=>d.toUpperCase().slice(0,2)).join(',');
+      if(days)ics+='RRULE:FREQ=WEEKLY;INTERVAL=2;BYDAY='+days+(ev.endDate?';UNTIL='+fmt(new Date(ev.endDate+'T23:59')):'')+'\r\n';
+    }
+    ics+='END:VEVENT\r\n';
+  });
+  ics+='END:VCALENDAR\r\n';
+  return ics;
+}
+function downloadICS(events,filename){
+  const ics=genICS(events);
+  const blob=new Blob([ics],{type:'text/calendar;charset=utf-8'});
+  const url=URL.createObjectURL(blob);
+  const a=document.createElement('a');
+  a.href=url;
+  a.download=(filename||'homebase-events')+'.ics';
+  document.body.appendChild(a);
+  a.click();
+  setTimeout(()=>{document.body.removeChild(a);URL.revokeObjectURL(url);},100);
+}
+
 function members(){return Object.entries(S.family&&S.family.members||{}).map(([uid,m])=>({uid,name:m.name,role:m.role,color:m.color||NAVY,relationship:m.relationship||'',photoURL:m.photoURL||'',phone:m.phone||'',email:m.email||'',personalCode:m.personalCode||'',dob:m.dob||'',celebrateMothersDay:!!m.celebrateMothersDay,celebrateFathersDay:!!m.celebrateFathersDay}));}
-// Adults who count as "core" family — excludes Logistics-role adults
-// (e.g. a grandparent/carer who only does drop-offs/pick-ups, not part of
-// notifications, family-wide reminders, calendar subscriptions, etc.)
-function coreMembers(){return members().filter(m=>m.role!=='Logistics');}
-function isLogisticsRole(m){return m&&m.role==='Logistics';}
 
 async function fw(){
   if(S.weather)return;
@@ -1481,7 +1398,6 @@ function sEditCaregiver(){
         <select class="input" id="ec-role">
           ${['Member','Admin','Logistics','View'].map(r=>`<option value="${r}" ${m.role===r?'selected':''}>${r}</option>`).join('')}
         </select>
-        <div style="font-size:12px;color:#8E8E93;margin-top:-6px;padding-left:4px;line-height:1.4">🚗 <strong>Logistics</strong> = drop-off/pick-up only. They won't get push notifications, family-wide reminders, or appear in calendar subscriptions.</div>
         ${isMe?`<input class="input" id="ec-fname" type="text" placeholder="Family name" value="${S.family?.name||''}"/>
         <div style="font-size:12px;color:#8E8E93;margin-top:-6px;padding-left:4px">Family name (only you can edit)</div>`:''}
         <div style="font-size:13px;color:#8E8E93;margin-top:4px">🎂 Birthday (optional)</div>
@@ -1942,15 +1858,16 @@ function sToday(){
           const db=b.date||'9999-12-31';
           return da.localeCompare(db);
         });
-        const quickAddCard=`<div class="card" style="margin-bottom:8px;padding:10px 12px;display:flex;gap:8px;align-items:center">
-          <input id="todayQuickReminderInput" type="text" placeholder="Add a reminder for the family…" onkeydown="if(event.key==='Enter')quickAddReminder()" style="flex:1;padding:9px 12px;border:1px solid var(--border);border-radius:10px;font-size:14px;font-family:inherit;background:var(--input-bg);color:var(--text);outline:none"/>
-          <button onclick="quickAddReminder()" style="padding:9px 14px;border-radius:10px;background:var(--navy);border:none;color:#fff;font-size:13px;font-weight:700;cursor:pointer;font-family:inherit;flex-shrink:0">+ Add</button>
+        if(dueReminders.length===0)return `<div style="display:flex;align-items:center;gap:8px;margin-bottom:8px">
+          <div class="sh" style="padding:0;flex-shrink:0">⏰ Reminders</div>
+          <input id="qrem-input" type="text" placeholder="Add a reminder for the family…" onkeydown="if(event.key==='Enter')quickAddReminder()" style="flex:1;min-width:0;padding:8px 12px;border-radius:9px;border:1px solid var(--border);background:var(--card);color:var(--text);font-family:inherit;font-size:13px;box-sizing:border-box"/>
+          <button onclick="quickAddReminder()" style="padding:8px 14px;border-radius:9px;background:var(--navy);border:none;color:#fff;font-size:13px;font-weight:600;cursor:pointer;font-family:inherit;flex-shrink:0">+ Add</button>
         </div>`;
-        if(dueReminders.length===0){
-          return `<div class="sh" style="margin-bottom:6px">⏰ Reminders</div>${quickAddCard}`;
-        }
-        return `<div class="sh" style="margin-bottom:6px">⏰ Reminders</div>
-        ${quickAddCard}
+        return `<div style="display:flex;align-items:center;gap:8px;margin-bottom:8px">
+          <div class="sh" style="padding:0;flex-shrink:0">⏰ Reminders</div>
+          <input id="qrem-input" type="text" placeholder="Add a reminder for the family…" onkeydown="if(event.key==='Enter')quickAddReminder()" style="flex:1;min-width:0;padding:8px 12px;border-radius:9px;border:1px solid var(--border);background:var(--card);color:var(--text);font-family:inherit;font-size:13px;box-sizing:border-box"/>
+          <button onclick="quickAddReminder()" style="padding:8px 14px;border-radius:9px;background:var(--navy);border:none;color:#fff;font-size:13px;font-weight:600;cursor:pointer;font-family:inherit;flex-shrink:0">+ Add</button>
+        </div>
         <div class="card" style="margin-bottom:14px">
           ${dueReminders.map((r,i)=>{
             // Virtual rows (birthdays, parent days) render differently — no checkbox, no delete X
@@ -2019,24 +1936,15 @@ function sToday(){
               const dStr=DAYSH[dDate.getDay()]+' '+dDate.getDate()+' '+MONTHS[dDate.getMonth()];
               dueLabel=`<div style="font-size:11px;font-weight:700;color:${isDueToday?'#FF3B30':tcol};margin-top:3px">${isDueToday?'🔴 Due today · '+dStr:'📅 Due '+dStr}</div>`;
             }
-            return `<div class="hb-swipe-wrap" data-swipe-id="reminder:${r.id}" style="${i<dueReminders.length-1?'border-bottom:1px solid var(--row-border)':''}">
-              <div class="hb-swipe-bg hb-swipe-bg-done">✓ Done</div>
-              <div class="hb-swipe-bg hb-swipe-bg-delete">Delete</div>
-              <div class="row hb-swipe-row" data-longpress="reminder:${r.id}" style="border-bottom:none;${r.done?'opacity:0.55':''}">
-                <div class="cb ${r.done?'on':''}" onclick="tReminder('${r.id}',${!r.done})" style="${r.done?'background:'+tcol+';border:none':'border-color:'+tcol}">${r.done?ck():''}</div>
-                <div style="flex:1;min-width:0">
-                  <div style="font-size:15px;color:var(--text);font-weight:500;${r.done?'text-decoration:line-through':''}">${r.text}</div>
-                  ${dueLabel}
-                  ${(()=>{
-                    const list=targets.length>0?targets:[...coreMembers().map(m=>({name:m.name||'Adult',color:m.color||NAVY,photo:m.photoURL})),...S.children.map(c=>({name:c.name||'Child',color:c.color||NAVY,photo:c.photoURL}))];
-                    if(list.length===0)return '';
-                    const labelCol=targets.length>0?tcol:'var(--text-secondary)';
-                    return `<div style="display:flex;align-items:center;gap:4px;margin-top:3px;flex-wrap:wrap">${list.slice(0,4).map(t=>av(t.name,t.color,18,t.photo)).join('')}<span style="font-size:11px;color:${labelCol};font-weight:600;margin-left:2px">${list.map(t=>t.name.split(' ')[0]).join(', ')}${list.length>4?' +'+(list.length-4):''}</span></div>`;
-                  })()}
-                  ${r.notes?`<div style="font-size:11px;color:var(--text-secondary);font-style:italic;margin-top:2px">${r.notes}</div>`:''}
-                </div>
-                <button onclick="dReminder('${r.id}')" style="color:#FF3B30;font-size:18px;opacity:0.5;border:none;background:none;cursor:pointer">×</button>
+            return `<div class="row" data-longpress="reminder:${r.id}" style="border-bottom:${i<dueReminders.length-1?'1px solid var(--row-border)':'none'};${r.done?'opacity:0.55':''}">
+              <div class="cb ${r.done?'on':''}" onclick="tReminder('${r.id}',${!r.done})" style="${r.done?'background:'+tcol+';border:none':'border-color:'+tcol}">${r.done?ck():''}</div>
+              <div style="flex:1;min-width:0">
+                <div style="font-size:15px;color:var(--text);font-weight:500;${r.done?'text-decoration:line-through':''}">${r.text}</div>
+                ${dueLabel}
+                ${targets.length===0?`<div style="font-size:11px;color:var(--text-secondary);font-weight:600;margin-top:3px">👨‍👩‍👧‍👦 Family-wide</div>`:`<div style="display:flex;align-items:center;gap:4px;margin-top:3px;flex-wrap:wrap">${targets.slice(0,4).map(t=>av(t.name,t.color,18,t.photo)).join('')}<span style="font-size:11px;color:${tcol};font-weight:600;margin-left:2px">${targets.map(t=>t.name.split(' ')[0]).join(', ')}${targets.length>4?' +'+(targets.length-4):''}</span></div>`}
+                ${r.notes?`<div style="font-size:11px;color:var(--text-secondary);font-style:italic;margin-top:2px">${r.notes}</div>`:''}
               </div>
+              <button onclick="dReminder('${r.id}')" style="color:#FF3B30;font-size:18px;opacity:0.5;border:none;background:none;cursor:pointer">×</button>
             </div>`;
           }).join('')}
         </div>`;
@@ -2302,7 +2210,6 @@ function sAddEvent(){
               {id:'sport-games',label:'🏆 Sport Games'},
               {id:'sport-training',label:'🏃 Sport Training'},
               {id:'school',label:'🏫 School'},
-              {id:'school-extra',label:'🎒 After school'},
               {id:'music',label:'🎵 Music'},
               {id:'work',label:'💼 Work'},
               {id:'social',label:'🎉 Social'},
@@ -2371,46 +2278,9 @@ function sCalendar(){
     : allWDates;
   const sel=S.calDate||todayStr;
 
-  // Helper: synthetic birthday events for a given date, derived from each family
-  // member's `dob`. Treated as 'social' category, owned by the birthday person.
-  function birthdayEventsOnDate(ds){
-    const target=new Date(ds+'T12:00');
-    const tMonth=target.getMonth();
-    const tDay=target.getDate();
-    const tYear=target.getFullYear();
-    const all=[
-      ...S.children.map(c=>({id:c.id,name:c.name,dob:c.dob,kind:'child'})),
-      ...coreMembers().map(m=>({id:m.uid,name:m.name,dob:m.dob,kind:'adult'}))
-    ];
-    const out=[];
-    all.forEach(p=>{
-      if(!p.dob)return;
-      const parts=String(p.dob).split('-');
-      if(parts.length!==3)return;
-      const m=parseInt(parts[1],10)-1;
-      const d=parseInt(parts[2],10);
-      if(m!==tMonth||d!==tDay)return;
-      const dobYear=parseInt(parts[0],10);
-      const age=isNaN(dobYear)?null:(tYear-dobYear);
-      const firstName=String(p.name||'').split(' ')[0]||'';
-      const ev={
-        id:'bday-virtual-'+p.id+'-'+tYear,
-        title:firstName+"'s birthday"+(age?' · turning '+age:''),
-        emoji:'🎂',
-        time:'',
-        date:ds,
-        category:'social',
-        _isBirthday:true
-      };
-      if(p.kind==='child')ev.childId=p.id;else ev.adultUid=p.id;
-      out.push(ev);
-    });
-    return out;
-  }
-
-  // Helper: get events for a specific date, respecting active filters (person + category)
+  // Helper: get events for a specific date
   function eventsOnDate(ds){
-    let evs=S.events.filter(ev=>{
+    return S.events.filter(ev=>{
       if(!ev.freq||ev.freq==='once')return ev.date===ds;
       if(Array.isArray(ev.skipDates)&&ev.skipDates.includes(ds))return false;
       const start=new Date((ev.startDate||ev.date||ds)+'T12:00');
@@ -2419,112 +2289,30 @@ function sCalendar(){
       if(d<start||(end&&d>end))return false;
       const dn=DAYSH[d.getDay()];
       return ev.days&&ev.days[dn];
-    });
-    // Mix in synthetic birthdays so they appear alongside real events
-    evs=evs.concat(birthdayEventsOnDate(ds));
-    if(S.calFilterPerson){
-      const pid=S.calFilterPerson;
-      evs=evs.filter(ev=>{
-        const hasParticipants=(Array.isArray(ev.participantIds)&&ev.participantIds.length>0)||ev.adultUid||ev.childId;
-        if(!hasParticipants)return true;
-        if(ev.adultUid===pid||ev.childId===pid)return true;
-        if(Array.isArray(ev.participantIds)&&ev.participantIds.includes(pid))return true;
-        return false;
-      });
-    }
-    if(S.calFilterCategory){
-      const f=S.calFilterCategory;
-      evs=evs.filter(ev=>{
-        if(f==='sport')return ev.category==='sport-games'||ev.category==='sport-training';
-        return ev.category===f;
-      });
-    }
-    return evs.sort((a,b)=>parseTimeToMinutes(a.time)-parseTimeToMinutes(b.time));
+    }).sort((a,b)=>parseTimeToMinutes(a.time)-parseTimeToMinutes(b.time));
   }
 
   const dayEvs=eventsOnDate(sel);
 
-  // Group events by their participant set so multi-person events show ONCE
-  // (with all names listed) instead of being duplicated under each person.
-  // Family-wide events (no specific tags) are treated as "everyone".
-  function groupEventsByParticipants(events){
-    const allMemberIds=[...S.children.map(c=>c.id),...coreMembers().map(m=>m.uid)];
-    const groups=new Map();
-    events.forEach(ev=>{
-      let participants=[];
-      if(Array.isArray(ev.participantIds)&&ev.participantIds.length>0){
-        participants=ev.participantIds.slice();
-      }else if(ev.adultUid){
-        participants=[ev.adultUid];
-      }else if(ev.childId){
-        participants=[ev.childId];
-      }else{
-        participants=allMemberIds.slice();
-      }
-      const key=participants.slice().sort().join(',');
-      if(!groups.has(key))groups.set(key,{participants,events:[]});
-      groups.get(key).events.push(ev);
-    });
-    const arr=[];
-    groups.forEach(({participants,events})=>{
-      const people=participants.map(pid=>{
-        const c=S.children.find(ch=>ch.id===pid);
-        if(c)return{id:c.id,name:c.name,color:c.color||NAVY,photoURL:c.photoURL,isAdult:false};
-        const a=members().find(m=>m.uid===pid);
-        if(a)return{id:a.uid,name:a.name,color:a.color||NAVY,photoURL:a.photoURL,isAdult:true};
-        return null;
-      }).filter(Boolean);
-      if(people.length===0)return;
-      const earliest=Math.min(...events.map(e=>parseTimeToMinutes(e.time)));
-      arr.push({people,events,earliest});
-    });
-    arr.sort((a,b)=>a.earliest-b.earliest);
-    return arr;
-  }
-
-  // Render an events card for one participant set. Solo = full avatar with the
-  // person's colour; group = stacked avatars + names + neutral navy block.
-  function eventsBlock(people,events){
-    const isMulti=people.length>1;
-    const primary=people[0];
-    const col=isMulti?NAVY:(primary.color||NAVY);
-    const firstNames=people.map(p=>p.name.split(' ')[0]);
-    const allFamily=people.length===([...S.children,...coreMembers()].length);
-    const headerText=allFamily?'WHOLE FAMILY':(firstNames.length<=3?firstNames.join(' & '):firstNames.slice(0,2).join(', ')+' +'+(firstNames.length-2)).toUpperCase();
-    const profileParams=primary.isAdult?`{kind:'adult',uid:'${primary.id}'}`:`{kind:'child',childId:'${primary.id}'}`;
-
-    const rightSide=isMulti
-      ? `<div style="width:90px;background:rgba(255,255,255,0.15);display:flex;flex-direction:column;align-items:center;justify-content:center;padding:12px 6px;gap:6px">
-          <div style="display:flex;flex-wrap:wrap;justify-content:center;gap:3px;max-width:80px">
-            ${people.slice(0,4).map(p=>p.photoURL
-              ?`<div style="width:30px;height:30px;border-radius:15px;border:2px solid #fff;background-image:url('${p.photoURL}');background-size:cover;background-position:center"></div>`
-              :`<div style="width:30px;height:30px;border-radius:15px;background:#fff;display:flex;align-items:center;justify-content:center;color:${p.color};font-size:11px;font-weight:800;border:2px solid #fff">${p.name.split(' ').map(n=>n[0]).slice(0,2).join('').toUpperCase()}</div>`
-            ).join('')}
-          </div>
-          ${people.length>4?`<div style="font-size:10px;color:rgba(255,255,255,0.85);font-weight:600">+${people.length-4} more</div>`:''}
-        </div>`
-      : `<div onclick="go('personProfile',${profileParams})" style="width:90px;background:rgba(255,255,255,0.15);display:flex;flex-direction:column;align-items:center;justify-content:center;cursor:pointer;padding:12px 6px">
-          ${primary.photoURL?`<div style="width:64px;height:64px;border-radius:32px;border:3px solid #fff;background-image:url('${primary.photoURL}');background-size:cover;background-position:center;margin-bottom:6px;box-shadow:0 4px 12px rgba(0,0,0,0.2)"></div>`:`<div style="width:64px;height:64px;border-radius:32px;background:#fff;display:flex;align-items:center;justify-content:center;color:${col};font-size:22px;font-weight:800;margin-bottom:6px;box-shadow:0 4px 12px rgba(0,0,0,0.2)">${primary.name.split(' ').map(n=>n[0]).slice(0,2).join('').toUpperCase()}</div>`}
-          <div style="font-size:12px;font-weight:800;color:#fff;text-align:center;line-height:1.1;letter-spacing:0.2px">${firstNames[0]}</div>
-        </div>`;
-
+  // Render a person's events (child OR adult) for this day as a single colour-block card
+  function personEventsBlock(person, events, isAdult){
+    const col=person?.color||NAVY;
+    const personName=person?person.name:'Family';
+    const personFirst=person?person.name.split(' ')[0]:'Family';
+    const profileKind=isAdult?'adult':'child';
+    const profileParams=isAdult?`{kind:'adult',uid:'${person.id}'}`:`{kind:'child',childId:'${person.id}'}`;
     return `<div style="width:calc(100% - 32px);margin:0 16px 12px;background:${col};border-radius:16px;box-shadow:var(--shadow-md);overflow:hidden;display:flex;align-items:stretch;color:#fff">
       <div style="flex:1;padding:14px 14px 14px 18px;min-width:0">
-        <div style="display:flex;align-items:center;gap:8px;margin-bottom:10px;padding-bottom:8px;border-bottom:1px solid rgba(255,255,255,0.25)">
-          <div style="font-size:13px;font-weight:800;color:#fff;letter-spacing:0.3px;flex:1;min-width:0;overflow:hidden;text-overflow:ellipsis;white-space:nowrap">${headerText}</div>
-          <div style="font-size:11px;color:rgba(255,255,255,0.8);font-weight:500;flex-shrink:0">${events.length} ${events.length===1?'event':'events'}</div>
-        </div>
+        ${person?`<div onclick="go('personProfile',${profileParams})" style="display:flex;align-items:center;gap:8px;margin-bottom:10px;cursor:pointer;padding-bottom:8px;border-bottom:1px solid rgba(255,255,255,0.25)">
+          <div style="font-size:13px;font-weight:800;color:#fff;letter-spacing:0.3px">${personFirst.toUpperCase()}</div>
+          <div style="font-size:11px;color:rgba(255,255,255,0.8);font-weight:500">· ${events.length} ${events.length===1?'event':'events'}</div>
+        </div>`:''}
         <div style="display:flex;flex-direction:column;gap:10px">
           ${events.map((ev,i)=>`<div onclick="openEventModal('${ev.id}')" data-longpress="event:${ev.id}" style="${i>0?'padding-top:10px;border-top:1px solid rgba(255,255,255,0.18)':''};cursor:pointer">
             <div style="display:flex;align-items:center;gap:8px;margin-bottom:4px;flex-wrap:wrap">
               <span style="font-size:20px">${ev.emoji||'📅'}</span>
               <span style="font-size:15px;font-weight:700;color:#fff;flex:1;min-width:0">${ev.title}</span>
-              ${(()=>{
-                const c=ev.category;
-                const map={'school':'🏫 SCHOOL','school-extra':'🎒 AFTER SCHOOL','sport-games':'⚽ SPORT','sport-training':'⚽ SPORT','music':'🎵 MUSIC','medical':'🏥 MEDICAL','social':'🎉 SOCIAL'};
-                const lbl=map[c];
-                return lbl?'<span style="font-size:10px;font-weight:700;padding:2px 7px;border-radius:8px;background:rgba(255,255,255,0.25);color:#fff">'+lbl+'</span>':'';
-              })()}
+              ${ev.category==='school'?'<span style="font-size:10px;font-weight:700;padding:2px 7px;border-radius:8px;background:rgba(255,255,255,0.25);color:#fff">🏫 SCHOOL</span>':ev.category==='sport'?'<span style="font-size:10px;font-weight:700;padding:2px 7px;border-radius:8px;background:rgba(255,255,255,0.25);color:#fff">⚽ SPORT</span>':ev.category==='music'?'<span style="font-size:10px;font-weight:700;padding:2px 7px;border-radius:8px;background:rgba(255,255,255,0.25);color:#fff">🎵 MUSIC</span>':ev.category==='medical'?'<span style="font-size:10px;font-weight:700;padding:2px 7px;border-radius:8px;background:rgba(255,255,255,0.25);color:#fff">🏥 MEDICAL</span>':ev.category==='social'?'<span style="font-size:10px;font-weight:700;padding:2px 7px;border-radius:8px;background:rgba(255,255,255,0.25);color:#fff">🎉 SOCIAL</span>':''}
               <button onclick="event.stopPropagation();dEvent('${ev.id}')" style="color:#fff;font-size:18px;opacity:0.6;border:none;background:none;cursor:pointer;padding:0 4px">×</button>
             </div>
             <div style="font-size:12px;color:rgba(255,255,255,0.92);line-height:1.5">
@@ -2537,8 +2325,65 @@ function sCalendar(){
           </div>`).join('')}
         </div>
       </div>
-      ${rightSide}
+      ${person?`<div onclick="go('personProfile',${profileParams})" style="width:90px;background:rgba(255,255,255,0.15);display:flex;flex-direction:column;align-items:center;justify-content:center;cursor:pointer;padding:12px 6px">
+        ${person.photoURL?`<div style="width:64px;height:64px;border-radius:32px;border:3px solid #fff;background-image:url('${person.photoURL}');background-size:cover;background-position:center;margin-bottom:6px;box-shadow:0 4px 12px rgba(0,0,0,0.2)"></div>`:`<div style="width:64px;height:64px;border-radius:32px;background:#fff;display:flex;align-items:center;justify-content:center;color:${col};font-size:22px;font-weight:800;margin-bottom:6px;box-shadow:0 4px 12px rgba(0,0,0,0.2)">${person.name.split(' ').map(n=>n[0]).slice(0,2).join('').toUpperCase()}</div>`}
+        <div style="font-size:12px;font-weight:800;color:#fff;text-align:center;line-height:1.1;letter-spacing:0.2px">${personFirst}</div>
+      </div>`:''}
     </div>`;
+  }
+  // Backwards-compat alias
+  function childEventsBlock(child, events){return personEventsBlock(child, events, false);}
+
+  // Group day events by child
+  function groupEventsByChild(events){
+    const childGroups=new Map();
+    const adultGroups=new Map();
+    const familyGroup=[];
+    events.forEach(ev=>{
+      // New model: participantIds is the source of truth if present
+      if(Array.isArray(ev.participantIds)&&ev.participantIds.length>0){
+        ev.participantIds.forEach(pid=>{
+          // Determine if it's a child or adult
+          const c=S.children.find(ch=>ch.id===pid);
+          const a=members().find(m=>m.uid===pid);
+          if(c){
+            if(!childGroups.has(pid))childGroups.set(pid,[]);
+            childGroups.get(pid).push(ev);
+          }else if(a){
+            if(!adultGroups.has(pid))adultGroups.set(pid,[]);
+            adultGroups.get(pid).push(ev);
+          }
+        });
+      }else if(ev.adultUid){
+        if(!adultGroups.has(ev.adultUid))adultGroups.set(ev.adultUid,[]);
+        adultGroups.get(ev.adultUid).push(ev);
+      }else if(ev.childId){
+        if(!childGroups.has(ev.childId))childGroups.set(ev.childId,[]);
+        childGroups.get(ev.childId).push(ev);
+      }else{
+        familyGroup.push(ev);
+      }
+    });
+    const arr=[];
+    childGroups.forEach((evs,cid)=>{
+      const child=S.children.find(c=>c.id===cid);
+      const earliest=Math.min(...evs.map(e=>parseTimeToMinutes(e.time)));
+      arr.push({person:child,isAdult:false,events:evs,earliest});
+    });
+    adultGroups.forEach((evs,uid)=>{
+      const m=members().find(x=>x.uid===uid);
+      if(m){
+        const person={id:m.uid,name:m.name,color:m.color,photoURL:m.photoURL};
+        const earliest=Math.min(...evs.map(e=>parseTimeToMinutes(e.time)));
+        arr.push({person,isAdult:true,events:evs,earliest});
+      }
+    });
+    if(familyGroup.length){
+      const earliest=Math.min(...familyGroup.map(e=>parseTimeToMinutes(e.time)));
+      arr.push({person:null,isAdult:false,events:familyGroup,earliest});
+    }
+    arr.sort((a,b)=>a.earliest-b.earliest);
+    return arr;
   }
 
   return `
@@ -2571,24 +2416,10 @@ function sCalendar(){
     </div>
 
     <div class="scroll-view" style="padding:14px 0 80px">
-      ${(()=>{
-        const chip=(active,onclick,label)=>'<button onclick="'+onclick+'" style="padding:6px 12px;border-radius:14px;border:'+(active?'none':'1px solid var(--border)')+';background:'+(active?'var(--navy)':'var(--card)')+';color:'+(active?'#fff':'var(--text)')+';font-size:12px;font-weight:600;cursor:pointer;font-family:inherit;flex-shrink:0;white-space:nowrap">'+label+'</button>';
-        const adults=coreMembers();
-        const kids=Array.isArray(S.children)?S.children:[];
-        const peopleChips=chip(!S.calFilterPerson,"S.calFilterPerson='';render()","All people")
-          +adults.map(m=>chip(S.calFilterPerson===m.uid,"S.calFilterPerson='"+m.uid+"';render()",(m.name||'Adult').split(' ')[0])).join('')
-          +kids.map(c=>chip(S.calFilterPerson===c.id,"S.calFilterPerson='"+c.id+"';render()",(c.name||'Child').split(' ')[0])).join('');
-        const cats=[['','All types'],['sport','⚽ Sport'],['school','🏫 School'],['school-extra','🎒 After school'],['music','🎵 Music'],['social','🎉 Social'],['medical','🏥 Medical']];
-        const catChips=cats.map(([v,l])=>chip(S.calFilterCategory===v||(!S.calFilterCategory&&!v),"S.calFilterCategory='"+v+"';render()",l)).join('');
-        const anyActive=S.calFilterPerson||S.calFilterCategory;
-        const clearBtn=anyActive?'<button onclick="S.calFilterPerson=\'\';S.calFilterCategory=\'\';render()" style="padding:4px 10px;border-radius:12px;border:none;background:transparent;color:var(--navy);font-size:11px;font-weight:700;cursor:pointer;font-family:inherit;text-decoration:underline">Clear</button>':'';
-        return '<div style="display:flex;gap:6px;overflow-x:auto;padding:0 16px 6px;scrollbar-width:none;-webkit-overflow-scrolling:touch">'+peopleChips+'</div>'
-          +'<div style="display:flex;gap:6px;overflow-x:auto;padding:0 16px 10px;scrollbar-width:none;-webkit-overflow-scrolling:touch;align-items:center">'+catChips+clearBtn+'</div>';
-      })()}
       ${view==='day'?`
         ${dayEvs.length===0?`<div style="text-align:center;padding:60px 20px"><div style="font-size:56px;margin-bottom:14px">🎉</div><div style="font-size:18px;font-weight:700;margin-bottom:6px;color:var(--text)">Nothing on!</div><div style="font-size:15px;color:var(--text-secondary)">Tap + to add an event</div></div>`:
           `<div class="sh" style="margin-bottom:10px">${new Date(sel+'T12:00').toLocaleDateString('en-AU',{weekday:'long',day:'numeric',month:'long'})}</div>
-          ${groupEventsByParticipants(dayEvs).map(g=>eventsBlock(g.people,g.events)).join('')}`
+          ${groupEventsByChild(dayEvs).map(g=>personEventsBlock(g.person,g.events,g.isAdult)).join('')}`
         }
       `:view==='coverage'?(()=>{
         // COVERAGE GRID: Adults × Days, count of drop-offs/pick-ups per cell
@@ -2706,7 +2537,6 @@ const EV_CATEGORIES=[
   {id:'sport-games',emoji:'🏆',label:'Sport Games',color:'#FF6B35'},
   {id:'sport-training',emoji:'🏃',label:'Sport Training',color:'#5856D6'},
   {id:'school',emoji:'🏫',label:'School',color:'#1C3A6B'},
-  {id:'school-extra',emoji:'🎒',label:'After school',color:'#00C7BE'},
   {id:'music',emoji:'🎵',label:'Music',color:'#AF52DE'},
   {id:'work',emoji:'💼',label:'Work',color:'#5A5A5C'},
   {id:'social',emoji:'🎉',label:'Social',color:'#FF6B9D'},
@@ -2885,7 +2715,7 @@ function sEvents(){
             </div>
           `}
         </div>
-        <div class="fab"><button class="fab-btn" style="background:#1C3A6B" onclick="quickAddTypedEvent('${catId}')">+</button></div>`;
+        <div class="fab"><button class="fab-btn" style="background:#1C3A6B" onclick="go('addEvent')">+</button></div>`;
     }
 
     // Past category: show past one-offs
@@ -2984,7 +2814,7 @@ function sEvents(){
       <div class="scroll-view" style="padding:14px 16px 100px">
         ${filtered.length===0?`<div style="text-align:center;padding:40px 20px;color:var(--text-secondary);font-size:14px">No ${cat.label.toLowerCase()} events yet.</div>`:`<div class="card">${filtered.map((ev,i)=>eventRow(ev,i,filtered.length)).join('')}</div>`}
       </div>
-      <div class="fab"><button class="fab-btn" style="background:#1C3A6B" onclick="quickAddTypedEvent('${catId}')">+</button></div>`;
+      <div class="fab"><button class="fab-btn" style="background:#1C3A6B" onclick="go('addEvent')">+</button></div>`;
   }
 
   // ========== VIEW: TILES (default home) ==========
@@ -3001,9 +2831,39 @@ function sEvents(){
 
   return `
     <div style="background:var(--card);padding:14px 16px 12px;border-bottom:1px solid var(--row-border);position:sticky;top:0;z-index:10">
-      <div style="font-size:26px;font-weight:800;color:var(--text)">Events</div>
+      <div style="font-size:26px;font-weight:800;color:var(--text);margin-bottom:10px">Events</div>
+      <!-- Search bar: filters across event title, location, and participant first names.
+           Two-way bound via S.evSearch so the value persists across re-renders. The
+           debounced oninput re-renders on every keystroke so results update live.
+           Clearing the box (× button) returns the user to the normal tiles view. -->
+      <div style="position:relative">
+        <input id="ev-search" type="search" value="${(S.evSearch||'').replace(/"/g,'&quot;')}" placeholder="🔍 Search events…" oninput="S.evSearch=this.value;S._evSearchCaret=this.selectionStart;clearTimeout(window._evSearchT);window._evSearchT=setTimeout(()=>{render();const i=document.getElementById('ev-search');if(i){i.focus();try{i.setSelectionRange(S._evSearchCaret||i.value.length,S._evSearchCaret||i.value.length)}catch(e){}}},150)" style="width:100%;padding:9px 36px 9px 12px;border-radius:9px;border:1px solid var(--border);background:var(--bg);color:var(--text);font-family:inherit;font-size:13px;box-sizing:border-box"/>
+        ${S.evSearch?`<button onclick="S.evSearch='';render();setTimeout(()=>document.getElementById('ev-search')?.focus(),0)" style="position:absolute;right:6px;top:50%;transform:translateY(-50%);background:none;border:none;color:var(--text-secondary);font-size:18px;cursor:pointer;padding:4px 8px;line-height:1">×</button>`:''}
+      </div>
     </div>
-    <div class="scroll-view" style="padding:14px 16px 100px">
+    ${(()=>{
+      // Search-results view: when the user has typed something, show a flat list of
+      // matching events instead of the tiles+import sections. Searches title,
+      // location, and participant first names; case-insensitive.
+      const q=(S.evSearch||'').trim().toLowerCase();
+      if(!q)return '';
+      // Search across BOTH active + past, so users can find old events too.
+      const matches=[...activeEvents,...pastOneoffs].filter(ev=>{
+        if(String(ev.title||'').toLowerCase().includes(q))return true;
+        if(String(ev.location||'').toLowerCase().includes(q))return true;
+        const ppl=peopleForEvent(ev);
+        if(ppl.some(p=>p.name.toLowerCase().includes(q)))return true;
+        return false;
+      });
+      return `<div class="scroll-view" style="padding:14px 16px 100px">
+        <div class="sh" style="padding:0;margin-bottom:8px">${matches.length} result${matches.length===1?'':'s'} for "${q.replace(/</g,'&lt;')}"</div>
+        ${matches.length===0
+          ?`<div style="text-align:center;padding:40px 20px;color:var(--text-secondary);font-size:14px">No events match.<br><span style="font-size:12px;opacity:0.8">Try fewer letters, a child's first name, or a venue.</span></div>`
+          :`<div class="card">${matches.map((ev,i)=>eventRow(ev,i,matches.length)).join('')}</div>`}
+        <div class="fab"><button class="fab-btn" style="background:#1C3A6B" onclick="go('addEvent')">+</button></div>
+      </div>`;
+    })()}
+    ${(S.evSearch||'').trim()?'':`<div class="scroll-view" style="padding:14px 16px 100px">
 
       <!-- Quick add one-off -->
       <button onclick="go('addEvent')" style="width:100%;padding:14px;border-radius:14px;background:var(--navy);border:none;color:#fff;font-size:15px;font-weight:700;cursor:pointer;font-family:inherit;margin-bottom:18px;display:flex;align-items:center;justify-content:center;gap:6px;box-shadow:0 2px 8px rgba(28,58,107,0.15)">+ Add Event</button>
@@ -3037,7 +2897,7 @@ function sEvents(){
         }).join('')}
       </div>
 
-    </div>
+    </div>`}
     <div class="fab"><button class="fab-btn" style="background:#1C3A6B" onclick="go('addEvent')">+</button></div>`;
 }
 
@@ -5963,16 +5823,14 @@ function sPlayDateType(tabBar,type){
     <div class="fab"><button class="fab-btn" style="background:var(--navy)" onclick="quickAddPlayDate('${type}')">+</button></div>`;
 }
 
-// Quick-add an event with category pre-set. Looks up emoji from EV_CATEGORIES so adding a new
-// category in one place automatically picks the right default emoji here.
+// Quick-add a typed event (Work / School Event / Subject) — pre-sets category
 window.quickAddTypedEvent=function(cat){
   S.ef=S.ef||{};
   S.ef.category=cat;
   S.ef.freq='once';
   S.ef.days={Mon:false,Tue:false,Wed:false,Thu:false,Fri:false,Sat:false,Sun:false};
   S.ef.packItems=[];
-  const meta=EV_CATEGORIES.find(c=>c.id===cat);
-  S.ef.emoji=meta?meta.emoji:(cat==='school-event'?'🏫':cat==='school-subject'?'📚':'📅');
+  S.ef.emoji=cat==='work'?'💼':cat==='school-event'?'🏫':cat==='school-subject'?'📚':'📅';
   S.ef.participantIds=[];
   go('addEvent');
 };
@@ -6567,17 +6425,13 @@ function sFamily(){
           const isMe=m.uid===S.user?.uid;
           const rel=m.relationship||'';
           const hasCode=!!m.personalCode;
-          const isLog=isLogisticsRole(m);
-          const roleBadge=isLog
-            ?'<span title="Drop-off / pick-up only — no notifications, calendar, or family-wide reminders" style="font-size:11px;font-weight:700;padding:2px 10px;border-radius:20px;background:#FF950018;color:#C76A00;display:inline-flex;align-items:center;gap:3px">🚗 Logistics only</span>'
-            :'<span style="font-size:11px;font-weight:700;padding:2px 10px;border-radius:20px;background:#1C3A6B18;color:#1C3A6B">'+m.role+'</span>';
           return `<div style="display:flex;align-items:center;gap:12px;padding:13px 16px;border-bottom:1px solid #F2F2F7">
             <div onclick="go('personProfile',{kind:'adult',uid:'${m.uid}',fromFamily:true})" style="display:flex;align-items:center;gap:12px;flex:1;cursor:pointer">
               ${av(m.name,m.color,48,m.photoURL)}
               <div style="flex:1">
                 <div style="font-size:17px;font-weight:600">${m.name}${isMe?' (You)':''}</div>
                 <div style="display:flex;gap:6px;margin-top:2px;flex-wrap:wrap;align-items:center">
-                  ${roleBadge}
+                  <span style="font-size:11px;font-weight:700;padding:2px 10px;border-radius:20px;background:#1C3A6B18;color:#1C3A6B">${m.role}</span>
                   ${rel?`<span style="font-size:11px;font-weight:600;padding:2px 10px;border-radius:20px;background:#F2F2F7;color:#8E8E93">${rel}</span>`:''}
                   ${!isMe?`<span style="font-size:11px;font-weight:600;padding:2px 8px;border-radius:20px;background:${hasCode?'#34C75920':'#FF950020'};color:${hasCode?'#1F8E3F':'#C76A00'}">${hasCode?'🔑 Code ready':'Tap to invite'}</span>`:''}
                 </div>
@@ -6594,169 +6448,153 @@ function sFamily(){
 // ── SETTINGS ──────────────────────────────────────
 function sSettings(){
   const t=S.toggles;
-
-  // Build the contents of each section ONCE, then wrap in collapsible cards.
-  const notifContent=
-     '<div style="padding:14px 16px;border-bottom:1px solid var(--row-border)">'
-    +'<div style="font-size:14px;font-weight:600;margin-bottom:6px">Morning summary time</div>'
-    +'<div style="font-size:13px;color:var(--text-secondary);margin-bottom:10px">Each user gets a daily push at this time with today\'s events + reminders.</div>'
-    +'<div style="display:flex;gap:10px;align-items:center">'
-      +'<input class="input" id="set-notif-time" type="time" value="'+(S.notifTime||'07:00')+'" style="max-width:140px"/>'
-      +'<button onclick="saveNotifTime()" style="padding:12px 16px;border-radius:12px;background:var(--navy);border:none;color:#fff;font-size:14px;font-weight:600;cursor:pointer;font-family:inherit">Save</button>'
-    +'</div>'
-    +'<div style="font-size:12px;color:#34C759;margin-top:10px;font-weight:600">'+(S.notifTime?'✅ Currently set: '+S.notifTime:'⚪ Not yet saved')+'</div>'
-    +'</div>'
-    +'<div style="padding:14px 16px;border-bottom:1px solid var(--row-border)">'
-    +'<div style="font-size:14px;font-weight:600;margin-bottom:6px">Push notifications</div>'
-    +'<div style="font-size:13px;color:var(--text-secondary);margin-bottom:10px;line-height:1.4">Get pushes for events, handoffs and clashes even when HomeBase is closed. On iPhone, Add to Home Screen first.</div>'
-    +'<button onclick="requestNotifPerm()" style="width:100%;padding:12px 16px;border-radius:12px;background:var(--navy);border:none;color:#fff;font-size:14px;font-weight:600;cursor:pointer;font-family:inherit">🔔 Enable push notifications</button>'
-    +'</div>'
-    +'<div class="row">'
-      +'<span style="font-size:20px">📱</span>'
-      +'<div style="flex:1"><div style="font-size:14px">In-app reminders</div><div style="font-size:12px;color:var(--text-secondary)">Show reminders when app is open</div></div>'
-      +tog(t.notifs,"S.toggles.notifs=!S.toggles.notifs;render()")
-    +'</div>';
-
-  const calendarContent=
-     '<div style="padding:14px 16px 10px">'
-    +'<div style="font-size:13px;color:var(--text-secondary);line-height:1.5">Each tap below adds a separate calendar to iOS, auto-refreshed every few hours. Colour-code and toggle them independently in the Calendar app.</div>'
-    +'</div>'
-    +(()=>{
-      const adults=(typeof coreMembers==='function')?coreMembers():[];
-      const kids=Array.isArray(S.children)?S.children:[];
-      const people=[
-        {id:'',label:'Whole family',isFamily:true,color:NAVY},
-        ...adults.map(m=>({id:m.uid,label:m.name||'Adult',color:m.color||NAVY,photo:m.photoURL||null})),
-        ...kids.map(c=>({id:c.id,label:c.name||'Child',color:c.color||NAVY,photo:c.photoURL||null}))
-      ];
-      return people.map((p,i)=>{
-        const last=i===people.length-1;
-        const safeId=String(p.id).replace(/'/g,"\\'");
-        const avatar=p.isFamily
-          ?'<div style="width:34px;height:34px;border-radius:17px;background:'+NAVY+';display:flex;align-items:center;justify-content:center;font-size:16px;flex-shrink:0;color:#fff">👪</div>'
-          :av(p.label,p.color,34,p.photo);
-        return '<div class="row" style="border-bottom:'+(last?'none':'1px solid var(--row-border)')+';padding:12px 16px;gap:12px">'
-          +avatar
-          +'<div style="flex:1;font-size:15px;font-weight:500;color:var(--text);min-width:0;overflow:hidden;text-overflow:ellipsis;white-space:nowrap">'+p.label+'</div>'
-          +'<button onclick="showSubscribeUrl(\''+safeId+'\')" style="padding:8px 12px;border-radius:10px;background:var(--navy);border:none;color:#fff;font-size:12px;font-weight:700;cursor:pointer;font-family:inherit;flex-shrink:0">+ Subscribe</button>'
-          +'</div>';
-      }).join('');
-    })();
-
-  const emailContent=
-     '<div style="padding:14px 16px;display:flex;align-items:center;gap:12px;cursor:pointer" onclick="go(\'inboxSetup\')">'
-    +'<div style="width:38px;height:38px;border-radius:19px;background:linear-gradient(135deg,#AF52DE,#5856D6);display:flex;align-items:center;justify-content:center;font-size:18px;flex-shrink:0">📬</div>'
-    +'<div style="flex:1;min-width:0">'
-      +'<div style="font-size:14px;font-weight:700;color:var(--text)">Forward emails to extract events</div>'
-      +'<div style="font-size:11px;color:var(--text-secondary);margin-top:2px">Tap for setup guides + how it works</div>'
-    +'</div>'
-    +'<span style="color:var(--text-secondary);font-size:18px">›</span>'
-    +'</div>'
-    +(()=>{
-      const addr=S.family?.inboundAddress||'';
-      if(!addr) return '<div style="padding:0 16px 14px;font-size:11px;color:var(--text-secondary);font-style:italic">Your forwarding address is being generated…</div>';
-      const safe=addr.replace(/'/g,"\\'");
-      return '<div style="padding:0 16px 14px;border-top:1px solid var(--row-border);padding-top:12px">'
-        +'<div style="font-size:10px;color:var(--text-secondary);margin-bottom:6px;letter-spacing:0.6px;text-transform:uppercase;font-weight:700">Your forwarding address</div>'
-        +'<div style="background:var(--bg);border-radius:10px;padding:10px 12px;display:flex;align-items:center;gap:8px">'
-          +'<code style="flex:1;font-family:Menlo,monospace;font-size:12px;color:var(--text);word-break:break-all;font-weight:600">'+addr+'</code>'
-          +'<button onclick="event.stopPropagation();copyInboundAddress(\''+safe+'\')" style="padding:6px 12px;border-radius:8px;background:var(--navy);border:none;color:#fff;font-size:11px;font-weight:700;cursor:pointer;font-family:inherit;flex-shrink:0">📋</button>'
-        +'</div>'
-      +'</div>';
-    })();
-
-  const familyContent=
-     '<div style="padding:14px 16px;border-bottom:1px solid var(--row-border)">'
-    +'<div style="font-size:14px;font-weight:600;margin-bottom:6px">📅 School term dates</div>'
-    +'<div style="font-size:12px;color:var(--text-secondary);margin-bottom:10px">So school events only show on real school days.</div>'
-    +['t1','t2','t3','t4'].map(function(tt,i){return '<div style="margin-bottom:'+(i<3?'10':'0')+'px"><div style="font-size:12px;font-weight:600;color:var(--text);margin-bottom:4px">Term '+(i+1)+'</div><div style="display:flex;gap:6px"><input class="input" id="term-'+tt+'s" type="date" value="'+(S.termDates&&S.termDates[tt+'s']||'')+'" style="flex:1;font-size:13px;padding:9px"/><input class="input" id="term-'+tt+'e" type="date" value="'+(S.termDates&&S.termDates[tt+'e']||'')+'" style="flex:1;font-size:13px;padding:9px"/></div></div>';}).join('')
-    +'<button onclick="saveTermDates()" style="width:100%;margin-top:10px;padding:11px;border-radius:10px;background:var(--navy);border:none;color:#fff;font-size:13px;font-weight:600;cursor:pointer;font-family:inherit">Save term dates</button>'
-    +'</div>'
-    +'<div style="padding:14px 16px;border-bottom:1px solid var(--row-border)">'
-    +'<div style="font-size:14px;font-weight:600;margin-bottom:6px">🏃 Family sports & teams</div>'
-    +'<div style="font-size:12px;color:var(--text-secondary);margin-bottom:10px;line-height:1.4">Sports your family plays + the team name for each. Pre-filled when importing fixtures.</div>'
-    +(()=>{
-      const sports=Array.isArray(S.family?.sports)?S.family.sports:[];
-      const teams=S.family?.sportTeams||{};
-      if(sports.length===0)return '<div style="font-size:12px;color:var(--text-secondary);font-style:italic;margin-bottom:10px;padding:8px;background:var(--bg);border-radius:8px">No sports added yet.</div>';
-      return '<div style="display:flex;flex-direction:column;gap:8px;margin-bottom:10px">'+sports.map(s=>{
-        const safe=String(s).replace(/'/g,"\\'").replace(/"/g,'&quot;');
-        const teamName=teams[s]||'';
-        const safeTeam=String(teamName).replace(/"/g,'&quot;');
-        return '<div style="background:var(--bg);border-radius:10px;padding:10px;display:flex;align-items:center;gap:8px">'
-          +'<div style="font-size:13px;font-weight:700;color:var(--text);flex-shrink:0;min-width:80px">'+s+'</div>'
-          +'<input class="input" id="set-team-'+safe+'" type="text" placeholder="Team name" value="'+safeTeam+'" onchange="updateSportTeam(\''+safe+'\',this.value)" style="flex:1;font-size:12px;padding:7px 9px;background:var(--card)"/>'
-          +'<button onclick="removeFamilySport(\''+safe+'\')" style="width:26px;height:26px;border-radius:13px;border:none;background:#FF3B3022;color:#FF3B30;font-size:15px;line-height:1;cursor:pointer;font-family:inherit;padding:0;display:flex;align-items:center;justify-content:center;flex-shrink:0">×</button>'
-          +'</div>';
-      }).join('')+'</div>';
-    })()
-    +'<div style="display:flex;gap:8px">'
-      +'<input class="input" id="set-family-sport-input" type="text" placeholder="Add a sport (e.g. Water Polo)" style="flex:1;font-size:13px;padding:9px" onkeydown="if(event.key===\'Enter\'){event.preventDefault();addFamilySport();}"/>'
-      +'<button onclick="addFamilySport()" style="padding:9px 14px;border-radius:10px;background:var(--navy);border:none;color:#fff;font-size:13px;font-weight:600;cursor:pointer;font-family:inherit">+ Add</button>'
-    +'</div>'
-    +'</div>'
-    +'<div style="padding:14px 16px">'
-    +'<div style="font-size:14px;font-weight:600;margin-bottom:6px">📜 Past events retention</div>'
-    +'<div style="font-size:12px;color:var(--text-secondary);margin-bottom:10px">How long past one-off events stay visible on Events page.</div>'
-    +'<select id="set-past-retention" style="width:100%;padding:10px;border-radius:10px;border:1px solid var(--border);background:var(--card);color:var(--text);font-size:14px;font-family:inherit">'
-    +(()=>{const cur=(S.family&&Number.isFinite(S.family.pastEventsRetentionDays))?S.family.pastEventsRetentionDays:30;const opts=[{v:7,l:'7 days'},{v:14,l:'2 weeks'},{v:30,l:'30 days (default)'},{v:60,l:'2 months'},{v:90,l:'3 months'},{v:0,l:'Forever'}];return opts.map(o=>'<option value="'+o.v+'" '+(cur===o.v?'selected':'')+'>'+o.l+'</option>').join('');})()
-    +'</select>'
-    +'<button onclick="savePastRetention()" style="width:100%;margin-top:10px;padding:11px;border-radius:10px;background:var(--navy);border:none;color:#fff;font-size:13px;font-weight:600;cursor:pointer;font-family:inherit">Save</button>'
-    +'</div>';
-
-  const displayContent=
-     '<div style="padding:14px 16px;border-bottom:1px solid var(--row-border)">'
-    +'<div style="font-size:14px;font-weight:600;margin-bottom:6px">🌤 Weather location</div>'
-    +'<input class="input" id="set-city" type="text" placeholder="e.g. Albury, NSW" value="'+(S.manualCity||'')+'" style="margin-bottom:8px"/>'
-    +'<div style="display:flex;gap:8px;margin-bottom:6px">'
-      +'<input class="input" id="set-lat" type="number" placeholder="Latitude" value="'+(S.manualLat||'')+'" step="0.0001" style="flex:1"/>'
-      +'<input class="input" id="set-lon" type="number" placeholder="Longitude" value="'+(S.manualLon||'')+'" step="0.0001" style="flex:1"/>'
-    +'</div>'
-    +'<div style="font-size:11px;color:var(--text-secondary);margin-bottom:8px">e.g. Albury: -36.0737, 146.9135</div>'
-    +'<div style="display:flex;gap:8px">'
-      +'<button onclick="saveLocationSettings()" style="flex:1;padding:11px;border-radius:10px;background:var(--navy);border:none;color:#fff;font-size:13px;font-weight:600;cursor:pointer;font-family:inherit">Save</button>'
-      +'<button onclick="useDeviceLocation()" style="flex:1;padding:11px;border-radius:10px;background:var(--bg);border:none;color:var(--navy);font-size:13px;font-weight:600;cursor:pointer;font-family:inherit">📍 Use GPS</button>'
-    +'</div>'
-    +(S.weather?'<div style="margin-top:8px;font-size:12px;color:#34C759;font-weight:600">✅ '+S.weather.temp+'°C '+S.weather.icon+' '+S.weather.desc+(S.weather.city?' · '+S.weather.city:'')+'</div>':'<div style="margin-top:8px;font-size:12px;color:var(--text-secondary)">No weather yet — save location above</div>')
-    +'</div>'
-    +'<div class="row">'
-      +'<span style="font-size:20px">'+(S.nightMode?'🌙':'☀️')+'</span>'
-      +'<div style="flex:1"><div style="font-size:14px">Night mode</div><div style="font-size:12px;color:var(--text-secondary)">Dark theme for low light</div></div>'
-      +tog(S.nightMode,"toggleNightMode()")
-    +'</div>';
-
-  const helpContent=
-     '<button class="btn" onclick="go(\'help\')" style="width:100%;padding:14px 16px;display:flex;align-items:center;gap:12px;text-align:left;border:none;background:none;cursor:pointer;font-family:inherit;border-bottom:1px solid var(--row-border)"><span style="font-size:20px">❓</span><div style="flex:1"><div style="font-size:15px;font-weight:500;color:var(--text)">How HomeBase works</div><div style="font-size:13px;color:var(--text-secondary)">Tour of the main features</div></div><span class="chev"></span></button>'
-    +'<button class="btn" onclick="go(\'privacy\')" style="width:100%;padding:14px 16px;display:flex;align-items:center;gap:12px;text-align:left;border:none;background:none;cursor:pointer;font-family:inherit;border-bottom:1px solid var(--row-border)"><span style="font-size:20px">🔒</span><div style="flex:1"><div style="font-size:15px;font-weight:500;color:var(--text)">Privacy & your data</div><div style="font-size:13px;color:var(--text-secondary)">What we store and how</div></div><span class="chev"></span></button>'
-    +'<button class="btn" onclick="go(\'about\')" style="width:100%;padding:14px 16px;display:flex;align-items:center;gap:12px;text-align:left;border:none;background:none;cursor:pointer;font-family:inherit"><span style="font-size:20px">ℹ️</span><div style="flex:1"><div style="font-size:15px;font-weight:500;color:var(--text)">About HomeBase</div><div style="font-size:13px;color:var(--text-secondary)">Version & credits</div></div><span class="chev"></span></button>';
-
-  const accountContent=
-     '<button class="btn" onclick="hSignOut()" style="width:100%;padding:14px 16px;color:var(--text);font-size:15px;font-weight:600;text-align:left;border-bottom:1px solid var(--row-border)">Sign out</button>'
-    +'<button class="btn" onclick="hLeaveFamily()" style="width:100%;padding:14px 16px;color:#FF9500;font-size:15px;font-weight:600;text-align:left;border-bottom:1px solid var(--row-border)">🚪 Leave this family</button>'
-    +'<button class="btn" onclick="hDeleteFamily()" style="width:100%;padding:14px 16px;color:#FF3B30;font-size:15px;font-weight:600;text-align:left">🗑 Delete family permanently</button>';
-
-  // Helper to wrap each section in a collapsible <details> card
-  const section=(open,emoji,title,sub,body)=>'<details class="hb-collapse"'+(open?' open':'')+'><summary>'+emoji+' '+title+(sub?'<span class="hb-summary-sub">'+sub+'</span>':'')+'</summary>'+body+'</details>';
-
-  return '<div style="background:var(--card);padding:14px 16px;border-bottom:1px solid var(--row-border);position:sticky;top:0;z-index:10">'
-    +'<div style="font-size:26px;font-weight:800;color:var(--text)">Settings</div>'
-    +'</div>'
-    +'<div style="padding:16px 0 100px">'
-    +'<div style="margin:0 16px 16px;background:linear-gradient(135deg,#1C3A6B,#2E5FBF);border-radius:20px;padding:22px 20px">'
-      +'<div style="font-size:13px;color:rgba(255,255,255,0.7);margin-bottom:4px">Signed in as</div>'
-      +'<div style="font-size:20px;font-weight:800;color:#fff">'+(S.user&&S.user.displayName||'User')+'</div>'
-      +'<div style="font-size:13px;color:rgba(255,255,255,0.7);margin-top:2px">'+(S.user&&S.user.email||'')+'</div>'
-      +'<div style="font-size:11px;color:rgba(255,255,255,0.5);margin-top:6px">Family: '+(S.family&&S.family.name||'')+'</div>'
-    +'</div>'
-    +section(true, '🔔','Notifications & reminders','',notifContent)
-    +section(false,'📆','iOS Calendar Sync','',calendarContent)
-    +section(false,'📥','Email Inbox','',emailContent)
-    +section(false,'👨‍👩‍👧‍👦','Family setup','term dates · sports · retention',familyContent)
-    +section(false,'🌤','Location & display','weather · night mode',displayContent)
-    +section(false,'📖','Help & info','',helpContent)
-    +section(false,'⚙️','Account','sign out · leave · delete',accountContent)
-    +'<div style="text-align:center;padding:14px 0 24px;color:#C7C7CC;font-size:12px">HomeBase v2.0 · ourhomebase.com.au</div>'
-    +'</div>';
+  return '<div style="background:#fff;padding:14px 16px;border-bottom:1px solid #F2F2F7;position:sticky;top:0;z-index:10">'
+  +'<div style="font-size:26px;font-weight:800;color:#1C1C1E">Settings</div>'
+  +'</div>'
+  +'<div style="padding:16px 0 100px">'
+  +'<div style="margin:0 16px 16px;background:linear-gradient(135deg,#1C3A6B,#2E5FBF);border-radius:20px;padding:22px 20px">'
+  +'<div style="font-size:13px;color:rgba(255,255,255,0.7);margin-bottom:4px">Signed in as</div>'
+  +'<div style="font-size:20px;font-weight:800;color:#fff">'+(S.user&&S.user.displayName||'User')+'</div>'
+  +'<div style="font-size:13px;color:rgba(255,255,255,0.7);margin-top:2px">'+(S.user&&S.user.email||'')+'</div>'
+  +'<div style="font-size:11px;color:rgba(255,255,255,0.5);margin-top:6px">Family: '+(S.family&&S.family.name||'')+'</div>'
+  +'</div>'
+  // Weather location
+  +'<div class="sh" style="margin-bottom:6px">🌤 Weather Location</div>'
+  +'<div class="card" style="margin-bottom:12px">'
+  +'<div style="padding:14px 16px;border-bottom:1px solid #F2F2F7">'
+  +'<div style="font-size:14px;font-weight:600;margin-bottom:8px">City / Suburb</div>'
+  +'<input class="input" id="set-city" type="text" placeholder="e.g. Gold Coast, QLD" value="'+(S.manualCity||'')+'" style="margin-bottom:10px"/>'
+  +'<div style="font-size:14px;font-weight:600;margin-bottom:8px">Coordinates</div>'
+  +'<div style="display:flex;gap:8px">'
+  +'<input class="input" id="set-lat" type="number" placeholder="Latitude" value="'+(S.manualLat||'')+'" step="0.0001" style="flex:1"/>'
+  +'<input class="input" id="set-lon" type="number" placeholder="Longitude" value="'+(S.manualLon||'')+'" step="0.0001" style="flex:1"/>'
+  +'</div>'
+  +'<div style="font-size:12px;color:#8E8E93;margin-top:8px">e.g. Gold Coast: -28.0167, 153.4000</div>'
+  +'</div>'
+  +'<div style="padding:14px 16px;display:flex;gap:8px">'
+  +'<button onclick="saveLocationSettings()" style="flex:1;padding:12px;border-radius:12px;background:#1C3A6B;border:none;color:#fff;font-size:14px;font-weight:600;cursor:pointer;font-family:inherit">Save Location</button>'
+  +'<button onclick="useDeviceLocation()" style="flex:1;padding:12px;border-radius:12px;background:#F2F2F7;border:none;color:#1C3A6B;font-size:14px;font-weight:600;cursor:pointer;font-family:inherit">📍 Use GPS</button>'
+  +'</div>'
+  +(S.weather?'<div style="padding:0 16px 14px;font-size:13px;color:#34C759;font-weight:600">✅ '+S.weather.temp+'°C '+S.weather.icon+' '+S.weather.desc+(S.weather.city?' · '+S.weather.city:'')+'</div>':'<div style="padding:0 16px 14px;font-size:13px;color:#8E8E93">No weather yet — save location above</div>')
+  +'</div>'
+  // Notification time
+  +'<div class="sh" style="margin-bottom:6px">📅 School Term Dates</div>'
+  +'<div class="card" style="margin-bottom:12px">'
+  +'<div style="padding:14px 16px;border-bottom:1px solid #F2F2F7">'
+  +'<div style="font-size:13px;color:#8E8E93;margin-bottom:10px">Set term dates so school only shows on school days</div>'
+  +['t1','t2','t3','t4'].map(function(t,i){return '<div style="margin-bottom:'+(i<3?'12':'0')+'px"><div style="font-size:13px;font-weight:600;color:#1C1C1E;margin-bottom:6px">Term '+(i+1)+'</div><div style="display:flex;gap:6px"><input class="input" id="term-'+t+'s" type="date" value="'+(S.termDates&&S.termDates[t+'s']||'')+'" style="flex:1;font-size:14px;padding:10px"/><input class="input" id="term-'+t+'e" type="date" value="'+(S.termDates&&S.termDates[t+'e']||'')+'" style="flex:1;font-size:14px;padding:10px"/></div></div>';}).join('')
+  +'</div>'
+  +'<div style="padding:14px 16px">'
+  +'<button onclick="saveTermDates()" style="width:100%;padding:12px;border-radius:12px;background:#1C3A6B;border:none;color:#fff;font-size:14px;font-weight:600;cursor:pointer;font-family:inherit">Save Term Dates</button>'
+  +'</div>'
+  +'</div>'
+  // Past events retention
+  +'<div class="sh" style="margin-bottom:6px">📜 Past Events Retention</div>'
+  +'<div class="card" style="margin-bottom:12px">'
+  +'<div style="padding:14px 16px">'
+  +'<div style="font-size:13px;color:#8E8E93;margin-bottom:10px">How long past one-off events stay visible on the Events page</div>'
+  +'<select id="set-past-retention" style="width:100%;padding:10px;border-radius:10px;border:1px solid #E5E5EA;background:#fff;font-size:14px;font-family:inherit">'
+  +(()=>{const cur=(S.family&&Number.isFinite(S.family.pastEventsRetentionDays))?S.family.pastEventsRetentionDays:30;const opts=[{v:7,l:'7 days'},{v:14,l:'2 weeks'},{v:30,l:'30 days (default)'},{v:60,l:'2 months'},{v:90,l:'3 months'},{v:0,l:'Forever'}];return opts.map(o=>'<option value="'+o.v+'" '+(cur===o.v?'selected':'')+'>'+o.l+'</option>').join('');})()
+  +'</select>'
+  +'<button onclick="savePastRetention()" style="width:100%;margin-top:10px;padding:12px;border-radius:12px;background:#1C3A6B;border:none;color:#fff;font-size:14px;font-weight:600;cursor:pointer;font-family:inherit">Save</button>'
+  +'</div>'
+  +'</div>'
+  // Family Sports + Teams
+  +'<div class="sh" style="margin-bottom:6px">📥 Email Inbox</div>'
+  +'<div class="card" style="margin-bottom:12px;cursor:pointer" onclick="go(\'inboxSetup\')">'
+  +'<div style="padding:14px 16px;display:flex;align-items:center;gap:12px">'
+  +'<div style="width:38px;height:38px;border-radius:19px;background:linear-gradient(135deg,#AF52DE,#5856D6);display:flex;align-items:center;justify-content:center;font-size:18px;flex-shrink:0">📬</div>'
+  +'<div style="flex:1;min-width:0">'
+  +'<div style="font-size:14px;font-weight:700;color:var(--text)">Forward emails to extract events</div>'
+  +'<div style="font-size:11px;color:var(--text-secondary);margin-top:2px">View your address + setup guides</div>'
+  +'</div>'
+  +'<span style="color:var(--text-secondary);font-size:18px">›</span>'
+  +'</div>'
+  +'</div>'
+  +'<div class="sh" style="margin-bottom:6px">🏃 Family Sports & Teams</div>'
+  +'<div class="card" style="margin-bottom:12px">'
+  +'<div style="padding:14px 16px 10px">'
+  +'<div style="font-size:13px;color:#8E8E93;margin-bottom:12px;line-height:1.5">Sports your family plays + the team name for each. Team names get pre-filled when importing fixtures.</div>'
+  +(()=>{
+    const sports=Array.isArray(S.family?.sports)?S.family.sports:[];
+    const teams=S.family?.sportTeams||{};
+    if(sports.length===0)return '<div style="font-size:12px;color:#8E8E93;font-style:italic;margin-bottom:12px;padding:8px;background:#F2F2F7;border-radius:8px">No sports added yet. Add one below to get started.</div>';
+    return '<div style="display:flex;flex-direction:column;gap:10px;margin-bottom:14px">'+sports.map(s=>{
+      const safe=String(s).replace(/'/g,"\\'").replace(/"/g,'&quot;');
+      const teamName=teams[s]||'';
+      const safeTeam=String(teamName).replace(/"/g,'&quot;');
+      return '<div style="background:#F8F9FB;border:1px solid #1C3A6B22;border-radius:12px;padding:12px;display:flex;align-items:center;gap:10px">'
+        +'<div style="font-size:14px;font-weight:700;color:#1C1C1E;flex-shrink:0;min-width:90px">'+s+'</div>'
+        +'<input class="input" id="set-team-'+safe+'" type="text" placeholder="Team name (e.g. Norths)" value="'+safeTeam+'" onchange="updateSportTeam(\''+safe+'\',this.value)" style="flex:1;font-size:13px;padding:8px 10px;background:#fff"/>'
+        +'<button onclick="removeFamilySport(\''+safe+'\')" style="width:28px;height:28px;border-radius:14px;border:none;background:#FF3B3022;color:#FF3B30;font-size:16px;line-height:1;cursor:pointer;font-family:inherit;padding:0;display:flex;align-items:center;justify-content:center;flex-shrink:0">×</button>'
+        +'</div>';
+    }).join('')+'</div>';
+  })()
+  +'<div style="display:flex;gap:8px">'
+  +'<input class="input" id="set-family-sport-input" type="text" placeholder="Add a sport (e.g. Water Polo)" style="flex:1" onkeydown="if(event.key===\'Enter\'){event.preventDefault();addFamilySport();}"/>'
+  +'<button onclick="addFamilySport()" style="padding:12px 16px;border-radius:10px;background:#1C3A6B;border:none;color:#fff;font-size:14px;font-weight:600;cursor:pointer;font-family:inherit">+ Add</button>'
+  +'</div>'
+  +'</div>'
+  +'</div>'
+  +'<div class="sh" style="margin-bottom:6px">⏰ Daily Reminder</div>'
+  +'<div class="card" style="margin-bottom:12px">'
+  +'<div style="padding:14px 16px;border-bottom:1px solid #F2F2F7">'
+  +'<div style="font-size:15px;margin-bottom:6px">Morning notification time</div>'
+  +'<div style="font-size:13px;color:#8E8E93;margin-bottom:10px">When to send your daily summary</div>'
+  +'<div style="display:flex;gap:10px;align-items:center">'
+  +'<input class="input" id="set-notif-time" type="time" value="'+(S.notifTime||'07:00')+'" style="max-width:140px"/>'
+  +'<button onclick="saveNotifTime()" style="padding:12px 16px;border-radius:12px;background:#1C3A6B;border:none;color:#fff;font-size:14px;font-weight:600;cursor:pointer;font-family:inherit">Save</button>'
+  +'</div>'
+  +'<div style="font-size:12px;color:#34C759;margin-top:10px;font-weight:600">'+(S.notifTime?'✅ Currently set: '+S.notifTime:'⚪ Not yet saved')+'</div>'
+  +'</div>'
+  +'</div>'
+  // Preferences
+  +'<div class="sh" style="margin-bottom:6px">🔔 Notifications</div>'
+  +'<div class="card" style="margin-bottom:12px">'
+  +'<div style="padding:14px 16px;border-bottom:1px solid #F2F2F7">'
+  +'<div style="font-size:14px;color:#1C1C1E;margin-bottom:8px;font-weight:600">Push notifications</div>'
+  +'<div style="background:#FFF3E0;border-left:3px solid #FF9500;border-radius:6px;padding:10px 12px;font-size:12px;color:#1C1C1E;line-height:1.5"><strong>🚧 Coming soon</strong><br/>Push notifications when the app is closed are currently being set up. In the meantime, in-app reminders work fully — open HomeBase and you\'ll see today\'s events, due reminders, and any clashes flagged a week ahead.</div>'
+  +'</div>'
+  +'<div class="row">'
+  +'<span style="font-size:20px">📱</span>'
+  +'<div style="flex:1"><div style="font-size:14px">In-app reminders</div><div style="font-size:12px;color:#8E8E93">Show reminders when app is open</div></div>'
+  +tog(t.notifs,"S.toggles.notifs=!S.toggles.notifs;render()")
+  +'</div>'
+  +'</div>'
+  // Sign out
+  +'<div class="sh" style="margin-bottom:6px">📆 iOS Calendar Sync</div>'
+  +'<div class="card" style="margin-bottom:12px">'
+  +'<div style="padding:14px 16px;border-bottom:1px solid var(--row-border)">'
+  +'<div style="font-size:14px;font-weight:600;margin-bottom:6px">Add events to Apple Calendar</div>'
+  +'<div style="font-size:13px;color:var(--text-secondary);line-height:1.5;margin-bottom:8px">Tap below to download a calendar file. On iPhone, open the file → Calendar will import all your HomeBase events including recurring ones.</div>'
+  +'<div style="font-size:12px;color:var(--text-secondary);line-height:1.5;background:var(--bg);padding:10px;border-radius:8px"><strong>💡 Tip:</strong> Re-download anytime to refresh. For automatic live sync (subscribe URL), Firebase Cloud Functions need to be set up first.</div>'
+  +'</div>'
+  +'<button onclick="exportAllToCalendar()" style="width:100%;padding:14px 16px;color:var(--navy);font-size:15px;font-weight:600;text-align:left;border:none;background:none;cursor:pointer;font-family:inherit">📥 Download .ics Calendar File</button>'
+  +'</div>'
+  +'<div class="sh" style="margin-bottom:6px">🌙 Appearance</div>'
+  +'<div class="card" style="margin-bottom:12px">'
+  +'<div class="row">'
+  +'<span style="font-size:20px">'+(S.nightMode?'🌙':'☀️')+'</span>'
+  +'<div style="flex:1"><div style="font-size:15px">Night Mode</div><div style="font-size:13px;color:var(--text-secondary)">Dark theme for low light</div></div>'
+  +tog(S.nightMode,"toggleNightMode()")
+  +'</div>'
+  +'</div>'
+  +'<div class="sh" style="margin-bottom:6px">📖 Information</div>'
+  +'<div class="card" style="margin-bottom:12px">'
+  +'<button class="btn" onclick="go(\'help\')" style="width:100%;padding:14px 16px;display:flex;align-items:center;gap:12px;text-align:left;border:none;background:none;cursor:pointer;font-family:inherit;border-bottom:1px solid #F2F2F7"><span style="font-size:20px">❓</span><div style="flex:1"><div style="font-size:15px;font-weight:500;color:#1C1C1E">How HomeBase works</div><div style="font-size:13px;color:#8E8E93">Tour of the main features</div></div><span class="chev"></span></button>'
+  +'<button class="btn" onclick="go(\'privacy\')" style="width:100%;padding:14px 16px;display:flex;align-items:center;gap:12px;text-align:left;border:none;background:none;cursor:pointer;font-family:inherit;border-bottom:1px solid #F2F2F7"><span style="font-size:20px">🔒</span><div style="flex:1"><div style="font-size:15px;font-weight:500;color:#1C1C1E">Privacy & Your Data</div><div style="font-size:13px;color:#8E8E93">What we store and how</div></div><span class="chev"></span></button>'
+  +'<button class="btn" onclick="go(\'about\')" style="width:100%;padding:14px 16px;display:flex;align-items:center;gap:12px;text-align:left;border:none;background:none;cursor:pointer;font-family:inherit"><span style="font-size:20px">ℹ️</span><div style="flex:1"><div style="font-size:15px;font-weight:500;color:#1C1C1E">About HomeBase</div><div style="font-size:13px;color:#8E8E93">Version & credits</div></div><span class="chev"></span></button>'
+  +'</div>'
+  +'<div class="sh" style="margin-bottom:6px">⚠️ Danger Zone</div>'
+  +'<div class="card" style="margin-bottom:12px">'
+  +'<button class="btn" onclick="hDeleteFamily()" style="width:100%;padding:14px 16px;color:#FF3B30;font-size:15px;font-weight:600;text-align:left;border-bottom:1px solid #F2F2F7">🗑 Delete Family Permanently</button>'
+  +'<button class="btn" onclick="hLeaveFamily()" style="width:100%;padding:14px 16px;color:#FF9500;font-size:15px;font-weight:600;text-align:left">🚪 Leave This Family</button>'
+  +'</div>'
+  +'<div class="card" style="margin-bottom:16px">'
+  +'<button class="btn" onclick="hSignOut()" style="width:100%;padding:14px 16px;color:#1C1C1E;font-size:15px;font-weight:600;text-align:left">Sign Out</button>'
+  +'</div>'
+  +'<div style="text-align:center;padding:0 0 24px;color:#C7C7CC;font-size:12px">HomeBase v2.0 · ourhomebase.com.au</div>'
+  +'</div>';
 }
 
 // ── HELP / PRIVACY / ABOUT ────────────────────────
@@ -6892,19 +6730,15 @@ function sPersonProfile(){
               const dStr=DAYSH[dDate.getDay()]+' '+dDate.getDate()+' '+MONTHS[dDate.getMonth()];
               dueLabel=`<div style="font-size:11px;font-weight:700;color:${isDueToday?'#FF3B30':color};margin-top:3px">${isDueToday?'🔴 Due today · '+dStr:'📅 Due '+dStr}</div>`;
             }
-            return `<div class="hb-swipe-wrap" data-swipe-id="reminder:${r.id}" style="${i<personReminders.length-1?'border-bottom:1px solid var(--row-border)':''}">
-              <div class="hb-swipe-bg hb-swipe-bg-done">✓ Done</div>
-              <div class="hb-swipe-bg hb-swipe-bg-delete">Delete</div>
-              <div class="row hb-swipe-row" data-longpress="reminder:${r.id}" style="border-bottom:none;${r.done?'opacity:0.55':''}">
-                <div class="cb ${r.done?'on':''}" onclick="tReminder('${r.id}',${!r.done})" style="${r.done?'background:'+color+';border:none':'border-color:'+color}">${r.done?ck():''}</div>
-                <div style="flex:1">
-                  <div style="font-size:15px;font-weight:500;color:var(--text);${r.done?'text-decoration:line-through':''}">${r.text}</div>
-                  ${dueLabel}
-                  ${r.notes?`<div style="font-size:11px;color:var(--text-secondary);font-style:italic;margin-top:2px">${r.notes}</div>`:''}
-                </div>
-                <button onclick="dReminder('${r.id}')" style="color:#FF3B30;font-size:18px;opacity:0.5;border:none;background:none;cursor:pointer">×</button>
-              </div>
-            </div>`;
+            return `<div class="row" data-longpress="reminder:${r.id}" style="border-bottom:${i<personReminders.length-1?'1px solid var(--row-border)':'none'};${r.done?'opacity:0.55':''}">
+            <div class="cb ${r.done?'on':''}" onclick="tReminder('${r.id}',${!r.done})" style="${r.done?'background:'+color+';border:none':'border-color:'+color}">${r.done?ck():''}</div>
+            <div style="flex:1">
+              <div style="font-size:15px;font-weight:500;color:var(--text);${r.done?'text-decoration:line-through':''}">${r.text}</div>
+              ${dueLabel}
+              ${r.notes?`<div style="font-size:11px;color:var(--text-secondary);font-style:italic;margin-top:2px">${r.notes}</div>`:''}
+            </div>
+            <button onclick="dReminder('${r.id}')" style="color:#FF3B30;font-size:18px;opacity:0.5;border:none;background:none;cursor:pointer">×</button>
+          </div>`;
           }).join('')}
           <button onclick="go('addReminder')" style="width:100%;padding:13px 16px;border-top:1px solid var(--row-border);background:none;border-left:none;border-right:none;border-bottom:none;color:${color};font-size:14px;font-weight:600;cursor:pointer;font-family:inherit;text-align:center">+ Add Reminder</button>
         </div>`;
@@ -7056,18 +6890,15 @@ function sHelp(){
       </div>
 
       ${[
-        {icon:'🏠',title:'Today',desc:'Your family’s plan for the day at a glance — events, reminders, today’s dinner, packing checklists. Quick-add a family-wide reminder by typing in the box at the top of the Reminders section. Swipe a reminder right to mark done, left to delete. Use the ‹ › arrows to peek at past or upcoming days; tap "Today" to jump back.'},
-        {icon:'📅',title:'Calendar',desc:'Three views at the top — Day, Week, Coverage (drop-off/pick-up grid by adult). Filter chips below let you narrow by person and by event type (Sport, School, After school, Music, Social, Medical). Multi-person events show as a single entry with everyone’s names. Birthdays appear automatically on the day from each family member’s date of birth.'},
-        {icon:'📋',title:'Events',desc:'Browse events by category — Sport (games + training), School, After School (band, drama, debate, etc.), Music, Social, Medical, Work. Add drop-off/pick-up caregivers, location, packing items. Recurring events (weekly/fortnightly) supported.'},
-        {icon:'🍴',title:'Kitchen',desc:'Shopping list and dinner planner. Tick off groceries as you shop. "Save as frequent" builds a one-tap quick-add bank for items you buy often. Plan dinners up to a week ahead and assign who’s cooking.'},
-        {icon:'👨‍👩‍👧',title:'Family',desc:'Children + caregivers. Each person gets their own invite code — share it so they sign up linked to that exact profile. Adult role can be set to <strong>🚗 Logistics only</strong> (e.g. a grandparent who only does drop-offs/pick-ups) — they appear in driver dropdowns but not in family-wide reminders, push notifications, or calendar subscriptions.'},
-        {icon:'⚙️',title:'Settings',desc:'Collapsible sections — tap any to expand. Configure your morning summary time (per user — your partner can have a different one), push notifications, term dates, family sports & teams, weather location, night mode.'},
-        {icon:'🔔',title:'Push notifications',desc:'Get pushes when family members add events, reminders, playdates, handoffs, or when an event is starting in 30 min. Plus a daily morning summary at <strong>your</strong> chosen time with the day’s events and reminders. Setup: install HomeBase as a PWA (Add to Home Screen on iPhone) → Settings → Notifications → Enable.'},
-        {icon:'🎤',title:'Voice commands',desc:'Tap the mic, talk naturally, HomeBase parses it into structured items: events ("netball training Tuesday 5pm at Lavington"), reminders ("remind me to pay school fees by Friday"), grocery items ("add milk and bread"), gift ideas, dinner plans. Multiple intents in one sentence work too.'},
-        {icon:'📥',title:'Email forwarding',desc:'Each family gets a private email address (Settings → Email Inbox → tap to copy). Forward any school newsletter, sport notice, or excursion email to it — AI extracts events automatically and queues them in your Inbox to review with one tap.'},
-        {icon:'📆',title:'iOS Calendar sync (live)',desc:'Settings → iOS Calendar Sync → tap "+ Subscribe" next to anyone. iOS Calendar prompts you to subscribe — auto-refreshes every few hours. Subscribe to "Whole family" or per-person (each becomes its own colour-coded calendar in iOS that you can toggle independently). Birthdays included automatically.'},
-        {icon:'📸',title:'Photo capture',desc:'When adding an assessment or birthday invite, tap "Quick Capture" to snap a photo. HomeBase reads what it can — date, title, address — and pre-fills the form. Always review before saving.'},
+        {icon:'🏠',title:'Today',desc:'Your family snapshot for any day. Use the ‹ › arrows to scroll forwards or back. Tap "Today" to jump back. Each child has a tile showing their packing progress and event count. Tap a tile to focus on that child.'},
+        {icon:'📅',title:'Calendar',desc:'Weekly view of all family events. Tap any day to see what’s on. Tap the + button to add a new event with drop-off, pick-up, location, and packing items.'},
+        {icon:'📋',title:'Events tab',desc:'Manage everything that happens away from home. Sub-tabs for Events, 🎁 Gifts, 📚 Assessments, and 🎉 Play Dates. Birthday party invites can be scanned with the camera and details auto-filled.'},
+        {icon:'🍴',title:'Kitchen',desc:'Shopping list and dinner planner. Tick off groceries as you shop. The "Save as frequent" checkbox builds a quick-add bank for items you buy often. Plan dinners up to a week ahead and assign who’s cooking.'},
+        {icon:'👨‍👩‍👧',title:'Family',desc:'Manage children and adult profiles. Tap any tile to view, edit, or get their personal invite code. Share their code so they can sign up — their account links directly to that profile.'},
+        {icon:'⚙️',title:'Settings',desc:'Configure weather location (so the topbar shows your local conditions), school term dates (so school only appears on real school days), daily reminder time, and switch between light and night mode.'},
+        {icon:'📸',title:'Quick capture (camera)',desc:'When adding an assessment or birthday invite, tap "Quick Capture" to snap a photo. HomeBase reads what it can — date, title, address — and pre-fills the form. It works best on clean printed text and gets it right most of the time, not all of the time. Always review the fields before saving.'},
         {icon:'🌙',title:'Night mode',desc:'Tap the moon icon in the top right of any screen to switch to dark theme — easier on the eyes in the evening.'},
+        {icon:'📆',title:'iOS Calendar sync',desc:'Settings → iOS Calendar Sync → Download .ics file. Open it on your iPhone and Calendar will import all your HomeBase events.'},
       ].map(item=>`<div style="margin-bottom:14px">
         <div style="background:var(--card);border-radius:14px;padding:14px 16px;box-shadow:var(--shadow-md)">
           <div style="display:flex;align-items:flex-start;gap:12px">
@@ -8746,6 +8577,33 @@ window.quickAddGroc=async function(){
     setTimeout(()=>{const i=document.getElementById('todayGrocInput');if(i)i.focus();},50);
   }catch(ex){notify('Error: '+ex.message,'❌');}
 };
+// Quick-add a reminder from the inline header bar on Today.
+// Mirrors quickAddGroc's pattern. Defaults to today's date with mode='ondate'
+// so the new reminder shows up immediately in the day's Reminders card.
+// User can later tap the reminder to edit notes, change date, attach people.
+window.quickAddReminder=async function(){
+  const input=document.getElementById('qrem-input');
+  if(!input)return;
+  const text=input.value.trim();
+  if(!text){input.focus();return;}
+  try{
+    await fadd(['reminders'],{
+      text,
+      date:fd(new Date()),
+      mode:'ondate',
+      forKeys:[],
+      childId:null,
+      adultUid:null,
+      notes:'',
+      done:false,
+      createdBy:S.user?.uid||''
+    });
+    input.value='';
+    notify('Reminder added ⏰');
+    // re-focus so they can keep adding
+    setTimeout(()=>{const i=document.getElementById('qrem-input');if(i)i.focus();},50);
+  }catch(ex){notify('Error: '+(ex.message||ex),'❌');}
+};
 window._pendingUndo=null;
 window.dGroc=async id=>{
   // Soft delete with undo - get item first
@@ -9278,7 +9136,8 @@ window.useDeviceLocation=()=>{
   },()=>{notify('Could not get location. Please enter manually.','⚠️');});
 };
 window.requestNotifPerm=async function(){
-  const diag=(msg)=>{try{console.log('[HomeBase FCM] '+msg);}catch(e){}};
+  // DIAGNOSTIC VERSION - shows alert popups at every step so we can see where it fails
+  const diag=(msg)=>{try{alert('🔔 '+msg);}catch(e){}};
 
   diag('Step 1: Function called');
 
@@ -9382,7 +9241,7 @@ window.requestNotifPerm=async function(){
   }catch(ex){
     console.error('[HomeBase] FCM enable failed',ex);
     diag('ERROR at registration: '+(ex.message||ex)+'\n\nName: '+(ex.name||'')+'\nCode: '+(ex.code||''));
-    notify('Push setup failed - check browser console for details','⚠️');
+    notify('Push setup failed - see alert above','⚠️');
     render();
   }
 };
@@ -9484,24 +9343,25 @@ window.hLeaveFamily=async function(){
     setTimeout(function(){window.location.reload();},1200);
   }catch(ex){alert('Error: '+ex.message);}
 };
-window.showSubscribeUrl=async function(personId){
-  if(!S.familyId){notify('No family loaded','⚠️');return;}
-  notify('Getting your subscribe link…','🔗');
-  try{
-    const fn=httpsCallable(functions,'getCalendarSubscribeUrl');
-    const payload={familyId:S.familyId};
-    if(personId)payload.person=personId;
-    const result=await fn(payload);
-    const url=result.data?.url;
-    if(!url){notify('Could not get URL','❌');return;}
-    try{await navigator.clipboard.writeText(url);}catch(e){}
-    const webcalUrl=url.replace(/^https?:\/\//,'webcal://');
-    notify('Link copied. Opening Calendar…','📅');
-    setTimeout(()=>{window.location.href=webcalUrl;},600);
-  }catch(ex){
-    console.error('[HomeBase] subscribe URL failed',ex);
-    notify('Could not generate link: '+(ex.message||ex),'❌');
-  }
+window.exportAllToCalendar=function(){
+  if(!S.events||S.events.length===0){notify('No events to export','📆');return;}
+  // Include playdates as events too
+  const allEvs=[...S.events];
+  (S.playdates||[]).forEach(pd=>{
+    if(pd.date)allEvs.push({
+      id:pd.id,
+      title:(pd.title||'Play Date'),
+      emoji:{playdate:'🎈',sleepover:'🛏',birthday:'🎂'}[pd.type]||'🎉',
+      date:pd.date,
+      time:pd.time,
+      location:pd.location,
+      notes:pd.notes,
+      dropoff:pd.dropoff,
+      pickup:pd.pickup
+    });
+  });
+  downloadICS(allEvs,'homebase-'+(S.family?.name||'family').replace(/\s/g,'-').toLowerCase());
+  notify('✅ Exported! Open the .ics file on your iPhone to add to Calendar','📆');
 };
 window.toggleNightMode=function(){
   S.nightMode=!S.nightMode;
@@ -9716,32 +9576,6 @@ window.dHandoff=async function(id){
   try{await fdel(['handoffs',id]);notify('Removed');}catch(ex){notify('Error: '+ex.message,'❌');}
 };
 
-// Quick-add a family-wide reminder from the Today page input. No date, anytime mode.
-window.quickAddReminder=async function(){
-  const inp=document.getElementById('todayQuickReminderInput');
-  if(!inp)return;
-  const text=inp.value.trim();
-  if(!text)return;
-  if(!S.familyId){notify('No family loaded','⚠️');return;}
-  try{
-    await fadd(['reminders'],{
-      text,
-      date:'',
-      mode:'anytime',
-      forKeys:[],
-      childId:'',
-      adultUid:'',
-      notes:'',
-      done:false,
-      createdBy:S.user?.uid||''
-    });
-    inp.value='';
-    notify('Reminder added ⏰','✅');
-  }catch(ex){
-    console.error('[HomeBase] quickAddReminder failed',ex);
-    notify('Could not add reminder: '+(ex.message||ex),'❌');
-  }
-};
 window.hAddReminder=async function(){
   const text=document.getElementById('rmText')?.value?.trim()||'';
   const date=document.getElementById('rmDate')?.value||'';
@@ -10969,7 +10803,7 @@ onAuthStateChanged(auth,async user=>{
   },150);
   S.user=user;
   if(user){
-    try{const ud=await getDoc(doc(db,'users',user.uid));if(ud.exists()){const d=ud.data();if(d.familyId){S.familyId=d.familyId;subscribe();}if(d.notifTime){S.notifTime=d.notifTime;}else{await setDoc(doc(db,'users',user.uid),{notifTime:'07:00'},{merge:true});S.notifTime='07:00';}}}
+    try{const ud=await getDoc(doc(db,'users',user.uid));if(ud.exists()){const d=ud.data();if(d.familyId){S.familyId=d.familyId;subscribe();}if(d.notifTime)S.notifTime=d.notifTime;}}
     catch(ex){}
     // If the user is signed in, has no family, AND we have a pending invite from the URL — auto-join
     if(!S.familyId&&S.pendingInvite){
