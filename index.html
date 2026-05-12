@@ -4550,47 +4550,47 @@ window.handleTimetableImageUpload=async function(input){
   if(errMsg){notify(errMsg,'⚠️');input.value='';return;}
   if(typeof httpsCallable==='undefined'||!functions){
     notify('⚠️ Cloud functions not loaded — refresh the app','❌');
+    if(input)input.value='';
     return;
-  }
-  if(file.size>10*1024*1024){
-    notify('Image too large (max 10MB). Try a smaller/lower-res version.','⚠️');
-    input.value='';return;
   }
   ti.busy=true;render();
   try{
     notify('🤖 AI reading image…','📷');
-    // Convert to base64 for the AI call
-    const base64=await new Promise((resolve,reject)=>{
-      const r=new FileReader();
-      r.onload=()=>resolve(String(r.result).split(',')[1]);
-      r.onerror=()=>reject(new Error('Failed to read image file'));
-      r.readAsDataURL(file);
-    });
+    // Use the shared imageFileToBase64 helper (same as fixtures) — it resizes
+    // large phone photos down to 1600px on the longest edge and re-encodes as
+    // JPEG @ 85% quality. Raw base64 of an uncompressed phone photo can easily
+    // exceed 8MB which busts both Anthropic's 5MB image limit and the Cloud
+    // Function 10MB request cap, causing the call to fail silently.
+    console.log('[timetable-image] Compressing image:',file.name,Math.round(file.size/1024),'KB');
+    const {base64,mediaType,width,height,sizeKB}=await imageFileToBase64(file);
+    console.log('[timetable-image] Compressed to',sizeKB,'KB',width+'x'+height);
+
     const aiCall=httpsCallable(functions,'parseTimetableWithAI');
     const aiResp=await aiCall({
       imageBase64:base64,
-      imageMimeType:file.type||'image/jpeg',
+      imageMediaType:mediaType,
       sourceKind:'image',
       cycle:ti.cycle,
       familyId:S.familyId||''
     });
     const aiData=aiResp?.data||{};
     const subjects=Array.isArray(aiData.subjects)?aiData.subjects:[];
+    console.log('[timetable-image] AI returned',subjects.length,'subjects');
     ti.busy=false;
     if(subjects.length===0){
-      notify('No subjects found in image','⚠️');
+      notify(aiData.summary||'No subjects found in image','⚠️');
       render();
       return;
     }
     S.timetablePreview={
       subjects:subjects.map(s=>({...s,id:Math.random().toString(36).slice(2,9),_selected:false})),
-      source:file.name,
+      source:file.name+' (image)',
       sourceKind:'image'
     };
     if(aiData.summary)notify(aiData.summary,'🤖');
     go('timetablePreview');
   }catch(ex){
-    console.error('[timetable] Image flow failed:',ex);
+    console.error('[timetable-image] failed:',ex);
     ti.busy=false;
     notify('Image read failed: '+(ex.message||ex),'❌');
     render();
