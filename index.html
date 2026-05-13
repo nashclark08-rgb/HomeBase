@@ -2850,9 +2850,14 @@ function sEvents(){
         </div>`;
     }
 
-    // Other categories: simple event list
-    const filtered=activeEvents.filter(ev=>(ev.category||'other')===catId)
-      .sort((a,b)=>parseTimeToMinutes(a.time)-parseTimeToMinutes(b.time));
+    // Other categories: simple event list. For the School tile, we ALSO include
+    // 'school-subject' (timetable imports) and 'school-event' so everything
+    // school-related is browseable + editable under the one heading.
+    const filtered=activeEvents.filter(ev=>{
+      const c=ev.category||'other';
+      if(catId==='school')return c==='school'||c==='school-subject'||c==='school-event';
+      return c===catId;
+    }).sort((a,b)=>parseTimeToMinutes(a.time)-parseTimeToMinutes(b.time));
     return `
       <div style="background:var(--card);padding:14px 16px 12px;border-bottom:1px solid var(--row-border);position:sticky;top:0;z-index:10">
         <div style="display:flex;align-items:center;gap:10px">
@@ -2874,11 +2879,15 @@ function sEvents(){
   }
 
   // ========== VIEW: TILES (default home) ==========
-  // Compute counts
+  // Compute counts. The 'school-subject' category (used for timetable-imported
+  // subjects like PE, Library) is folded into the 'school' tile — parents
+  // want all school-related events under one heading so they can browse + edit
+  // from the same place.
   const counts={};
   EV_CATEGORIES.forEach(c=>{counts[c.id]=0;});
   activeEvents.forEach(ev=>{
-    const k=ev.category||'other';
+    let k=ev.category||'other';
+    if(k==='school-subject'||k==='school-event')k='school';
     if(counts[k]!==undefined)counts[k]++;
     else counts.other++;
   });
