@@ -503,7 +503,7 @@ const S={
   evTab:'events',
   fabOpen:false,notif:null,nTimer:null,weather:null,
   notifTime:'07:00',notifMorning:true,notifEvents:false,notifEventLead:15,manualLat:'',manualLon:'',manualCity:'',nightMode:false,
-  termDates:{t1s:'',t1e:'',t2s:'',t2e:'',t3s:'',t3e:'',t4s:'',t4e:''},
+  termDates:{t1s:'',t1e:'',t2s:'',t2e:'',t3s:'',t3e:'',t4s:'',t4e:'',t1w:'A',t2w:'A',t3w:'A',t4w:'A'},
   dayOffset:0,
   toggles:{notifs:true,loc:false},unsubs:[],
   pendingInvite:null,
@@ -4384,7 +4384,8 @@ function sTimetableImport(){
     S.timetableImport={
       childId:onlyChild,
       cycle:'weekly', // 'weekly' or 'fortnightly'
-      weekAStart:'', // ISO date — the Monday of an upcoming "Week A" (only used when cycle='fortnightly')
+      uploadWeek:'A', // 'A' or 'B' — which week is the uploaded timetable showing?
+      weekAStart:'', // ISO date — Monday matching uploadWeek
       busy:false
     };
   }
@@ -4432,11 +4433,62 @@ function sTimetableImport(){
             <button onclick="S.timetableImport.cycle='weekly';render()" class="freq-btn ${ti.cycle==='weekly'?'on':''}" style="flex:1;padding:10px">📅 Weekly</button>
             <button onclick="S.timetableImport.cycle='fortnightly';render()" class="freq-btn ${ti.cycle==='fortnightly'?'on':''}" style="flex:1;padding:10px">🔁 Fortnightly</button>
           </div>
-          ${ti.cycle==='fortnightly'?`
-            <div style="font-size:12px;color:var(--text-secondary);margin-bottom:6px;font-weight:600">Monday of an upcoming Week A</div>
-            <input class="input" type="date" value="${ti.weekAStart||''}" onchange="S.timetableImport.weekAStart=this.value" style="margin-bottom:6px"/>
-            <div style="font-size:11px;color:var(--text-secondary);line-height:1.45">School timetables alternate Week A / Week B. Pick the next Monday when Week A starts — HomeBase aligns the fortnightly cycle from there.</div>
-          `:'<div style="font-size:11px;color:var(--text-secondary);line-height:1.45">Same subjects every week.</div>'}
+          ${ti.cycle==='fortnightly'?(()=>{
+            // Try to suggest an anchor from saved term dates. If any term has
+            // a start date and a week marker (A or B), use it as the reference
+            // point and project forward to the next Monday matching the
+            // user's chosen current week. This is the auto-pick the user can
+            // override if they want.
+            const today=new Date();today.setHours(0,0,0,0);
+            const td=S.termDates||{};
+            let suggestion='';
+            let suggestionReason='';
+            for(const tk of ['t1','t2','t3','t4']){
+              const ts=td[tk+'s'];const tw=td[tk+'w']||'A';
+              if(!ts)continue;
+              const termStart=new Date(ts+'T12:00');
+              if(!Number.isFinite(termStart.getTime()))continue;
+              // Find the Monday of the term-start week
+              const dow=termStart.getDay();
+              const mondayOfTermStart=new Date(termStart);
+              mondayOfTermStart.setDate(termStart.getDate()-((dow+6)%7));
+              // The picked week for THIS upload defaults to A. The anchor we
+              // suggest is the next Monday of the user's picked week.
+              const wantWeek=ti.uploadWeek||'A';
+              // Walk forward week-by-week from term start until we hit a
+              // Monday that is the right A/B parity AND in the future.
+              let candidate=new Date(mondayOfTermStart);
+              let candidateWeek=tw;
+              for(let i=0;i<60&&candidate<today;i++){
+                candidate.setDate(candidate.getDate()+7);
+                candidateWeek=candidateWeek==='A'?'B':'A';
+              }
+              // If we landed on the wrong week, step one more week forward
+              if(candidateWeek!==wantWeek){
+                candidate.setDate(candidate.getDate()+7);
+                candidateWeek=candidateWeek==='A'?'B':'A';
+              }
+              if(candidate>=today&&candidateWeek===wantWeek){
+                suggestion=fd(candidate);
+                const termIdx=parseInt(tk.slice(1),10);
+                suggestionReason='from Term '+termIdx+' settings (starts Wk '+tw+')';
+                break;
+              }
+            }
+            if(suggestion&&!ti.weekAStart)ti.weekAStart=suggestion;
+            const upWeek=ti.uploadWeek||'A';
+            return `
+            <div style="margin-bottom:14px">
+              <div style="font-size:12px;color:var(--text-secondary);margin-bottom:6px;font-weight:600">This timetable shows…</div>
+              <div style="display:flex;gap:8px">
+                <button onclick="S.timetableImport.uploadWeek='A';S.timetableImport.weekAStart='';render()" class="freq-btn ${upWeek==='A'?'on':''}" style="flex:1;padding:9px">Week A</button>
+                <button onclick="S.timetableImport.uploadWeek='B';S.timetableImport.weekAStart='';render()" class="freq-btn ${upWeek==='B'?'on':''}" style="flex:1;padding:9px">Week B</button>
+              </div>
+            </div>
+            <div style="font-size:12px;color:var(--text-secondary);margin-bottom:6px;font-weight:600">Monday of an upcoming Week ${upWeek}</div>
+            <input class="input" type="date" value="${ti.weekAStart||''}" onchange="S.timetableImport.weekAStart=this.value;render()" style="margin-bottom:6px"/>
+            ${suggestion?`<div style="font-size:11px;color:#34C759;font-weight:600;margin-bottom:6px">✓ Auto-suggested ${suggestionReason}. Change above if you want a different anchor.</div>`:`<div style="font-size:11px;color:var(--text-secondary);line-height:1.45">Tip: if you set School Term Dates (with Week A/B markers) in Settings, HomeBase will auto-suggest this for you next time.</div>`}
+          `;})():'<div style="font-size:11px;color:var(--text-secondary);line-height:1.45">Same subjects every week.</div>'}
         </div>
 
         <!-- Step 3: UPLOAD -->
@@ -4483,7 +4535,7 @@ function sTimetableImport(){
 function validateTimetableSetup(){
   const ti=S.timetableImport||{};
   if(!ti.childId)return 'Pick a child first';
-  if(ti.cycle==='fortnightly'&&!ti.weekAStart)return 'Pick the Monday when Week A starts';
+  if(ti.cycle==='fortnightly'&&!ti.weekAStart)return 'Pick the Monday for Week '+(ti.uploadWeek||'A');
   return null;
 }
 
@@ -4833,8 +4885,18 @@ window.confirmTimetableImport=async function(){
   }else{
     // Fortnightly: Week A and Week B are separate events because the recurrence
     // engine uses INTERVAL=2 from startDate. Group by (subjectName + label +
-    // week + time). Week A starts on ti.weekAStart; Week B starts 7 days later.
-    const weekAStart=ti.weekAStart||todayStr;
+    // week + time). The user picks which week the uploaded timetable shows
+    // (uploadWeek) and an anchor Monday for that week. If uploadWeek is B,
+    // back-step 7 days to derive the matching Week A Monday.
+    const anchor=ti.weekAStart||todayStr;
+    const uploadWeek=ti.uploadWeek==='B'?'B':'A';
+    let weekAStart;
+    if(uploadWeek==='A'){
+      weekAStart=anchor;
+    }else{
+      const a=new Date(anchor+'T12:00');a.setDate(a.getDate()-7);
+      weekAStart=fd(a);
+    }
     const wbDate=new Date(weekAStart+'T12:00');wbDate.setDate(wbDate.getDate()+7);
     const weekBStart=fd(wbDate);
     const groups=new Map();
@@ -7003,8 +7065,20 @@ function sSettings(){
   +'<div class="sh" style="margin-bottom:6px">📅 School Term Dates</div>'
   +'<div class="card" style="margin-bottom:12px">'
   +'<div style="padding:14px 16px;border-bottom:1px solid #F2F2F7">'
-  +'<div style="font-size:13px;color:#8E8E93;margin-bottom:10px">Set term dates so school only shows on school days</div>'
-  +['t1','t2','t3','t4'].map(function(t,i){return '<div style="margin-bottom:'+(i<3?'12':'0')+'px"><div style="font-size:13px;font-weight:600;color:#1C1C1E;margin-bottom:6px">Term '+(i+1)+'</div><div style="display:flex;gap:6px"><input class="input" id="term-'+t+'s" type="date" value="'+(S.termDates&&S.termDates[t+'s']||'')+'" style="flex:1;font-size:14px;padding:10px"/><input class="input" id="term-'+t+'e" type="date" value="'+(S.termDates&&S.termDates[t+'e']||'')+'" style="flex:1;font-size:14px;padding:10px"/></div></div>';}).join('')
+  +'<div style="font-size:13px;color:#8E8E93;margin-bottom:10px">Set term dates so school only shows on school days. For fortnightly timetables, also pick which week (A or B) each term starts on.</div>'
+  +['t1','t2','t3','t4'].map(function(t,i){
+    const wk=(S.termDates&&S.termDates[t+'w'])||'A';
+    return '<div style="margin-bottom:'+(i<3?'14':'0')+'px">'
+      +'<div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:6px">'
+        +'<div style="font-size:13px;font-weight:600;color:var(--text)">Term '+(i+1)+'</div>'
+        +'<div style="display:flex;gap:4px;background:var(--bg);border-radius:8px;padding:2px;border:1px solid var(--border)">'
+          +'<button onclick="setTermStartWeek(\''+t+'\',\'A\')" style="padding:4px 10px;border-radius:6px;border:none;background:'+(wk==='A'?'var(--navy)':'transparent')+';color:'+(wk==='A'?'#fff':'var(--text-secondary)')+';font-size:11px;font-weight:700;cursor:pointer;font-family:inherit">Wk A</button>'
+          +'<button onclick="setTermStartWeek(\''+t+'\',\'B\')" style="padding:4px 10px;border-radius:6px;border:none;background:'+(wk==='B'?'var(--navy)':'transparent')+';color:'+(wk==='B'?'#fff':'var(--text-secondary)')+';font-size:11px;font-weight:700;cursor:pointer;font-family:inherit">Wk B</button>'
+        +'</div>'
+      +'</div>'
+      +'<div style="display:flex;gap:6px"><input class="input" id="term-'+t+'s" type="date" value="'+(S.termDates&&S.termDates[t+'s']||'')+'" style="flex:1;font-size:14px;padding:10px"/><input class="input" id="term-'+t+'e" type="date" value="'+(S.termDates&&S.termDates[t+'e']||'')+'" style="flex:1;font-size:14px;padding:10px"/></div>'
+    +'</div>';
+  }).join('')
   +'</div>'
   +'<div style="padding:14px 16px">'
   +'<button onclick="saveTermDates()" style="width:100%;padding:12px;border-radius:12px;background:#1C3A6B;border:none;color:#fff;font-size:14px;font-weight:600;cursor:pointer;font-family:inherit">Save Term Dates</button>'
@@ -9560,6 +9634,8 @@ window.saveTermDates=async function(){
   ['t1','t2','t3','t4'].forEach(function(t){
     td[t+'s']=document.getElementById('term-'+t+'s')?.value||'';
     td[t+'e']=document.getElementById('term-'+t+'e')?.value||'';
+    // Preserve the week-start picker value (set via setTermStartWeek). Defaults to A.
+    td[t+'w']=(S.termDates&&S.termDates[t+'w'])||'A';
   });
   S.termDates=td;
   try{localStorage.setItem('hb_terms',JSON.stringify(td));}catch(e){}
@@ -9568,6 +9644,20 @@ window.saveTermDates=async function(){
     notify('✅ Term dates saved & synced!','📅');
   }catch(e){notify('Saved locally (sync failed)','⚠️');}
   setTimeout(function(){render();},1000);
+};
+
+// === TERM WEEK PICKER ===
+// Mark which week (A or B) each term begins with. Persists immediately so
+// the choice survives even if the user doesn't tap the main Save button —
+// because the toggle visibly changes state, users expect it to stick.
+window.setTermStartWeek=async function(term,week){
+  if(!S.termDates)S.termDates={};
+  S.termDates[term+'w']=week==='B'?'B':'A';
+  try{localStorage.setItem('hb_terms',JSON.stringify(S.termDates));}catch(e){}
+  try{
+    if(S.familyId)await updateDoc(doc(db,'families',S.familyId),{termDates:S.termDates});
+  }catch(e){}
+  render();
 };
 window.savePastRetention=async function(){
   const v=parseInt(document.getElementById('set-past-retention')?.value,10);
