@@ -423,6 +423,21 @@ function findUpcomingClashes(daysAhead){
         // Note: when an event has no time set (or is marked allDay), we treat it as
         // covering the full day (0–1440 min). That way an all-day commitment in
         // Echuca correctly clashes with a timed event in Wodonga for the same kid.
+        //
+        // SANITY GUARD: an event with an explicit time range longer than 8 hours
+        // is almost certainly a data error (most commonly an AM/PM parse mistake,
+        // e.g. "3:30am – 5:30pm" instead of "3:30pm – 5:30pm"). Don't trust such
+        // a range for clash detection — fall back to treating it as a 1hr block
+        // anchored on the start time. Genuinely-all-day commitments should be
+        // entered with no time (which uses the {0,1440} default path above).
+        const isExplicit=a=>!!a&&!!parseTimeRange(a.time);
+        const MAX_REASONABLE_MIN=8*60;
+        if(isExplicit(a)&&(aRange.end-aRange.start)>MAX_REASONABLE_MIN){
+          aRange.end=Math.min(aRange.end,aRange.start+60);
+        }
+        if(isExplicit(b)&&(bRange.end-bRange.start)>MAX_REASONABLE_MIN){
+          bRange.end=Math.min(bRange.end,bRange.start+60);
+        }
         // Time overlap?
         const overlap=aRange.start<aRange.end&&bRange.start<bRange.end&&aRange.start<bRange.end&&bRange.start<aRange.end;
 
@@ -504,6 +519,7 @@ const S={
   fabOpen:false,notif:null,nTimer:null,weather:null,
   notifTime:'07:00',notifMorning:true,notifEvents:false,notifEventLead:15,manualLat:'',manualLon:'',manualCity:'',nightMode:false,
   termDates:{t1s:'',t1e:'',t2s:'',t2e:'',t3s:'',t3e:'',t4s:'',t4e:'',t1w:'A',t2w:'A',t3w:'A',t4w:'A'},
+  schoolPeriodMinutes:45,
   dayOffset:0,
   toggles:{notifs:true,loc:false},unsubs:[],
   pendingInvite:null,
@@ -925,6 +941,9 @@ function subscribe(){
     if(S.family){
       if(S.family.termDates&&Object.values(S.family.termDates).some(v=>v)){
         S.termDates=S.family.termDates;
+      }
+      if(typeof S.family.schoolPeriodMinutes==='number'&&S.family.schoolPeriodMinutes>0){
+        S.schoolPeriodMinutes=S.family.schoolPeriodMinutes;
       }
       if(S.family.location&&S.family.location.lat){
         S.manualLat=S.family.location.lat;
@@ -4815,6 +4834,23 @@ window.clearAllTimetable=function(){
 // multiple day flags. Different times become separate events.
 // Slot labels (Practical/Theory/etc) are appended to the event title so
 // parents can tell them apart in the calendar.
+//
+// END TIMES: each subject event is given start–end range based on the user's
+// "Class period length" setting in Settings (default 45 min). This stops the
+// clash detector defaulting to a 60-min window for school subjects, which was
+// causing PE 8:50am to falsely overlap with after-school events.
+function _timetableEndTimeFor(startTime,periodMins){
+  if(!startTime)return '';
+  const startMin=parseTimeToMinutes(startTime);
+  if(!Number.isFinite(startMin)||startMin<=0)return '';
+  const mins=Number(periodMins)||45;
+  const endMin=startMin+mins;
+  const h24=Math.floor(endMin/60)%24;
+  const m=endMin%60;
+  const period=h24>=12?'pm':'am';
+  const h12=h24%12===0?12:h24%12;
+  return h12+':'+String(m).padStart(2,'0')+period;
+}
 window.confirmTimetableImport=async function(){
   const data=S.timetablePreview;
   const ti=S.timetableImport;
@@ -4867,6 +4903,11 @@ window.confirmTimetableImport=async function(){
     for(const g of groups.values()){
       const days={Mon:false,Tue:false,Wed:false,Thu:false,Fri:false,Sat:false,Sun:false};
       g.days.forEach(d=>{days[d]=true;});
+      // Build a "9:00am – 9:45am" range using the period length setting.
+      // Skip the end-time if the source didn't include a start time at all
+      // (e.g. timetable showed period numbers only).
+      const endTime=_timetableEndTimeFor(g.time,S.schoolPeriodMinutes||45);
+      const timeStr=g.time?(endTime?g.time+' – '+endTime:g.time):'';
       try{
         await fadd(['events'],{
           title:buildTitle(g.subjectName,g.label,''),
@@ -4874,7 +4915,7 @@ window.confirmTimetableImport=async function(){
           participantIds:[child.id],childId:child.id,adultUid:'',
           freq:'weekly',
           date:todayStr,startDate:todayStr,endDate:'',
-          days,time:g.time,
+          days,time:timeStr,
           category:'school-subject',
           location:'',dropoff:'',pickup:'',
           packItems:[],notes:'Imported from timetable'
@@ -4912,6 +4953,9 @@ window.confirmTimetableImport=async function(){
       const days={Mon:false,Tue:false,Wed:false,Thu:false,Fri:false,Sat:false,Sun:false};
       g.days.forEach(d=>{days[d]=true;});
       const startDate=g.week==='A'?weekAStart:weekBStart;
+      // Combine start time with computed end time from the period length.
+      const endTime=_timetableEndTimeFor(g.time,S.schoolPeriodMinutes||45);
+      const timeStr=g.time?(endTime?g.time+' – '+endTime:g.time):'';
       try{
         await fadd(['events'],{
           title:buildTitle(g.subjectName,g.label,'Wk '+g.week),
@@ -4919,7 +4963,7 @@ window.confirmTimetableImport=async function(){
           participantIds:[child.id],childId:child.id,adultUid:'',
           freq:'fortnightly',
           date:startDate,startDate,endDate:'',
-          days,time:g.time,
+          days,time:timeStr,
           category:'school-subject',
           location:'',dropoff:'',pickup:'',
           packItems:[],notes:'Imported from timetable · Week '+g.week
@@ -5346,63 +5390,72 @@ window.parseEmailWithAI=async function(){
   try{
     console.log('[ai-parse] Calling cloud function…');
     const callable=httpsCallable(functions,'parseEmailWithAI');
+    // Send a trimmed list of existing events for server-side duplicate detection.
+    // Only essentials — id/title/date/endDate/location — to keep token cost low.
+    // Cap at 50 most recent to avoid blowing the prompt for large calendars.
+    const existingForDedupe=(S.events||[])
+      .filter(e=>e.title&&e.date&&(!e.freq||e.freq==='once'))
+      .slice(-50)
+      .map(e=>({id:e.id,title:e.title,date:e.date,endDate:e.endDate||'',location:e.location||''}));
     const resp=await callable({
       emailText:ei.content,
       familyId:S.familyId||'',
-      contextHint:'Default category preference is '+(ei.defaultCategory||'school')+'.'
+      contextHint:'Default category preference is '+(ei.defaultCategory||'school')+'.',
+      existingEvents:existingForDedupe
     });
     console.log('[ai-parse] Cloud function returned:',resp);
     const data=resp?.data||{};
-    const aiEvents=Array.isArray(data.events)?data.events:[];
-    console.log('[ai-parse] Got',aiEvents.length,'events from AI');
+    // The new Cloud Function returns a single `event` (object) plus `duplicateOf`.
+    // For backwards-compat during rollout, fall back to the old `events[]` shape.
+    const aiEvent=data.event||(Array.isArray(data.events)&&data.events[0])||null;
+    const aiDuplicateOf=data.duplicateOf||null;
+    console.log('[ai-parse] event=',!!aiEvent,'duplicateOf=',aiDuplicateOf);
     overlay.remove();
 
-    if(aiEvents.length===0){
-      notify('AI didn\'t find any events. Try the basic parser, or check the email content.','⚠️');
+    if(!aiEvent){
+      // AI may have flagged this as a duplicate-only email (no new event)
+      if(aiDuplicateOf&&aiDuplicateOf.id){
+        const existing=S.events.find(e=>e.id===aiDuplicateOf.id);
+        notify('Looks like this is about '+(existing?.title||'an existing event')+' — already in your calendar','📬');
+        return;
+      }
+      notify('AI didn\'t find an event. Try the basic parser, or check the email content.','⚠️');
       return;
     }
 
-    // Map AI events into our preview format. AI provides per-event category, so we
-    // honor that (don't force the default).
-    const events=aiEvents.map(ev=>({
+    // Wrap the single AI event in our preview format. The events[] array stays
+    // for compatibility with the editing UI, but it should only ever have 1 item.
+    const events=[{
       id:Math.random().toString(36).slice(2,9),
-      title:ev.title||'',
-      date:ev.date||'',
-      endDate:ev.endDate||'',
-      time:ev.time||'',
-      endTime:ev.endTime||'',
-      location:ev.location||'',
-      notes:ev.notes||'',
-      category:ev.category||ei.defaultCategory||'school',
-      raw:'AI: '+(ev.title||'').slice(0,80)
-    }));
+      title:aiEvent.title||'',
+      date:aiEvent.date||'',
+      endDate:aiEvent.endDate||'',
+      time:aiEvent.time||'',
+      endTime:aiEvent.endTime||'',
+      location:aiEvent.location||'',
+      notes:aiEvent.notes||'',
+      category:aiEvent.category||ei.defaultCategory||'school',
+      raw:'AI: '+(aiEvent.title||'').slice(0,80)
+    }];
 
-    // Dedupe check — flag events that already exist in the family's events collection.
-    // Match on normalised title + same date (or overlapping date range for multi-day).
-    const norm=s=>String(s||'').toLowerCase().replace(/\s+/g,' ').trim();
-    const existingEvents=Array.isArray(S.events)?S.events:[];
-    events.forEach(ev=>{
-      const nTitle=norm(ev.title);
-      const nDate=ev.date;
-      const dup=existingEvents.find(existing=>{
-        if(!existing.title||!existing.date)return false;
-        const sameTitle=norm(existing.title)===nTitle;
-        if(!sameTitle)return false;
-        // Same date OR overlapping multi-day range
-        if(existing.date===nDate)return true;
-        // Multi-day overlap check
-        const evStart=ev.date;
-        const evEnd=ev.endDate||ev.date;
-        const exStart=existing.date;
-        const exEnd=existing.endDate||existing.date;
-        return !(evEnd<exStart||evStart>exEnd);
-      });
-      if(dup){
-        ev._duplicate=true;
-        ev._duplicateOf=dup.id;
-        ev._removed=true; // skip duplicates by default — user can undo
+    // Apply AI-flagged duplicate if present — flag the event so the preview UI
+    // can show a comparison panel. The user decides: add anyway, or skip.
+    if(aiDuplicateOf&&aiDuplicateOf.id){
+      const existing=S.events.find(e=>e.id===aiDuplicateOf.id);
+      if(existing){
+        events[0]._duplicate=true;
+        events[0]._duplicateOf=existing.id;
+        events[0]._duplicateConfidence=aiDuplicateOf.confidence||'probable';
+        events[0]._duplicateExisting={
+          title:existing.title,
+          date:existing.date,
+          location:existing.location||''
+        };
+        // For DEFINITE matches, pre-skip — user can override. For PROBABLE,
+        // leave selected by default so the user actively decides.
+        if(aiDuplicateOf.confidence==='definite')events[0]._removed=true;
       }
-    });
+    }
 
     S.emailPreview={
       events,
@@ -5412,7 +5465,7 @@ window.parseEmailWithAI=async function(){
       usage:data.usage
     };
     console.log('[ai-parse] Set emailPreview:',S.emailPreview);
-    notify('AI found '+aiEvents.length+' event'+(aiEvents.length===1?'':'s')+' — opening preview…','🤖');
+    notify('AI found event'+(aiDuplicateOf?' (possible duplicate)':'')+' — opening preview…','🤖');
     console.log('[ai-parse] Calling go(emailPreview)…');
     go('emailPreview');
     console.log('[ai-parse] go() returned. S.screen=',S.screen);
@@ -5476,6 +5529,15 @@ function sEmailPreview(){
     const evCatMeta=EV_CATEGORIES.find(c=>c.id===evCat)||EV_CATEGORIES.find(c=>c.id==='other');
     const isMultiDay=!!(ev.endDate&&ev.endDate!==ev.date);
     return `<div style="padding:14px;border-bottom:1px solid var(--row-border);${(!titleOk||!dateOk)?'background:#FF3B3008':''}">
+      ${ev._duplicate&&ev._duplicateExisting?`<div style="background:#FF950014;border:1px solid #FF950055;border-radius:10px;padding:10px;margin-bottom:12px">
+        <div style="font-size:12px;font-weight:700;color:#FF9500;margin-bottom:4px">⚠️ ${ev._duplicateConfidence==='definite'?'Likely duplicate':'Possible duplicate'}</div>
+        <div style="font-size:12px;color:var(--text);line-height:1.5">AI thinks this matches an event already in your calendar:</div>
+        <div style="background:var(--card);border-radius:8px;padding:8px 10px;margin-top:6px;font-size:12px;line-height:1.4">
+          <div style="font-weight:700;color:var(--text)">${ev._duplicateExisting.title}</div>
+          <div style="color:var(--text-secondary)">${ev._duplicateExisting.date}${ev._duplicateExisting.location?' · '+ev._duplicateExisting.location:''}</div>
+        </div>
+        <div style="font-size:11px;color:var(--text-secondary);margin-top:8px;line-height:1.4">Compare the details below to the existing event. Add anyway if it's genuinely a different occasion; otherwise skip with the Remove button below.</div>
+      </div>`:''}
       <div style="display:flex;align-items:center;gap:8px;margin-bottom:10px;flex-wrap:wrap">
         <div style="background:${evCatMeta.color}18;border:1px solid ${evCatMeta.color}55;border-radius:14px;padding:4px 10px;font-size:11px;font-weight:700;color:${evCatMeta.color};display:inline-flex;align-items:center;gap:4px">${evCatMeta.emoji} ${evCatMeta.label}</div>
         ${isMultiDay?`<div style="background:#5856D618;border:1px solid #5856D655;border-radius:14px;padding:4px 10px;font-size:11px;font-weight:700;color:#5856D6">📆 Multi-day</div>`:''}
@@ -7081,6 +7143,16 @@ function sSettings(){
   }).join('')
   +'</div>'
   +'<div style="padding:14px 16px">'
+  +'<div style="font-size:13px;font-weight:600;color:var(--text);margin-bottom:6px">📚 Class period length</div>'
+  +'<div style="font-size:12px;color:var(--text-secondary);margin-bottom:10px">Used when adding subjects from a timetable, so each lesson has a proper end time.</div>'
+  +'<div style="display:flex;flex-wrap:wrap;gap:6px">'
+  +[35,40,45,50,55,60].map(function(m){
+    const on=(S.schoolPeriodMinutes||45)===m;
+    return '<button onclick="setSchoolPeriodMinutes('+m+')" style="padding:8px 14px;border-radius:9px;background:'+(on?'var(--navy)':'var(--bg)')+';border:1px solid '+(on?'var(--navy)':'var(--border)')+';color:'+(on?'#fff':'var(--text)')+';font-size:13px;font-weight:600;cursor:pointer;font-family:inherit">'+m+' min</button>';
+  }).join('')
+  +'</div>'
+  +'</div>'
+  +'<div style="padding:14px 16px;border-top:1px solid var(--row-border)">'
   +'<button onclick="saveTermDates()" style="width:100%;padding:12px;border-radius:12px;background:#1C3A6B;border:none;color:#fff;font-size:14px;font-weight:600;cursor:pointer;font-family:inherit">Save Term Dates</button>'
   +'</div>'
   +'</div>'
@@ -8764,27 +8836,149 @@ window.dEvent=async id=>{
     // splitter routes it to S.deletedEvents, so it disappears from every active
     // view but is kept on the server for restore via the Deleted tile.
     await fupd(['events',id],{deleted:true,deletedAt:Date.now()});
+    // === CASCADE: linked reminders ===
+    // Reminders pegged to this event (linkedEventId === id) should also be
+    // soft-deleted (mark done=true + deletedWithEvent=true so we can revive
+    // them if the event is restored). Done-flagged reminders are filtered
+    // out of all visible reminder lists already.
+    const linked=(S.reminders||[]).filter(r=>r&&r.linkedEventId===id&&!r.done);
+    await Promise.all(linked.map(r=>
+      fupd(['reminders',r.id],{done:true,deletedWithEvent:true,deletedWithEventAt:Date.now()}).catch(()=>null)
+    ));
     if(window._pendingUndo&&window._pendingUndo.timer)clearTimeout(window._pendingUndo.timer);
-    window._pendingUndo={data:{...ev,id},type:'event'};
-    showUndoToast(ev.title+' deleted','event');
+    window._pendingUndo={data:{...ev,id},type:'event',linkedReminderIds:linked.map(r=>r.id)};
+    showUndoToast(ev.title+(linked.length?` + ${linked.length} reminder${linked.length===1?'':'s'}`:'')+' deleted','event');
   }catch(ex){notify('Delete failed: '+(ex.message||ex),'⚠️');}
 };
-// Restore a soft-deleted event from the Deleted view
+// Restore a soft-deleted event from the Deleted view — also revives reminders
+// that were cascaded-deleted with the event.
 window.restoreEvent=async id=>{
   try{
     await fupd(['events',id],{deleted:false,deletedAt:null});
+    // Revive any reminders that were cascaded with this event. We look at the
+    // full reminders collection (including done ones) via S._allReminders if
+    // it's tracked, otherwise scan S.reminders + a one-off query is fine — but
+    // the simpler path is to just query Firestore directly here.
+    try{
+      const remSnap=await getDocs(query(fcol(['reminders']),where('linkedEventId','==',id)));
+      const toRevive=[];
+      remSnap.forEach(d=>{
+        const r=d.data();
+        if(r.deletedWithEvent)toRevive.push(d.id);
+      });
+      await Promise.all(toRevive.map(rid=>
+        fupd(['reminders',rid],{done:false,deletedWithEvent:false,deletedWithEventAt:null}).catch(()=>null)
+      ));
+    }catch(e){console.warn('Could not revive linked reminders:',e);}
     notify('Event restored ✅');
   }catch(ex){notify('Restore failed: '+(ex.message||ex),'⚠️');}
 };
-// Permanently delete a soft-deleted event (hard delete from Firestore)
+// Permanently delete a soft-deleted event (hard delete from Firestore).
+// Also hard-deletes any reminders linked to it.
 window.permaDeleteEvent=async id=>{
   const ev=(S.deletedEvents||[]).find(x=>x.id===id);
   if(!ev)return;
   if(!confirm('Permanently delete "'+(ev.title||'event')+'"?\n\nThis cannot be undone.'))return;
   try{
     await fdel(['events',id]);
+    // Hard-delete linked reminders too (they're now orphaned)
+    try{
+      const remSnap=await getDocs(query(fcol(['reminders']),where('linkedEventId','==',id)));
+      await Promise.all(remSnap.docs.map(d=>fdel(['reminders',d.id]).catch(()=>null)));
+    }catch(e){console.warn('Could not purge linked reminders:',e);}
     notify('Permanently deleted','🗑️');
   }catch(ex){notify('Delete failed: '+(ex.message||ex),'⚠️');}
+};
+
+// === LINKED REMINDER UI ===
+// Opens a quick prompt to add a reminder bound to a specific event. The
+// reminder is stored in /reminders with linkedEventId set, so it shows up
+// in the modal's "Reminders for this event" section.
+window.openAddLinkedReminder=function(eventId){
+  const ev=S.events.find(x=>x.id===eventId);
+  if(!ev)return;
+  // Close the event modal so the prompt is the focus
+  const evOverlay=document.getElementById('event-modal-overlay');
+  if(evOverlay){if(evOverlay._escHandler)document.removeEventListener('keydown',evOverlay._escHandler);evOverlay.remove();}
+
+  const overlay=document.createElement('div');
+  overlay.id='link-rem-overlay';
+  overlay.style.cssText='position:fixed;inset:0;background:rgba(0,0,0,0.45);z-index:9999;display:flex;align-items:flex-end;justify-content:center;animation:hbFadeIn 0.18s ease-out';
+  const close=()=>{const m=document.getElementById('link-rem-overlay');if(m)m.remove();openEventModal(eventId);};
+  overlay.onclick=function(e){if(e.target===overlay)close();};
+
+  const sheet=document.createElement('div');
+  sheet.style.cssText='background:var(--card);border-radius:20px 20px 0 0;width:100%;max-width:560px;animation:hbSlideUp 0.24s cubic-bezier(.22,.61,.36,1);box-shadow:0 -8px 32px rgba(0,0,0,0.18);padding:20px';
+  sheet.onclick=function(e){e.stopPropagation();};
+
+  // Default date: event date if available, else today
+  const defaultDate=ev.date||fd(new Date());
+  const safeTitle=(ev.title||'').replace(/'/g,'&#39;').replace(/"/g,'&quot;');
+
+  sheet.innerHTML=`
+    <div style="width:40px;height:4px;background:#D1D1D6;border-radius:2px;margin:0 auto 16px"></div>
+    <div style="font-size:18px;font-weight:800;color:var(--text);margin-bottom:6px">Add reminder</div>
+    <div style="font-size:13px;color:var(--text-secondary);margin-bottom:14px;line-height:1.45">For <strong>${safeTitle}</strong>. The reminder will be cleaned up automatically if you delete this event.</div>
+
+    <label style="font-size:12px;color:var(--text-secondary);font-weight:600;display:block;margin-bottom:6px">Reminder text</label>
+    <input id="link-rem-text" type="text" placeholder="e.g. Accept on ConsentToGo, Pay $20 deposit" autocomplete="off" style="width:100%;padding:11px;border-radius:9px;border:1px solid var(--border);background:var(--bg);color:var(--text);font-family:inherit;font-size:14px;margin-bottom:14px;box-sizing:border-box"/>
+
+    <label style="font-size:12px;color:var(--text-secondary);font-weight:600;display:block;margin-bottom:6px">Due date</label>
+    <input id="link-rem-date" type="date" value="${defaultDate}" style="width:100%;padding:11px;border-radius:9px;border:1px solid var(--border);background:var(--bg);color:var(--text);font-family:inherit;font-size:14px;margin-bottom:14px;box-sizing:border-box"/>
+
+    <div style="display:flex;gap:8px;flex-wrap:wrap;margin-bottom:16px">
+      <button onclick="(function(){var d=new Date('${ev.date||fd(new Date())}'+'T12:00');d.setDate(d.getDate()-1);document.getElementById('link-rem-date').value=d.toISOString().slice(0,10);})()" style="flex:1;padding:8px;border-radius:8px;background:var(--bg);border:1px solid var(--border);color:var(--text);font-size:11px;font-weight:600;cursor:pointer;font-family:inherit">1 day before</button>
+      <button onclick="(function(){var d=new Date('${ev.date||fd(new Date())}'+'T12:00');d.setDate(d.getDate()-3);document.getElementById('link-rem-date').value=d.toISOString().slice(0,10);})()" style="flex:1;padding:8px;border-radius:8px;background:var(--bg);border:1px solid var(--border);color:var(--text);font-size:11px;font-weight:600;cursor:pointer;font-family:inherit">3 days before</button>
+      <button onclick="(function(){var d=new Date('${ev.date||fd(new Date())}'+'T12:00');d.setDate(d.getDate()-7);document.getElementById('link-rem-date').value=d.toISOString().slice(0,10);})()" style="flex:1;padding:8px;border-radius:8px;background:var(--bg);border:1px solid var(--border);color:var(--text);font-size:11px;font-weight:600;cursor:pointer;font-family:inherit">1 week before</button>
+    </div>
+
+    <div style="display:flex;gap:8px">
+      <button onclick="document.getElementById('link-rem-overlay').remove();openEventModal('${eventId}')" style="flex:1;padding:12px;border-radius:10px;background:var(--bg);border:none;color:var(--text);font-size:14px;font-weight:600;cursor:pointer;font-family:inherit">Cancel</button>
+      <button onclick="saveLinkedReminder('${eventId}')" style="flex:2;padding:12px;border-radius:10px;background:var(--navy);border:none;color:#fff;font-size:14px;font-weight:700;cursor:pointer;font-family:inherit">⏰ Save</button>
+    </div>
+  `;
+  overlay.appendChild(sheet);
+  document.body.appendChild(overlay);
+  setTimeout(()=>{const i=document.getElementById('link-rem-text');if(i)i.focus();},100);
+};
+
+window.saveLinkedReminder=async function(eventId){
+  const text=(document.getElementById('link-rem-text')?.value||'').trim();
+  const date=document.getElementById('link-rem-date')?.value||fd(new Date());
+  if(!text){
+    const i=document.getElementById('link-rem-text');if(i){i.style.borderColor='#FF3B30';i.focus();}
+    return;
+  }
+  const ev=S.events.find(x=>x.id===eventId);
+  try{
+    await fadd(['reminders'],{
+      text,date,mode:'ondate',
+      forKeys:[],childId:null,adultUid:null,
+      notes:'Linked to event: '+(ev?.title||eventId),
+      done:false,
+      createdBy:S.user?.uid||'',
+      linkedEventId:eventId
+    });
+    const m=document.getElementById('link-rem-overlay');if(m)m.remove();
+    notify('Reminder added ⏰');
+    openEventModal(eventId);
+  }catch(ex){notify('Save failed: '+(ex.message||ex),'⚠️');}
+};
+
+window.removeLinkedReminder=async function(reminderId){
+  try{
+    // Mark as done — same pattern used by the regular reminder tick flow.
+    // No confirm dialog; it's an X button on a tiny row, accidental taps unlikely.
+    await fupd(['reminders',reminderId],{done:true});
+    // Re-render the modal in place
+    const overlay=document.getElementById('event-modal-overlay');
+    if(overlay){
+      // Find which event we're viewing — we don't track it on the overlay,
+      // so the simplest approach is to leave the modal as-is and let the
+      // next render() catch up. Trigger a render which the onSnapshot for
+      // reminders will queue automatically once Firestore confirms.
+    }
+  }catch(ex){notify('Remove failed: '+(ex.message||ex),'⚠️');}
 };
 // Delete event from the modal — for one-off events, simple confirm + delete.
 // For recurring events (weekly/fortnightly), offer choice: this occurrence only OR whole series.
@@ -9659,6 +9853,20 @@ window.setTermStartWeek=async function(term,week){
   }catch(e){}
   render();
 };
+
+// Period length: persisted to the family doc + localStorage. Used by the
+// timetable importer to set an end-time on each subject event, and by the
+// clash detector to know how long a school period actually is.
+window.setSchoolPeriodMinutes=async function(m){
+  const v=parseInt(m,10);
+  if(!Number.isFinite(v)||v<10||v>180)return;
+  S.schoolPeriodMinutes=v;
+  try{localStorage.setItem('hb_periodMins',String(v));}catch(e){}
+  try{
+    if(S.familyId)await updateDoc(doc(db,'families',S.familyId),{schoolPeriodMinutes:v});
+  }catch(e){}
+  render();
+};
 window.savePastRetention=async function(){
   const v=parseInt(document.getElementById('set-past-retention')?.value,10);
   if(isNaN(v)){notify('Could not save — pick an option','⚠️');return;}
@@ -10469,6 +10677,34 @@ window.openEventModal=function(eventId){
           <div style="flex:1;font-size:13px;color:var(--text-secondary);line-height:1.4">${freqLabel}${freqDays?' · '+freqDays:''}</div>
         </div>`:''}
       </div>
+
+      ${(()=>{
+        // === LINKED REMINDERS ===
+        // A reminder is "linked" to this event when its linkedEventId === ev.id.
+        // Linked reminders cascade with the event: soft-delete the event → soft-delete
+        // these too (handled in deleteEventFromModal / dEvent). Restore brings both back.
+        const linked=(S.reminders||[]).filter(r=>r&&r.linkedEventId===eventId&&!r.done);
+        const rems=linked.map(r=>{
+          const d=r.date?new Date(r.date+'T12:00').toLocaleDateString('en-AU',{weekday:'short',day:'numeric',month:'short'}):'';
+          return `<div style="display:flex;align-items:center;gap:10px;padding:9px 12px;border-bottom:1px solid var(--row-border);background:var(--bg)">
+            <span style="font-size:14px">⏰</span>
+            <div style="flex:1;min-width:0">
+              <div style="font-size:13px;color:var(--text);line-height:1.3">${String(r.text||'').replace(/</g,'&lt;')}</div>
+              ${d?`<div style="font-size:11px;color:var(--text-secondary);margin-top:1px">Due ${d}</div>`:''}
+            </div>
+            <button onclick="removeLinkedReminder('${r.id}')" aria-label="Remove reminder" style="width:26px;height:26px;border-radius:13px;border:none;background:transparent;color:#FF3B30;font-size:16px;cursor:pointer;font-family:inherit">×</button>
+          </div>`;
+        }).join('');
+        return `<div style="margin-top:14px">
+          <div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:6px;padding:0 2px">
+            <div style="font-size:11px;font-weight:700;color:var(--text-secondary);letter-spacing:0.6px">⏰ REMINDERS FOR THIS EVENT</div>
+            <button onclick="openAddLinkedReminder('${eventId}')" style="font-size:11px;font-weight:700;padding:4px 10px;border-radius:7px;background:var(--navy);border:none;color:#fff;cursor:pointer;font-family:inherit">+ Add</button>
+          </div>
+          <div style="background:var(--card);border-radius:10px;overflow:hidden;border:1px solid var(--row-border)">
+            ${rems||`<div style="padding:10px 12px;font-size:12px;color:var(--text-secondary);text-align:center">No reminders linked to this event.</div>`}
+          </div>
+        </div>`;
+      })()}
 
       <div style="display:flex;gap:8px;margin-top:16px">
         <button onclick="editEventFromModal('${eventId}')" style="flex:1;padding:13px;border-radius:12px;background:var(--navy);border:none;color:#fff;font-size:14px;font-weight:700;cursor:pointer;font-family:inherit">✏️ Edit</button>
@@ -11515,6 +11751,8 @@ try{
   if(Number.isFinite(nLead)&&nLead>0)S.notifEventLead=nLead;
   const td=JSON.parse(localStorage.getItem('hb_terms')||'null');
   if(td)S.termDates=td;
+  const pm=parseInt(localStorage.getItem('hb_periodMins'),10);
+  if(Number.isFinite(pm)&&pm>0)S.schoolPeriodMinutes=pm;
   const nm=localStorage.getItem('hb_night_mode');
   if(nm==='1'){S.nightMode=true;document.documentElement.setAttribute('data-theme','dark');}
   if(localStorage.getItem('hb_hide_onboarding')==='1')S.hideOnboarding=true;
