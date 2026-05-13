@@ -930,6 +930,31 @@ async function runEventCategoryMigration(){
   }
 }
 
+// One-time cleanup of reminders that were auto-created by the old ingestEmail
+// Cloud Function (before we switched to "suggested reminders that require
+// approval"). Runs once per family — flagged by family.aiEmailRemindersCleared.
+async function cleanupOrphanedAiEmailReminders(){
+  if(!S.family||!S.familyId)return;
+  if(S.family.aiEmailRemindersCleared===true)return;
+  if(S._aiReminderCleanupRunning)return;
+  S._aiReminderCleanupRunning=true;
+  try{
+    // Look for reminders with source==='ai-email' and delete them. These were
+    // created without parent consent and clutter the Reminders list.
+    const snap=await getDocs(query(fcol(['reminders']),where('source','==','ai-email')));
+    const ids=snap.docs.map(d=>d.id);
+    if(ids.length>0){
+      console.log('[ai-reminder-cleanup] Removing',ids.length,'orphaned reminders');
+      await Promise.all(ids.map(id=>fdel(['reminders',id]).catch(()=>null)));
+    }
+    // Mark family flag so this only runs once
+    await updateDoc(doc(db,'families',S.familyId),{aiEmailRemindersCleared:true});
+    if(S.family)S.family.aiEmailRemindersCleared=true;
+    if(ids.length>0)notify('Cleaned up '+ids.length+' old auto-reminder'+(ids.length===1?'':'s')+' from emails','🧹');
+  }catch(e){console.warn('[ai-reminder-cleanup] Failed:',e);}
+  finally{S._aiReminderCleanupRunning=false;}
+}
+
 function subscribe(){
   S.unsubs.forEach(u=>u());S.unsubs=[];
   // Separate tracker for per-child packing listeners (cleaned up when child list changes)
@@ -944,6 +969,11 @@ function subscribe(){
       }
       if(typeof S.family.schoolPeriodMinutes==='number'&&S.family.schoolPeriodMinutes>0){
         S.schoolPeriodMinutes=S.family.schoolPeriodMinutes;
+      }
+      // One-time cleanup of orphaned ai-email reminders (created by the old
+      // ingestEmail Cloud Function before suggested-reminders gating was added).
+      if(S.family.aiEmailRemindersCleared!==true&&!S._aiReminderCleanupRunning){
+        setTimeout(()=>cleanupOrphanedAiEmailReminders(),2500);
       }
       if(S.family.location&&S.family.location.lat){
         S.manualLat=S.family.location.lat;
@@ -5709,6 +5739,14 @@ function sInboxReview(){
     const conf=bundle.confidence||'medium';
     const confColor=conf==='high'?'#34C759':conf==='medium'?'#FF9500':'#8E8E93';
     const confLabel=conf==='high'?'High':conf==='medium'?'Medium':'Low';
+    // Duplicate-of warning — when the Cloud Function flagged this email as
+    // matching an existing event. Frontend is tolerant: old bundles without
+    // this field show no banner.
+    const dupOf=bundle.duplicateOf&&typeof bundle.duplicateOf==='object'?bundle.duplicateOf:null;
+    const dupExisting=dupOf?(S.events||[]).find(e=>e.id===dupOf.id):null;
+    // Suggested reminders — action items the AI extracted. These are NOT yet
+    // committed; parent ticks the ones they want when they approve the event.
+    const suggestedReminders=Array.isArray(bundle.suggestedReminders)?bundle.suggestedReminders:[];
     // Convert Firestore Timestamp to JS Date safely
     let dateStr='';
     try{
@@ -5731,6 +5769,17 @@ function sInboxReview(){
         <div style="font-size:11px;color:var(--text-secondary);margin-top:2px">From: ${bundle.sourceFrom||'unknown'}</div>
       </div>
 
+      ${dupExisting?`<!-- DUPLICATE WARNING -->
+      <div style="margin:12px 16px 0;background:#FF950014;border:1px solid #FF950055;border-radius:10px;padding:10px">
+        <div style="font-size:12px;font-weight:700;color:#FF9500;margin-bottom:4px">⚠️ ${dupOf.confidence==='definite'?'Likely duplicate':'Possible duplicate'}</div>
+        <div style="font-size:12px;color:var(--text);line-height:1.5">AI thinks this matches an event already in your calendar:</div>
+        <div style="background:var(--card);border-radius:8px;padding:8px 10px;margin-top:6px;font-size:12px;line-height:1.4">
+          <div style="font-weight:700;color:var(--text)">${dupExisting.title}</div>
+          <div style="color:var(--text-secondary)">${dupExisting.date}${dupExisting.location?' · '+dupExisting.location:''}</div>
+        </div>
+        <div style="font-size:11px;color:var(--text-secondary);margin-top:8px;line-height:1.4">Tap Dismiss below to skip — or approve anyway if it's genuinely different.</div>
+      </div>`:''}
+
       <!-- EVENTS -->
       ${events.map((ev,idx)=>{
         const evCat=ev.category||'school';
@@ -5738,6 +5787,27 @@ function sInboxReview(){
         const isMultiDay=!!(ev.endDate&&ev.endDate!==ev.date);
         const dateDisplay=ev.date?new Date(ev.date+'T12:00').toLocaleDateString('en-AU',{weekday:'short',day:'numeric',month:'short'}):'No date';
         const endDateDisplay=isMultiDay&&ev.endDate?new Date(ev.endDate+'T12:00').toLocaleDateString('en-AU',{weekday:'short',day:'numeric',month:'short'}):'';
+        // Each suggested reminder gets a local _selected flag tracked on the
+        // bundle (in memory only). Default false — parent opts IN to each one.
+        const remRows=suggestedReminders.map((sr,sidx)=>{
+          const on=!!sr._selected;
+          const dueStr=sr.date?new Date(sr.date+'T12:00').toLocaleDateString('en-AU',{weekday:'short',day:'numeric',month:'short'}):'';
+          return `<div onclick="toggleSuggestedReminder('${bundle.id}',${sidx})" style="display:flex;align-items:flex-start;gap:10px;padding:9px 12px;cursor:pointer;background:${on?'#34C75914':'transparent'};${sidx<suggestedReminders.length-1?'border-bottom:1px solid var(--row-border)':''}">
+            <div class="cb" style="${on?'background:#34C759;border:none':'border-color:#C7C7CC'};flex-shrink:0;width:22px;height:22px;border-radius:6px;margin-top:1px">${on?'<span style="color:#fff;font-size:12px">✓</span>':''}</div>
+            <div style="flex:1;min-width:0">
+              <div style="font-size:13px;font-weight:600;color:var(--text);line-height:1.35">${String(sr.text||'').replace(/</g,'&lt;')}</div>
+              ${dueStr?`<div style="font-size:11px;color:var(--text-secondary);margin-top:1px">Due ${dueStr}</div>`:''}
+            </div>
+          </div>`;
+        }).join('');
+        const remBlock=suggestedReminders.length>0?`
+          <div style="margin-top:12px;background:var(--bg);border-radius:10px;overflow:hidden;border:1px solid var(--row-border)">
+            <div style="padding:8px 12px;background:linear-gradient(135deg,#34C75908,#34C75914);border-bottom:1px solid var(--row-border)">
+              <div style="font-size:10px;font-weight:700;color:#34C759;letter-spacing:0.5px">💡 SUGGESTED REMINDERS</div>
+              <div style="font-size:11px;color:var(--text-secondary);margin-top:2px;line-height:1.4">Tick any you want to keep. They'll be added when you approve this event.</div>
+            </div>
+            ${remRows}
+          </div>`:'';
         return `<div style="padding:14px 16px;border-bottom:${idx<events.length-1?'1px solid var(--row-border)':'none'}">
           <div style="display:flex;align-items:flex-start;gap:10px;margin-bottom:8px">
             <div style="width:36px;height:36px;border-radius:18px;background:${catMeta.color}18;border:1.5px solid ${catMeta.color};display:flex;align-items:center;justify-content:center;font-size:16px;flex-shrink:0">${catMeta.emoji}</div>
@@ -5751,7 +5821,8 @@ function sInboxReview(){
               ${ev.notes?`<div style="font-size:11px;color:var(--text-secondary);margin-top:6px;background:var(--bg);border-radius:6px;padding:6px 8px;line-height:1.5">📝 ${ev.notes}</div>`:''}
             </div>
           </div>
-          <div style="display:flex;gap:6px;margin-top:8px">
+          ${remBlock}
+          <div style="display:flex;gap:6px;margin-top:10px">
             <button onclick="approvePendingEvent('${bundle.id}',${idx})" style="flex:1;padding:8px;border-radius:8px;background:#34C759;border:none;color:#fff;font-size:12px;font-weight:700;cursor:pointer;font-family:inherit">✓ Approve</button>
             <button onclick="editPendingEvent('${bundle.id}',${idx})" style="flex:1;padding:8px;border-radius:8px;background:var(--bg);border:1px solid var(--border);color:var(--text);font-size:12px;font-weight:700;cursor:pointer;font-family:inherit">✏️ Edit</button>
             <button onclick="dismissPendingEvent('${bundle.id}',${idx})" style="padding:8px 14px;border-radius:8px;background:var(--bg);border:1px solid var(--border);color:#FF3B30;font-size:12px;font-weight:700;cursor:pointer;font-family:inherit">✕</button>
@@ -5805,6 +5876,18 @@ function sInboxReview(){
 }
 
 // Approve a single event in a pending bundle — saves to events, removes from bundle
+// Toggle a suggested reminder's selected state. Stored in-memory on the bundle
+// since pending_events is read-only for individual ticks — the array is only
+// committed (as real reminders linked to the event) when the parent approves.
+window.toggleSuggestedReminder=function(bundleId,reminderIdx){
+  const bundle=(S.pendingEmails||[]).find(p=>p.id===bundleId);
+  if(!bundle||!Array.isArray(bundle.suggestedReminders))return;
+  const sr=bundle.suggestedReminders[reminderIdx];
+  if(!sr)return;
+  sr._selected=!sr._selected;
+  render();
+};
+
 window.approvePendingEvent=async function(bundleId,eventIdx){
   if(!S.familyId)return;
   const bundle=(S.pendingEmails||[]).find(p=>p.id===bundleId);
@@ -5815,7 +5898,9 @@ window.approvePendingEvent=async function(bundleId,eventIdx){
     const evCat=ev.category||'school';
     const catMeta=EV_CATEGORIES.find(c=>c.id===evCat)||{emoji:'📅'};
     const timeStr=ev.endTime?(ev.time||'')+' – '+ev.endTime:(ev.time||'');
-    await fadd(['events'],{
+    // Create the event and capture its id so we can link reminders to it.
+    // Use addDoc directly (rather than fadd helper) so we get a DocumentReference.
+    const eventRef=await addDoc(collection(db,'families',S.familyId,'events'),{
       title:(ev.title||'').trim(),
       emoji:catMeta.emoji||'📅',
       participantIds:[],childId:'',adultUid:'',
@@ -5828,19 +5913,45 @@ window.approvePendingEvent=async function(bundleId,eventIdx){
       location:ev.location||'',
       dropoff:'',pickup:'',
       packItems:[],
-      notes:ev.notes||''
+      notes:ev.notes||'',
+      createdAt:new Date()
     });
-    // Remove this event from the bundle
+
+    // === Commit ticked suggested reminders as LINKED reminders ===
+    // Only suggestions parent ticked make it into /reminders. Each is bound
+    // to the new event via linkedEventId so it cascades on delete.
+    const ticked=Array.isArray(bundle.suggestedReminders)
+      ?bundle.suggestedReminders.filter(sr=>sr&&sr._selected&&sr.text)
+      :[];
+    let remindersCreated=0;
+    for(const sr of ticked){
+      try{
+        await fadd(['reminders'],{
+          text:sr.text,
+          date:sr.date||ev.date||fd(new Date()),
+          mode:'ondate',
+          forKeys:[],
+          childId:null,
+          adultUid:null,
+          notes:'Auto-suggested from email · '+(bundle.sourceSubject||''),
+          done:false,
+          createdBy:S.user?.uid||'',
+          linkedEventId:eventRef.id
+        });
+        remindersCreated++;
+      }catch(e){console.warn('Failed to create linked reminder',sr,e);}
+    }
+
+    // Remove this event from the bundle. If it was the last event, mark bundle reviewed.
     const remaining=bundle.events.filter((_,i)=>i!==eventIdx);
     if(remaining.length===0){
-      // Last event in bundle — mark whole bundle reviewed
       await updateDoc(doc(db,'families',S.familyId,'pending_events',bundleId),{
         status:'reviewed',events:[],reviewedAt:new Date()
       });
     }else{
       await updateDoc(doc(db,'families',S.familyId,'pending_events',bundleId),{events:remaining});
     }
-    notify('Event approved 📅','✅');
+    notify('Event approved'+(remindersCreated?' + '+remindersCreated+' reminder'+(remindersCreated===1?'':'s'):'')+' 📅','✅');
   }catch(e){
     console.error('Approve failed:',e);
     notify('Failed: '+(e.message||e),'❌');
