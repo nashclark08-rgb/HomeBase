@@ -745,6 +745,15 @@ function downloadICS(events,filename){
 
 function members(){return Object.entries(S.family&&S.family.members||{}).map(([uid,m])=>({uid,name:m.name,role:m.role,color:m.color||NAVY,relationship:m.relationship||'',photoURL:m.photoURL||'',phone:m.phone||'',email:m.email||'',personalCode:m.personalCode||'',dob:m.dob||'',celebrateMothersDay:!!m.celebrateMothersDay,celebrateFathersDay:!!m.celebrateFathersDay}));}
 
+// Filtered version of members() that excludes role==='Logistics' adults.
+// Logistics adults (e.g. a grandparent who only handles drop-offs/pickups)
+// shouldn't appear in: family-wide person filters, the iOS Calendar sync
+// person picker, the Today screen kid/parent row, daily-summary recipients,
+// or any "who's involved" selectors. They DO still show on the Family tab
+// where they need to be managed. Mirrors `coreMemberUidsFromMap` used by
+// the Cloud Functions for notification routing.
+function coreMembers(){return members().filter(m=>m.role!=='Logistics');}
+
 async function fw(){
   if(S.weather)return;
   // Use manual location if set, otherwise try geolocation
@@ -1587,15 +1596,20 @@ function sToday(){
     // When viewing today, hide events that have finished.
     // - All-day events never hide.
     // - Events with an explicit end time use that end time.
-    // - Events with only a start time use a default duration of 90 minutes.
+    // - Events with only a start time use a default duration of 30 minutes
+    //   (was 90 — too generous; basketball games entered as "4:10pm" kept
+    //   showing in the evening hours past the kid's bedtime). The 30-min
+    //   fallback keeps the event visible for the first half-hour after
+    //   start (long enough to check details mid-event), then hides.
+    //   If you want it to stay visible longer, set an explicit end time.
     if(!isViewToday)return true;
     if(ev.allDay)return true;
     if(!ev.time)return true; // no time set → show all day
     const range=parseTimeRange(ev.time);
     if(!range)return true; // unparseable → show
     const hasExplicitEnd=/\s*(?:to|-|–|—|until|till)\s+/i.test(String(ev.time));
-    // For events without explicit end, fall back to start + 90 minutes
-    const effectiveEnd=hasExplicitEnd?range.end:(range.start+90);
+    // For events without explicit end, fall back to start + 30 minutes
+    const effectiveEnd=hasExplicitEnd?range.end:(range.start+30);
     const nowMins=new Date().getHours()*60+new Date().getMinutes();
     return nowMins<effectiveEnd; // hide once effective end has passed
   }).sort((a,b)=>parseTimeToMinutes(a.time)-parseTimeToMinutes(b.time));
@@ -2519,6 +2533,10 @@ function sCalendar(){
           peopleChips.push('<button onclick="S.calWeekFilter=\''+c.id+'\';render()" style="padding:6px 12px;border-radius:8px;border:none;background:'+(on?col:'var(--bg)')+';color:'+(on?'#fff':'var(--text-secondary)')+';font-size:12px;font-weight:600;cursor:pointer;font-family:inherit;flex-shrink:0">'+c.name.split(' ')[0]+'</button>');
         });
         members().forEach(m=>{
+          // Skip Logistics-role adults (e.g. grandparent only handling pickups)
+          // — they shouldn't appear in the per-person filter row, just in the
+          // Family tab for management.
+          if(m.role==='Logistics')return;
           const on=filt===m.uid;
           const col=m.color||NAVY;
           peopleChips.push('<button onclick="S.calWeekFilter=\''+m.uid+'\';render()" style="padding:6px 12px;border-radius:8px;border:none;background:'+(on?col:'var(--bg)')+';color:'+(on?'#fff':'var(--text-secondary)')+';font-size:12px;font-weight:600;cursor:pointer;font-family:inherit;flex-shrink:0">'+m.name.split(' ')[0]+'</button>');
@@ -7325,6 +7343,9 @@ function sSettings(){
   });
   if(S.family&&S.family.members){
     Object.entries(S.family.members).forEach(([uid,m])=>{
+      // Skip Logistics-role adults from the iOS Calendar person picker —
+      // they're not core family members anyone would subscribe to.
+      if(m&&m.role==='Logistics')return;
       if(m&&m.name)calPeople.push({id:uid,label:'👤 '+m.name.split(' ')[0]});
     });
   }
