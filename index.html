@@ -7500,11 +7500,31 @@ function sSettings(){
       +'</div>'
       +'</div>'
     ):'<div style="border-bottom:1px solid var(--row-border)"></div>')
-    // Push notifications status (still being set up)
-    +'<div style="padding:13px 14px">'
-    +'<div style="font-size:13px;font-weight:600;color:var(--text);margin-bottom:6px">📲 Push notifications</div>'
-    +'<div style="background:#FF950014;border-left:3px solid #FF9500;border-radius:6px;padding:9px 11px;font-size:11px;color:var(--text);line-height:1.5"><strong>🚧 Coming soon.</strong> Push notifications when the app is closed are being set up. In-app notifications above work whenever HomeBase is open.</div>'
-    +'</div>'
+    // Push notifications — real button + status. Permission can be in three
+    // states: granted (push works), denied (blocked, need OS-level toggle),
+    // default (never asked, button enables it). On iOS the PWA-mode gate still
+    // applies — handled inside requestNotifPerm.
+    +(()=>{
+      const perm=(typeof Notification!=='undefined')?Notification.permission:'unsupported';
+      let statusHtml='';
+      let actionHtml='';
+      if(perm==='unsupported'){
+        statusHtml='<div style="background:#8E8E9314;border-left:3px solid #8E8E93;border-radius:6px;padding:9px 11px;font-size:11px;color:var(--text);line-height:1.5">Push isn\'t supported on this browser. Try Safari (iOS) or Chrome (desktop/Android).</div>';
+      }else if(perm==='granted'){
+        statusHtml='<div style="background:#34C75914;border-left:3px solid #34C759;border-radius:6px;padding:9px 11px;font-size:11px;color:var(--text);line-height:1.5"><strong style="color:#34C759">✓ Enabled</strong> on this device. You\'ll get pushes for new events, reminders, hand-offs, and the morning summary.</div>';
+        actionHtml='<button onclick="requestNotifPerm()" style="width:100%;margin-top:8px;padding:10px;border-radius:9px;background:var(--bg);border:1px solid var(--border);color:var(--text);font-size:12px;font-weight:600;cursor:pointer;font-family:inherit">🔄 Re-register this device</button>';
+      }else if(perm==='denied'){
+        statusHtml='<div style="background:#FF3B3014;border-left:3px solid #FF3B30;border-radius:6px;padding:9px 11px;font-size:11px;color:var(--text);line-height:1.5"><strong style="color:#FF3B30">Blocked.</strong> '+(isIOS?'iOS: Settings → Notifications → HomeBase → Allow Notifications.':'Browser: site settings → Notifications → Allow, then refresh.')+'</div>';
+      }else{
+        statusHtml='<div style="background:#FF950014;border-left:3px solid #FF9500;border-radius:6px;padding:9px 11px;font-size:11px;color:var(--text);line-height:1.5">Not yet enabled on this device. Tap below to turn on push notifications for events, reminders and morning summaries.</div>';
+        actionHtml='<button onclick="requestNotifPerm()" style="width:100%;margin-top:8px;padding:12px;border-radius:10px;background:var(--navy);border:none;color:#fff;font-size:14px;font-weight:700;cursor:pointer;font-family:inherit">🔔 Enable push notifications</button>';
+      }
+      return '<div style="padding:13px 14px">'
+        +'<div style="font-size:13px;font-weight:600;color:var(--text);margin-bottom:6px">📲 Push notifications</div>'
+        +statusHtml
+        +actionHtml
+        +'</div>';
+    })()
     +'</div>';
 
   // === EMAIL & INBOX ===
@@ -10330,90 +10350,68 @@ window.useDeviceLocation=()=>{
   },()=>{notify('Could not get location. Please enter manually.','⚠️');});
 };
 window.requestNotifPerm=async function(){
-  // DIAGNOSTIC VERSION - shows alert popups at every step so we can see where it fails
-  const diag=(msg)=>{try{alert('🔔 '+msg);}catch(e){}};
-
-  diag('Step 1: Function called');
+  // Push notification registration: get permission, register service worker,
+  // call FCM getToken, save token to Firestore so Cloud Functions can target
+  // this device. All status flows through console.log + the inline `notify`
+  // toast — no more alert() popups (those were diagnostic from April debug).
+  const dlog=(msg)=>{try{console.log('[push] '+msg);}catch(e){}};
+  dlog('requestNotifPerm called');
 
   if(typeof Notification==='undefined'){
-    diag('FAIL: Notification API undefined');
-    notify('Notifications not supported on this browser');
+    notify('Push notifications not supported on this browser','⚠️');
     return;
   }
-  diag('Step 2: Notification API available');
 
-  // iOS PWA gate
+  // iOS PWA gate — Apple only delivers push to home-screen-installed PWAs (16.4+)
   if(isIOS&&!isStandalonePWA){
-    diag('FAIL: On iOS but not in PWA mode. Add to Home Screen first.');
-    notify('On iPhone: tap Share → Add to Home Screen, then enable from there 📲','ℹ️');
+    notify('On iPhone, tap Share → Add to Home Screen, then enable from the home-screen icon 📲','ℹ️');
     return;
   }
-  diag('Step 3: PWA mode OK (or non-iOS)');
 
-  // Permission request
+  // Permission prompt
   let perm=Notification.permission;
-  diag('Step 4: Current permission = '+perm);
   if(perm!=='granted'&&perm!=='denied'){
-    diag('Step 5: Requesting permission...');
+    dlog('requesting permission');
     perm=await Notification.requestPermission();
-    diag('Step 5b: Permission result = '+perm);
+    dlog('permission result: '+perm);
   }
   if(perm!=='granted'){
-    diag('FAIL: Permission not granted (was '+perm+')');
-    notify('Permission denied. Enable in browser settings.','⚠️');
+    notify('Permission denied. Re-enable in browser/iOS settings.','⚠️');
     return;
   }
-  diag('Step 6: Permission granted!');
 
   try{
-    if(!('serviceWorker' in navigator)){
-      throw new Error('serviceWorker not in navigator');
-    }
-    diag('Step 7: Registering service worker...');
+    if(!('serviceWorker' in navigator))throw new Error('Service workers not supported');
+    dlog('registering service worker');
     const swReg=await navigator.serviceWorker.register('/firebase-messaging-sw.js');
-    diag('Step 8: SW registered. State: '+(swReg.active?'active':swReg.waiting?'waiting':swReg.installing?'installing':'unknown'));
-
     if(swReg.installing||swReg.waiting){
-      diag('Step 8b: Waiting for SW to activate...');
       await new Promise(res=>{
         const sw=swReg.installing||swReg.waiting;
         sw?.addEventListener('statechange',()=>{if(sw.state==='activated')res();});
         setTimeout(res,5000);
       });
-      diag('Step 8c: SW wait done');
     }
-
     if(!messaging){
-      diag('Step 9: Initialising messaging...');
+      dlog('initialising messaging');
       const ok=await initMessaging();
-      diag('Step 9b: initMessaging returned '+ok);
+      dlog('initMessaging returned '+ok);
     }
-    if(!messaging){
-      throw new Error('messaging is still null after init');
-    }
-    diag('Step 10: Messaging ready, requesting token...');
+    if(!messaging)throw new Error('Messaging unavailable');
 
-    // Wrap getToken in its own try/catch with a 15s timeout to surface errors
+    dlog('requesting FCM token');
     let token=null;
     try{
       const tokenPromise=getToken(messaging,{vapidKey:VAPID_KEY,serviceWorkerRegistration:swReg});
-      const timeoutPromise=new Promise((_,rej)=>setTimeout(()=>rej(new Error('TIMEOUT after 15 seconds')),15000));
+      const timeoutPromise=new Promise((_,rej)=>setTimeout(()=>rej(new Error('Token request timed out after 15s')),15000));
       token=await Promise.race([tokenPromise,timeoutPromise]);
     }catch(getErr){
-      diag('STEP 10 FAILED:\n\nName: '+(getErr.name||'?')+
-           '\nCode: '+(getErr.code||'?')+
-           '\nMessage: '+(getErr.message||String(getErr))+
-           '\n\nNotification.permission: '+Notification.permission+
-           '\nVAPID len: '+(VAPID_KEY?VAPID_KEY.length:0)+
-           '\nSW scope: '+(swReg.scope||'?'));
+      console.error('[push] getToken failed:',getErr);
       throw getErr;
     }
-    diag('Step 11: getToken returned '+(token?'token of length '+token.length:'NULL'));
-
-    if(!token){throw new Error('getToken returned null/empty');}
+    if(!token)throw new Error('Empty token');
+    dlog('got token of length '+token.length);
 
     if(S.user?.uid){
-      diag('Step 12: Saving token to Firestore for uid '+S.user.uid.slice(0,8)+'...');
       await setDoc(doc(db,'users',S.user.uid,'fcmTokens',token),{
         token,
         platform:isIOS?'ios':(/Android/.test(navigator.userAgent)?'android':'web'),
@@ -10422,20 +10420,16 @@ window.requestNotifPerm=async function(){
         familyId:S.familyId||'',
         updatedAt:new Date()
       });
-      diag('Step 13: Token saved to Firestore SUCCESS!');
-    }else{
-      diag('FAIL: S.user.uid is missing, cannot save token');
+      dlog('token saved to Firestore');
+      S._pushEnabled=true;
     }
 
-    notify('Notifications enabled! 🔔');
-    try{
-      new Notification('HomeBase notifications enabled!',{body:"You'll get reminders for events, packing, and more.",tag:'enable-confirmation'});
-    }catch(e){diag('Local Notification show failed: '+e.message);}
+    notify('Push notifications enabled 🔔','✅');
+    try{new Notification('HomeBase',{body:"Push notifications are on — you'll get reminders for events, packing and more.",tag:'enable-confirmation'});}catch(e){}
     render();
   }catch(ex){
-    console.error('[HomeBase] FCM enable failed',ex);
-    diag('ERROR at registration: '+(ex.message||ex)+'\n\nName: '+(ex.name||'')+'\nCode: '+(ex.code||''));
-    notify('Push setup failed - see alert above','⚠️');
+    console.error('[push] enable failed',ex);
+    notify('Push setup failed: '+(ex.message||ex),'⚠️');
     render();
   }
 };
