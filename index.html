@@ -2702,17 +2702,24 @@ function sCalendar(){
                 const m=members().find(x=>x.uid===uid);
                 if(m){person={id:m.uid,name:m.name,color:m.color,photoURL:m.photoURL};col=m.color||NAVY;personName=m.name;profileNav=`go('personProfile',{kind:'adult',uid:'${uid}'})`;}
               }
-              return `<div style="margin:0 16px 6px;background:var(--card);border-radius:12px;padding:10px 12px;border-left:4px solid ${col};box-shadow:var(--shadow-sm)">
-                <div onclick="${profileNav}" style="display:flex;align-items:center;gap:8px;margin-bottom:6px;${profileNav?'cursor:pointer':''}">
-                  ${person?av(person.name,col,22,person.photoURL):''}
-                  <div style="font-size:12px;font-weight:700;color:${col}">${personName}</div>
+              // Match the day-view personEventsBlock styling: full coloured
+              // background in the person's colour, white text, header with
+              // avatar + uppercase name + event count. The compact one-line
+              // event rows are preserved (week view needs to fit 7 days of
+              // events on screen at once — heavier per-event detail belongs
+              // in the day view + the event modal).
+              return `<div style="margin:0 16px 8px;background:${col};border-radius:14px;padding:10px 14px;box-shadow:var(--shadow-md);color:#fff;overflow:hidden">
+                <div onclick="${profileNav}" style="display:flex;align-items:center;gap:8px;margin-bottom:8px;padding-bottom:6px;border-bottom:1px solid rgba(255,255,255,0.25);${profileNav?'cursor:pointer':''}">
+                  ${person?av(person.name,'#fff',24,person.photoURL):'<div style="width:24px;height:24px;border-radius:12px;background:rgba(255,255,255,0.18);display:flex;align-items:center;justify-content:center;font-size:13px">👨‍👩‍👧</div>'}
+                  <div style="font-size:12px;font-weight:800;color:#fff;letter-spacing:0.3px">${personName.toUpperCase()}</div>
+                  <div style="font-size:10px;color:rgba(255,255,255,0.8);font-weight:500">· ${pEvs.length} ${pEvs.length===1?'event':'events'}</div>
                 </div>
-                ${pEvs.map((ev,i)=>`<div onclick="openEventModal('${ev.id}')" style="display:flex;align-items:center;gap:8px;padding:8px 4px;cursor:pointer;${i<pEvs.length-1?'border-bottom:1px solid var(--row-border)':''}">
-                  <span style="font-size:13px;font-weight:600;color:var(--text-secondary);min-width:60px">${ev.time||`<span style="font-size:11px">All day</span>`}</span>
+                ${pEvs.map((ev,i)=>`<div onclick="openEventModal('${ev.id}')" style="display:flex;align-items:center;gap:8px;padding:8px 2px;cursor:pointer;${i<pEvs.length-1?'border-bottom:1px solid rgba(255,255,255,0.18)':''}">
+                  <span style="font-size:13px;font-weight:600;color:rgba(255,255,255,0.92);min-width:60px">${ev.time||`<span style="font-size:11px">All day</span>`}</span>
                   <span style="font-size:14px">${ev.emoji||'📅'}</span>
-                  <span style="flex:1;font-size:14px;color:var(--text);min-width:0;overflow:hidden;text-overflow:ellipsis;white-space:nowrap">${ev.title}</span>
-                  ${ev.location?`<span style="font-size:11px;color:var(--text-secondary)">📍</span>`:''}
-                  <span style="color:${col};font-size:18px;flex-shrink:0;font-weight:400;padding-left:4px">›</span>
+                  <span style="flex:1;font-size:14px;font-weight:600;color:#fff;min-width:0;overflow:hidden;text-overflow:ellipsis;white-space:nowrap">${ev.title}</span>
+                  ${ev.location?`<span style="font-size:11px;color:rgba(255,255,255,0.85)">📍</span>`:''}
+                  <span style="color:rgba(255,255,255,0.7);font-size:18px;flex-shrink:0;font-weight:300;padding-left:4px">›</span>
                 </div>`).join('')}
               </div>`;
             }).join('')}
