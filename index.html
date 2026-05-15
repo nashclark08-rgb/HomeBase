@@ -2519,29 +2519,46 @@ function sCalendar(){
         <button class="btn" onclick="S.calWeekOffset++;render()" style="color:var(--navy);font-size:28px;padding:0 12px">›</button>
       </div>
       ${view==='week'?(()=>{
-        // Person-filter chips for the week view. Tap "Family" to see everyone,
-        // or any individual to see only their events for the week. Filter state
-        // lives on S.calWeekFilter (null = show all). Built from the family
-        // roster (children + adults) so it always reflects who's in the family.
+        // Per-person filter chips for the week view. Tap "All" to see everyone,
+        // or any individual to filter the calendar to just their events.
+        // Mirrors the round-photo style of the Today-screen kid row so the
+        // visual language is consistent across the app. Filter state lives on
+        // S.calWeekFilter (null = show all).
         const filt=S.calWeekFilter||null;
+        // Round-photo chip renderer.
+        //   personId — null for the "All" chip, else child.id or adult.uid
+        //   col      — accent colour (used for the ring + name when selected)
+        //   photoURL — optional, falls back to initials in a coloured circle
+        //   label    — text shown below the circle
+        //   icon     — only used for the All chip (👨‍👩‍👧)
+        const chipSize=52;
+        const renderChip=(personId,col,photoURL,label,icon)=>{
+          const on=filt===personId;
+          const ringWidth=on?3:2;
+          const opacity=on?'1':'0.55';
+          const handler=personId===null?'S.calWeekFilter=null;render()':'S.calWeekFilter=\''+personId+'\';render()';
+          const circleInner=photoURL
+            ?'<div style="width:'+chipSize+'px;height:'+chipSize+'px;border-radius:'+(chipSize/2)+'px;border:'+ringWidth+'px solid '+col+';background-image:url(\''+photoURL+'\');background-size:cover;background-position:center;box-shadow:0 2px 6px '+col+'30"></div>'
+            :'<div style="width:'+chipSize+'px;height:'+chipSize+'px;border-radius:'+(chipSize/2)+'px;background:'+col+';display:flex;align-items:center;justify-content:center;color:#fff;font-size:18px;font-weight:800;border:'+ringWidth+'px solid '+col+';box-shadow:0 2px 6px '+col+'30">'+(icon||label.split(' ').map(n=>n[0]).slice(0,2).join('').toUpperCase())+'</div>';
+          return '<button onclick="'+handler+'" style="flex-shrink:0;display:flex;flex-direction:column;align-items:center;gap:5px;background:none;border:none;padding:4px 2px;cursor:pointer;font-family:inherit;opacity:'+opacity+';transition:opacity 0.12s">'
+            +circleInner
+            +'<div style="font-size:11px;font-weight:'+(on?'700':'600')+';color:'+(on?col:'var(--text-secondary)')+';line-height:1.1;max-width:'+(chipSize+12)+'px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap">'+label+'</div>'
+            +'</button>';
+        };
         const peopleChips=[
-          '<button onclick="S.calWeekFilter=null;render()" style="padding:6px 12px;border-radius:8px;border:none;background:'+(filt===null?'var(--navy)':'var(--bg)')+';color:'+(filt===null?'#fff':'var(--text-secondary)')+';font-size:12px;font-weight:600;cursor:pointer;font-family:inherit;flex-shrink:0">👨‍👩‍👧 All</button>'
+          // All chip — uses a neutral navy circle with the family emoji
+          renderChip(null,'#1C3A6B','','All','👨‍👩‍👧')
         ];
         (S.children||[]).forEach(c=>{
-          const on=filt===c.id;
-          const col=c.color||NAVY;
-          peopleChips.push('<button onclick="S.calWeekFilter=\''+c.id+'\';render()" style="padding:6px 12px;border-radius:8px;border:none;background:'+(on?col:'var(--bg)')+';color:'+(on?'#fff':'var(--text-secondary)')+';font-size:12px;font-weight:600;cursor:pointer;font-family:inherit;flex-shrink:0">'+c.name.split(' ')[0]+'</button>');
+          peopleChips.push(renderChip(c.id,c.color||NAVY,c.photoURL||'',c.name.split(' ')[0]));
         });
         members().forEach(m=>{
-          // Skip Logistics-role adults (e.g. grandparent only handling pickups)
-          // — they shouldn't appear in the per-person filter row, just in the
-          // Family tab for management.
+          // Skip Logistics-role adults — they shouldn't appear in the per-person
+          // filter row, just in the Family tab for management.
           if(m.role==='Logistics')return;
-          const on=filt===m.uid;
-          const col=m.color||NAVY;
-          peopleChips.push('<button onclick="S.calWeekFilter=\''+m.uid+'\';render()" style="padding:6px 12px;border-radius:8px;border:none;background:'+(on?col:'var(--bg)')+';color:'+(on?'#fff':'var(--text-secondary)')+';font-size:12px;font-weight:600;cursor:pointer;font-family:inherit;flex-shrink:0">'+m.name.split(' ')[0]+'</button>');
+          peopleChips.push(renderChip(m.uid,m.color||NAVY,m.photoURL||'',m.name.split(' ')[0]));
         });
-        return '<div style="display:flex;gap:6px;overflow-x:auto;padding-bottom:10px;margin-bottom:-2px;-webkit-overflow-scrolling:touch">'+peopleChips.join('')+'</div>';
+        return '<div style="display:flex;gap:10px;overflow-x:auto;padding:6px 2px 12px;margin-bottom:-2px;-webkit-overflow-scrolling:touch;-ms-overflow-style:none;scrollbar-width:none">'+peopleChips.join('')+'</div>';
       })():''}
       ${view==='day'?`<div style="display:flex;margin:0 -16px">
         ${wDates.map(d=>{
