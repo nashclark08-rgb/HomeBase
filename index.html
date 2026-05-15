@@ -6890,6 +6890,19 @@ function sDinners(){
       <button class="btn" onclick="go('addDinner')" style="color:var(--navy);font-size:15px;font-weight:600">+ Add</button>
     </div>
     <div style="padding:14px 0 100px">
+      ${(()=>{
+        // Show the AI shopping-list button when at least one meal is planned
+        // for the coming week. Skip if no meals planned (nothing to shop for).
+        const plannedThisWeek=days.filter(d=>d.meal).length;
+        if(plannedThisWeek===0)return '';
+        return `<div style="margin:0 16px 14px">
+          <button onclick="generateShoppingListFromWeek()" style="width:100%;padding:14px 16px;border-radius:14px;background:linear-gradient(135deg,#34C759,#30B454);border:none;color:#fff;font-size:14px;font-weight:700;cursor:pointer;font-family:inherit;display:flex;align-items:center;justify-content:center;gap:8px;box-shadow:0 4px 14px #34C75935">
+            <span style="font-size:18px">🛒</span>
+            <span>Build shopping list from this week's meals</span>
+          </button>
+          <div style="font-size:11px;color:var(--text-secondary);text-align:center;margin-top:6px">AI generates ingredients across all ${plannedThisWeek} planned meal${plannedThisWeek===1?'':'s'}. Tick what you don't have → adds to Groceries.</div>
+        </div>`;
+      })()}
       <div class="sh" style="margin-bottom:6px">This Week</div>
       <div class="card" style="margin-bottom:14px">
         ${days.map((d,i,arr)=>{
@@ -6909,7 +6922,8 @@ function sDinners(){
               </div>
               <span class="chev" style="flex-shrink:0"></span>
             </button>
-            <button onclick="event.stopPropagation();dDinner('${d.meal.id}')" style="color:#FF3B30;font-size:20px;opacity:0.5;border:none;background:none;cursor:pointer;padding:0 4px;margin-left:4px">×</button>`:
+            <button onclick="event.stopPropagation();findRecipeOnline('${(d.meal.meal||'').replace(/'/g,'&#39;').replace(/\"/g,'&quot;')}')" title="Find recipe online" style="color:var(--navy);font-size:14px;border:none;background:none;cursor:pointer;padding:6px 4px;margin-left:2px">🔗</button>
+            <button onclick="event.stopPropagation();dDinner('${d.meal.id}')" style="color:#FF3B30;font-size:20px;opacity:0.5;border:none;background:none;cursor:pointer;padding:0 4px;margin-left:2px">×</button>`:
             `<button onclick="go('addDinner',{date:'${d.date}'})" style="flex:1;text-align:left;color:var(--navy);font-size:14px;font-weight:600;background:none;border:none;cursor:pointer;padding:0;font-family:inherit">+ Plan a meal</button>`}
           </div>`;
         }).join('')}
@@ -6929,36 +6943,177 @@ function sDinners(){
           </div>`).join('')}
       </div>
 
-      ${pastDinners.length>0?`
-      <details class="hb-meal-history" style="margin:0 16px 14px">
-        <summary style="padding:13px 14px;background:var(--card);border:1px solid var(--row-border);border-radius:12px;font-size:13px;font-weight:700;color:var(--text-secondary);text-transform:uppercase;letter-spacing:0.6px;cursor:pointer;list-style:none;display:flex;align-items:center;justify-content:space-between">
-          <span>📖 Meal History (${pastDinners.length})</span>
-          <span style="display:flex;align-items:center;gap:8px">
-            ${totalUnique>=10?`<span style="font-size:11px;color:var(--text-secondary);font-weight:500;text-transform:none;letter-spacing:0">Auto-suggesting ✨</span>`:`<span style="font-size:11px;color:var(--text-secondary);font-weight:500;text-transform:none;letter-spacing:0">${10-totalUnique} more for suggestions</span>`}
-            <span class="hb-meal-history-chev" style="font-size:14px;color:var(--text-secondary);transition:transform 0.15s">▾</span>
-          </span>
-        </summary>
-        <div class="card" style="margin-top:8px">
-          ${pastDinners.slice(0,30).map((d,i,arr)=>{
-            const dt=new Date(d.date+'T12:00');
-            return `<div class="row" style="border-bottom:${i<Math.min(arr.length,30)-1?'1px solid var(--row-border)':'none'}">
-              <div style="width:70px;flex-shrink:0;font-size:11px;color:var(--text-secondary)">${DAYSH[dt.getDay()]} ${dt.getDate()}/${dt.getMonth()+1}</div>
-              <div style="flex:1">
-                <div style="font-size:14px;font-weight:600">${d.meal}</div>
-                ${d.cook?`<div style="font-size:11px;color:var(--text-secondary)">👨‍🍳 ${d.cook}</div>`:''}
-              </div>
-              <button onclick="reuseDinner('${d.id}')" style="padding:5px 10px;border-radius:8px;background:var(--navy-soft);border:none;cursor:pointer;color:var(--navy);font-size:12px;font-weight:600;font-family:inherit;margin-right:6px">↻ Reuse</button>
-              <button onclick="saveAsMealIdea('${d.id}')" style="padding:5px 10px;border-radius:8px;background:#34C75920;border:none;cursor:pointer;color:#34C759;font-size:12px;font-weight:600;font-family:inherit" title="Save to ideas bank">💡</button>
-            </div>`;
-          }).join('')}
-          ${pastDinners.length>30?`<div class="row" style="justify-content:center;color:var(--text-secondary);font-size:12px">+${pastDinners.length-30} older meals</div>`:''}
-        </div>
-      </details>
-      <style>.hb-meal-history summary::-webkit-details-marker{display:none}.hb-meal-history[open] .hb-meal-history-chev{transform:rotate(180deg)}</style>
-      `:''}
+      ${pastDinners.length>0?(()=>{
+        // Deduplicate the meal history. The raw list has every past dinner —
+        // so if Salmon was cooked four times, it appears four times. Roll
+        // them into one row per unique meal with a "made N times" badge,
+        // sorted by frequency descending so favourites bubble to the top.
+        // Tie-break by most-recent occurrence so a meal cooked 3× last month
+        // beats one cooked 3× two years ago.
+        const byMeal={};
+        pastDinners.forEach(d=>{
+          const key=(d.meal||'').trim();
+          if(!key)return;
+          const norm=key.toLowerCase();
+          if(!byMeal[norm]){
+            byMeal[norm]={meal:key,count:0,latestDate:'',latestId:'',latestCook:''};
+          }
+          const entry=byMeal[norm];
+          entry.count++;
+          if(d.date>entry.latestDate){
+            entry.latestDate=d.date;
+            entry.latestId=d.id;
+            entry.latestCook=d.cook||'';
+          }
+        });
+        const uniqueMeals=Object.values(byMeal).sort((a,b)=>{
+          if(b.count!==a.count)return b.count-a.count;
+          return (b.latestDate||'').localeCompare(a.latestDate||'');
+        });
+        const totalUniqueDeduped=uniqueMeals.length;
+        return `
+        <details class="hb-meal-history" style="margin:0 16px 14px">
+          <summary style="padding:13px 14px;background:var(--card);border:1px solid var(--row-border);border-radius:12px;font-size:13px;font-weight:700;color:var(--text-secondary);text-transform:uppercase;letter-spacing:0.6px;cursor:pointer;list-style:none;display:flex;align-items:center;justify-content:space-between">
+            <span>📖 Meal History (${totalUniqueDeduped})</span>
+            <span style="display:flex;align-items:center;gap:8px">
+              ${totalUniqueDeduped>=10?`<span style="font-size:11px;color:var(--text-secondary);font-weight:500;text-transform:none;letter-spacing:0">Auto-suggesting ✨</span>`:`<span style="font-size:11px;color:var(--text-secondary);font-weight:500;text-transform:none;letter-spacing:0">${10-totalUniqueDeduped} more for suggestions</span>`}
+              <span class="hb-meal-history-chev" style="font-size:14px;color:var(--text-secondary);transition:transform 0.15s">▾</span>
+            </span>
+          </summary>
+          <div class="card" style="margin-top:8px">
+            ${uniqueMeals.slice(0,40).map((entry,i,arr)=>{
+              const dt=new Date(entry.latestDate+'T12:00');
+              const lastWhen=isNaN(dt)?'':DAYSH[dt.getDay()]+' '+dt.getDate()+'/'+(dt.getMonth()+1);
+              return `<div class="row" style="border-bottom:${i<Math.min(arr.length,40)-1?'1px solid var(--row-border)':'none'}">
+                <div style="flex:1;min-width:0">
+                  <div style="display:flex;align-items:center;gap:8px;flex-wrap:wrap">
+                    <div style="font-size:14px;font-weight:600;color:var(--text)">${entry.meal}</div>
+                    <span style="font-size:10px;font-weight:700;padding:2px 8px;border-radius:10px;background:${entry.count>=5?'#34C75920':entry.count>=3?'#FF950020':'#8E8E9320'};color:${entry.count>=5?'#34C759':entry.count>=3?'#FF9500':'#8E8E93'}">×${entry.count}</span>
+                  </div>
+                  <div style="font-size:11px;color:var(--text-secondary);margin-top:2px">Last: ${lastWhen}${entry.latestCook?' · 👨‍🍳 '+entry.latestCook:''}</div>
+                </div>
+                <button onclick="reuseDinner('${entry.latestId}')" style="padding:5px 10px;border-radius:8px;background:var(--navy-soft);border:none;cursor:pointer;color:var(--navy);font-size:12px;font-weight:600;font-family:inherit;margin-right:6px">↻ Reuse</button>
+                <button onclick="saveAsMealIdea('${entry.latestId}')" style="padding:5px 10px;border-radius:8px;background:#34C75920;border:none;cursor:pointer;color:#34C759;font-size:12px;font-weight:600;font-family:inherit" title="Save to ideas bank">💡</button>
+              </div>`;
+            }).join('')}
+            ${uniqueMeals.length>40?`<div class="row" style="justify-content:center;color:var(--text-secondary);font-size:12px">+${uniqueMeals.length-40} more unique meals</div>`:''}
+          </div>
+        </details>
+        <style>.hb-meal-history summary::-webkit-details-marker{display:none}.hb-meal-history[open] .hb-meal-history-chev{transform:rotate(180deg)}</style>
+        `;
+      })():''}
     </div>
   </div>`;
 }
+
+// ─── SHOPPING LIST BUILDER ───────────────────────────────────────────
+// Displays an AI-generated ingredient list grouped by supermarket section,
+// with tickboxes so the user marks what they NEED to buy. Ticked items get
+// pushed to S.groceries with addedToList:true so they show up on the main
+// shopping list. Loading state shows while the Cloud Function runs.
+function sShoppingListBuilder(){
+  const sl=S._shoppingList;
+  // Build the header always
+  const header='<div style="background:var(--card);padding:14px 16px;display:flex;align-items:center;border-bottom:1px solid var(--row-border);position:sticky;top:0;z-index:10">'
+    +'<button class="back-btn" onclick="back()">'+bk()+' Back</button>'
+    +'<div style="flex:1;text-align:center;font-size:17px;font-weight:600">🛒 Shopping List</div>'
+    +'<div style="width:60px"></div>'
+    +'</div>';
+
+  if(!sl||sl.loading){
+    return '<div style="min-height:100%;display:flex;flex-direction:column">'
+      +header
+      +'<div style="flex:1;display:flex;align-items:center;justify-content:center;padding:40px 20px;flex-direction:column;gap:14px">'
+      +'<div style="font-size:60px">🤖</div>'
+      +'<div style="font-size:18px;font-weight:800;color:var(--text)">Building your shopping list…</div>'
+      +'<div style="font-size:13px;color:var(--text-secondary);text-align:center;max-width:280px;line-height:1.5">AI is reading your meal plan and combining ingredients. Takes about 5–10 seconds.</div>'
+      +'<div style="width:32px;height:32px;border:3px solid #34C759;border-top-color:transparent;border-radius:16px;animation:spin 0.8s linear infinite"></div>'
+      +'</div></div>';
+  }
+
+  if(sl.error){
+    return '<div style="min-height:100%;display:flex;flex-direction:column">'
+      +header
+      +'<div style="flex:1;display:flex;align-items:center;justify-content:center;padding:40px 20px;flex-direction:column;gap:14px">'
+      +'<div style="font-size:48px">⚠️</div>'
+      +'<div style="font-size:16px;font-weight:700;color:var(--text);text-align:center">Couldn\'t generate the list</div>'
+      +'<div style="font-size:12px;color:var(--text-secondary);text-align:center;max-width:280px;line-height:1.5">'+String(sl.error).replace(/</g,'&lt;')+'</div>'
+      +'<button onclick="generateShoppingListFromWeek()" style="padding:11px 20px;border-radius:10px;background:var(--navy);border:none;color:#fff;font-size:13px;font-weight:600;cursor:pointer;font-family:inherit">Try again</button>'
+      +'</div></div>';
+  }
+
+  // We have results
+  const items=Array.isArray(sl.ingredients)?sl.ingredients:[];
+  const meals=Array.isArray(sl.meals)?sl.meals:[];
+
+  // Group by category. Order matters — produce first (you'd walk through the
+  // supermarket from there), then meat, dairy, pantry, frozen, bakery, other.
+  const categoryOrder=['produce','meat','dairy','pantry-extras','frozen','bakery','other'];
+  const categoryLabels={
+    'produce':'🥬 Produce',
+    'meat':'🥩 Meat & Seafood',
+    'dairy':'🧀 Dairy & Eggs',
+    'pantry-extras':'🥫 Pantry Extras',
+    'frozen':'❄️ Frozen',
+    'bakery':'🍞 Bakery',
+    'other':'📦 Other'
+  };
+  const byCategory={};
+  items.forEach((it,idx)=>{
+    const cat=it.category||'other';
+    if(!byCategory[cat])byCategory[cat]=[];
+    byCategory[cat].push({...it,_idx:idx});
+  });
+
+  // How many ticked? For the "Add N to shopping list" button.
+  const tickedCount=items.filter(it=>it._ticked).length;
+  const allTicked=items.length>0&&tickedCount===items.length;
+
+  // Meal attribution block — top of screen
+  const mealsBlock=meals.length>0?
+    '<div style="margin:0 16px 14px;padding:12px 14px;background:linear-gradient(135deg,#34C75908,#34C75914);border:1px solid #34C75933;border-radius:12px">'
+    +'<div style="font-size:11px;font-weight:700;color:#34C759;letter-spacing:0.5px;margin-bottom:6px">📋 BUILT FROM</div>'
+    +meals.map(m=>'<div style="font-size:12px;color:var(--text);line-height:1.5;margin-bottom:2px"><strong>'+(m.meal||'').replace(/</g,'&lt;')+'</strong>'+(m.servings?' · '+m.servings+' servings':'')+(m.source?' <span style="color:var(--text-secondary);font-style:italic">— '+m.source.replace(/</g,'&lt;')+'</span>':'')+'</div>').join('')
+    +'</div>':'';
+
+  // Action bar — sticky bottom
+  const actionBar=
+    '<div style="position:sticky;bottom:0;background:var(--card);border-top:1px solid var(--row-border);padding:12px 16px;display:flex;gap:8px;align-items:center;z-index:5">'
+    +'<button onclick="tickAllShoppingItems('+(!allTicked)+')" style="padding:10px 14px;border-radius:9px;background:var(--bg);border:1px solid var(--border);color:var(--text);font-size:12px;font-weight:600;cursor:pointer;font-family:inherit;flex-shrink:0">'+(allTicked?'☐ Untick all':'☑ Tick all')+'</button>'
+    +'<button onclick="commitShoppingListToGroceries()" '+(tickedCount===0?'disabled':'')+' style="flex:1;padding:11px;border-radius:10px;background:'+(tickedCount===0?'#8E8E9355':'#34C759')+';border:none;color:#fff;font-size:13px;font-weight:700;cursor:'+(tickedCount===0?'not-allowed':'pointer')+';font-family:inherit">🛒 Add '+tickedCount+' to shopping list</button>'
+    +'</div>';
+
+  // Ingredient list by category
+  const ingredientHtml=categoryOrder.filter(cat=>byCategory[cat]&&byCategory[cat].length>0).map(cat=>{
+    const rows=byCategory[cat].map(it=>{
+      const ticked=!!it._ticked;
+      const qty=(it.quantity||'').replace(/</g,'&lt;');
+      const name=(it.name||'').replace(/</g,'&lt;');
+      const forMeals=Array.isArray(it.forMeals)&&it.forMeals.length>0?it.forMeals.join(', '):'';
+      return '<div onclick="toggleShoppingListItem('+it._idx+')" style="display:flex;align-items:flex-start;gap:10px;padding:11px 14px;border-bottom:1px solid var(--row-border);cursor:pointer;background:'+(ticked?'#34C75910':'transparent')+'">'
+        +'<div class="cb" style="'+(ticked?'background:#34C759;border:none':'border-color:#C7C7CC')+';flex-shrink:0;width:22px;height:22px;border-radius:6px;margin-top:1px;display:flex;align-items:center;justify-content:center">'+(ticked?'<span style="color:#fff;font-size:12px">✓</span>':'')+'</div>'
+        +'<div style="flex:1;min-width:0">'
+        +'<div style="font-size:14px;color:var(--text);line-height:1.35"><strong style="font-weight:700">'+qty+'</strong> '+name+'</div>'
+        +(forMeals?'<div style="font-size:10px;color:var(--text-secondary);margin-top:2px;line-height:1.3">For: '+forMeals.replace(/</g,'&lt;')+'</div>':'')
+        +'</div>'
+        +'</div>';
+    }).join('');
+    return '<div style="margin-bottom:10px">'
+      +'<div style="font-size:11px;font-weight:700;color:var(--text-secondary);letter-spacing:0.6px;padding:0 16px 6px">'+categoryLabels[cat]+' ('+byCategory[cat].length+')</div>'
+      +'<div class="card" style="margin:0 16px">'+rows+'</div>'
+      +'</div>';
+  }).join('');
+
+  return '<div style="min-height:100%;display:flex;flex-direction:column;background:var(--bg)">'
+    +header
+    +'<div style="flex:1;padding:14px 0 8px;overflow-y:auto">'
+    +mealsBlock
+    +(items.length===0?'<div style="text-align:center;padding:40px 20px;color:var(--text-secondary);font-size:13px">No ingredients generated. The meals might be too vague — try editing them to be more specific.</div>':ingredientHtml)
+    +'</div>'
+    +(items.length>0?actionBar:'')
+    +'</div>';
+}
+
 
 function sAddPlayDate(){
   const presetType=S.screenParams?.type||'playdate';
@@ -7540,10 +7695,26 @@ function sSettings(){
         statusHtml='<div style="background:#FF950014;border-left:3px solid #FF9500;border-radius:6px;padding:9px 11px;font-size:11px;color:var(--text);line-height:1.5">Not yet enabled on this device. Tap below to turn on push notifications for events, reminders and morning summaries.</div>';
         actionHtml='<button onclick="requestNotifPerm()" style="width:100%;margin-top:8px;padding:12px;border-radius:10px;background:var(--navy);border:none;color:#fff;font-size:14px;font-weight:700;cursor:pointer;font-family:inherit">🔔 Enable push notifications</button>';
       }
+      // If a previous Re-register / Enable attempt failed, render a persistent
+      // diagnostic block so the user sees WHY (not just a fleeting "Push setup
+      // failed" toast that disappears in 3 seconds). 403 errors get an explicit
+      // hint about Google Cloud Console config since that's the usual cause.
+      let errorBlock='';
+      if(S._pushLastError){
+        const err=S._pushLastError;
+        const ts=err.at?new Date(err.at).toLocaleTimeString():'';
+        errorBlock='<div style="margin-top:10px;background:#FF3B3010;border:1px solid #FF3B3055;border-radius:8px;padding:10px 12px">'
+          +'<div style="font-size:11px;font-weight:700;color:#FF3B30;margin-bottom:4px">⚠️ LAST ATTEMPT FAILED'+(ts?' · '+ts:'')+'</div>'
+          +'<div style="font-size:11px;color:var(--text);line-height:1.5;margin-bottom:6px;word-break:break-word">'+String(err.message||'').replace(/</g,'&lt;')+'</div>'
+          +(err.hint?'<div style="font-size:11px;color:var(--text-secondary);line-height:1.5;font-style:italic">'+err.hint+'</div>':'')
+          +'<button onclick="S._pushLastError=null;render()" style="margin-top:8px;padding:5px 10px;border-radius:6px;background:var(--bg);border:1px solid var(--border);color:var(--text-secondary);font-size:11px;font-weight:600;cursor:pointer;font-family:inherit">Dismiss</button>'
+          +'</div>';
+      }
       return '<div style="padding:13px 14px">'
         +'<div style="font-size:13px;font-weight:600;color:var(--text);margin-bottom:6px">📲 Push notifications</div>'
         +statusHtml
         +actionHtml
+        +errorBlock
         +'</div>';
     })()
     +'</div>';
@@ -8450,6 +8621,7 @@ function render(){
       timetableImport:sTimetableImport,timetablePreview:sTimetablePreview,
       emailImport:sEmailImport,emailPreview:sEmailPreview,
       inboxReview:sInboxReview,inboxSetup:sInboxSetup,
+      shoppingListBuilder:sShoppingListBuilder,
       quickTraining:sQuickTraining
     };
     html=(map[S.screen]||sToday)();
@@ -10184,6 +10356,110 @@ window.editDinner=function(id){
   if(!d){notify('Meal not found');return;}
   go('addDinner',{date:d.date,prefillMeal:d.meal,prefillCook:d.cook||'',prefillNotes:d.notes||'',editingId:id});
 };
+
+// Open a google search for the meal name + "recipe" in a new tab so the user
+// can click through to taste.com.au, RecipeTin Eats, Jamie Oliver, etc. We
+// don't scrape any site — just take them to search results. Browsers handle
+// the rest.
+window.findRecipeOnline=function(mealName){
+  if(!mealName)return;
+  const q=encodeURIComponent(String(mealName).trim()+' recipe');
+  try{window.open('https://www.google.com/search?q='+q,'_blank','noopener');}
+  catch(e){window.location.href='https://www.google.com/search?q='+q;}
+};
+
+// === AI-GENERATED SHOPPING LIST ===
+// Collects this week's scheduled meals, asks the Cloud Function for a
+// combined ingredient list (categorised by supermarket section, deduped
+// across meals, skipping pantry staples), then navigates to the builder
+// screen where the user ticks what they need to buy.
+window.generateShoppingListFromWeek=async function(){
+  if(!S.familyId){notify('Sign in first','⚠️');return;}
+  // Build the meal list from this coming week's planned dinners (today + 6).
+  const meals=[];
+  for(let i=0;i<7;i++){
+    const d=new Date(today);d.setDate(today.getDate()+i);
+    const ds=fd(d);
+    const dn=(S.dinners||[]).find(x=>x.date===ds);
+    if(dn&&dn.meal&&dn.meal.trim()){
+      // Default to 5 servings (Clark family of 5). Skips duplicates if the
+      // same meal is planned twice — once is enough for ingredient calc.
+      const already=meals.some(m=>m.meal.toLowerCase()===dn.meal.toLowerCase().trim());
+      if(!already)meals.push({meal:dn.meal.trim(),servings:5});
+    }
+  }
+  if(meals.length===0){
+    notify('No meals planned for this week — add some first','ℹ️');
+    return;
+  }
+  // Show loading screen immediately, then fire the AI call
+  S._shoppingList={loading:true,meals:[],ingredients:[]};
+  go('shoppingListBuilder');
+  try{
+    const callable=httpsCallable(functions,'generateShoppingList');
+    const resp=await callable({meals,familyId:S.familyId});
+    const data=resp?.data||{};
+    S._shoppingList={
+      loading:false,
+      meals:Array.isArray(data.meals)?data.meals:[],
+      ingredients:(Array.isArray(data.ingredients)?data.ingredients:[]).map(it=>({...it,_ticked:false})),
+      summary:data.summary||''
+    };
+    render();
+  }catch(ex){
+    console.error('[shopping-list] generation failed',ex);
+    S._shoppingList={loading:false,error:ex.message||String(ex),meals:[],ingredients:[]};
+    render();
+  }
+};
+
+window.toggleShoppingListItem=function(idx){
+  const sl=S._shoppingList;
+  if(!sl||!Array.isArray(sl.ingredients))return;
+  const it=sl.ingredients[idx];
+  if(!it)return;
+  it._ticked=!it._ticked;
+  render();
+};
+
+window.tickAllShoppingItems=function(state){
+  const sl=S._shoppingList;
+  if(!sl||!Array.isArray(sl.ingredients))return;
+  sl.ingredients.forEach(it=>{it._ticked=!!state;});
+  render();
+};
+
+window.commitShoppingListToGroceries=async function(){
+  const sl=S._shoppingList;
+  if(!sl||!Array.isArray(sl.ingredients))return;
+  const ticked=sl.ingredients.filter(it=>it._ticked&&it.name);
+  if(ticked.length===0){notify('Tick some items first','ℹ️');return;}
+  let added=0;
+  for(const it of ticked){
+    try{
+      // Combine quantity + name into the grocery label so the user sees
+      // "3 brown onions" not just "brown onions" in their shopping list.
+      const qtyPart=it.quantity?String(it.quantity).trim()+' ':'';
+      const label=(qtyPart+it.name).trim();
+      await fadd(['groceries'],{
+        label,
+        addedToList:true,
+        checked:false,
+        isFrequent:false,
+        source:'ai-shopping-list',
+        createdAt:new Date()
+      });
+      added++;
+    }catch(e){console.warn('Failed to add grocery item:',it,e);}
+  }
+  notify('Added '+added+' item'+(added===1?'':'s')+' to your shopping list 🛒','✅');
+  // Clear the transient state and navigate to the groceries view
+  S._shoppingList=null;
+  S.tab='lists';
+  S.listTab='groceries';
+  S.screen=null;
+  render();
+};
 window.selCalDate=function(ds){
   S.calDate=ds;
   render();
@@ -10462,7 +10738,19 @@ window.requestNotifPerm=async function(){
     render();
   }catch(ex){
     console.error('[push] enable failed',ex);
-    notify('Push setup failed: '+(ex.message||ex),'⚠️');
+    // Surface the failure: write a structured error message to state so the
+    // Settings UI can render a persistent diagnostic banner instead of a
+    // fleeting toast that vanishes before the user can read it. The toast
+    // still fires so we don't break the existing UX.
+    const msg=String(ex.message||ex);
+    const is403=/403|PERMISSION_DENIED|permission/i.test(msg);
+    S._pushLastError={
+      at:new Date().toISOString(),
+      message:msg,
+      kind:is403?'403':'other',
+      hint:is403?'Firebase blocked the request. Check Google Cloud Console: API key restrictions must include Firebase Installations API, and HTTP referrer allowlist must include home-base-orcin.vercel.app/*':'See browser console for details.'
+    };
+    notify('Push setup failed — see Settings → Notifications for details','⚠️');
     render();
   }
 };
