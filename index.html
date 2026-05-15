@@ -420,9 +420,12 @@ function findUpcomingClashes(daysAhead){
         const a=eventsOnDate[i],b=eventsOnDate[j];
         const aRange=parseTimeRange(a.time)||{start:0,end:1440};
         const bRange=parseTimeRange(b.time)||{start:0,end:1440};
-        // Note: when an event has no time set (or is marked allDay), we treat it as
-        // covering the full day (0–1440 min). That way an all-day commitment in
-        // Echuca correctly clashes with a timed event in Wodonga for the same kid.
+        // Distinguish "no time at all" (untimed/all-day → full {0,1440} window)
+        // from "has a parseable time string". Only the latter is eligible for
+        // the instant-end treatment below — all-day events still need to cover
+        // the whole day so an all-day camp clashes with a timed soccer game.
+        const aParsed=!!parseTimeRange(a.time);
+        const bParsed=!!parseTimeRange(b.time);
         //
         // SANITY GUARD: an event with an explicit time range longer than 8 hours
         // is almost certainly a data error (most commonly an AM/PM parse mistake,
@@ -430,16 +433,49 @@ function findUpcomingClashes(daysAhead){
         // a range for clash detection — fall back to treating it as a 1hr block
         // anchored on the start time. Genuinely-all-day commitments should be
         // entered with no time (which uses the {0,1440} default path above).
-        const isExplicit=a=>!!a&&!!parseTimeRange(a.time);
         const MAX_REASONABLE_MIN=8*60;
-        if(isExplicit(a)&&(aRange.end-aRange.start)>MAX_REASONABLE_MIN){
+        if(aParsed&&(aRange.end-aRange.start)>MAX_REASONABLE_MIN){
           aRange.end=Math.min(aRange.end,aRange.start+60);
         }
-        if(isExplicit(b)&&(bRange.end-bRange.start)>MAX_REASONABLE_MIN){
+        if(bParsed&&(bRange.end-bRange.start)>MAX_REASONABLE_MIN){
           bRange.end=Math.min(bRange.end,bRange.start+60);
         }
-        // Time overlap?
-        const overlap=aRange.start<aRange.end&&bRange.start<bRange.end&&aRange.start<bRange.end&&bRange.start<aRange.end;
+        // UNTIMED-END TREATMENT: when a timed event has a start but no end
+        // (e.g. just "4:10pm"), we don't know how long it lasts. parseTimeRange
+        // used to default to start+60min — but that produced false clashes for
+        // back-to-back sport games (Basketball 4:10pm + Basketball 5:00pm got
+        // flagged because the 60-min defaults overlapped 5:00–5:10pm). Treating
+        // those as INSTANT (zero duration) instead is honest: with no end given,
+        // there's no claimed time-window.
+        // Two instant events only clash if they share the same start minute
+        // (handled by the same-start check below), or one falls inside a real
+        // explicit window. Truly untimed events (no time at all) keep their
+        // {0,1440} full-day window — unchanged.
+        const hasExplicitEnd=t=>{
+          if(!t)return false;
+          return /\s*(?:to|-|–|—|until|till)\s*/i.test(String(t));
+        };
+        if(aParsed&&!hasExplicitEnd(a.time))aRange.end=aRange.start;
+        if(bParsed&&!hasExplicitEnd(b.time))bRange.end=bRange.start;
+
+        // Time overlap? Four cases:
+        //  - Same start minute → always a clash regardless of duration
+        //    (e.g. two events at exactly 4:00pm for the same person).
+        //  - Both ranges have positive duration → standard half-open overlap.
+        //  - One range positive, one instant → overlap if instant falls inside.
+        //  - Both instant, different starts → no overlap (back-to-back is fine).
+        let overlap;
+        if(aRange.start===bRange.start){
+          overlap=true;
+        }else if(aRange.start<aRange.end&&bRange.start<bRange.end){
+          overlap=aRange.start<bRange.end&&bRange.start<aRange.end;
+        }else if(aRange.start<aRange.end){
+          overlap=bRange.start>=aRange.start&&bRange.start<aRange.end;
+        }else if(bRange.start<bRange.end){
+          overlap=aRange.start>=bRange.start&&aRange.start<bRange.end;
+        }else{
+          overlap=false;
+        }
 
         // === TRAVEL-BUFFER CLASH ===
         // Even when clock windows don't strictly overlap, two events can clash if
@@ -1793,9 +1829,16 @@ function sToday(){
             return d;
           };
 
-          // Helper: push a virtual reminder if the date is ≤10 days away
+          // Helper: push a virtual reminder if the date is ≤10 days away.
+          // CRITICAL: normalise the reminder's date to midnight before the diff,
+          // because reminder._date is often set to noon (12:00) to dodge DST,
+          // and (noon - midnight) / 86400000 = 0.5 → Math.round → 1, which
+          // makes a TODAY clash show as "Tomorrow". Use a midnight-on-midnight
+          // diff with Math.floor so today=0, tomorrow=1, etc.
           const maybePush=(reminder)=>{
-            const daysAway=Math.round((reminder._date-today0)/86400000);
+            const datePart=new Date(reminder._date);
+            datePart.setHours(0,0,0,0);
+            const daysAway=Math.floor((datePart-today0)/86400000);
             if(daysAway<0||daysAway>10)return;
             reminder.daysAway=daysAway;
             reminder.countdown=daysAway===0?'🎉 Today!':daysAway===1?'Tomorrow':'in '+daysAway+' days';
