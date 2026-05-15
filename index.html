@@ -2399,7 +2399,10 @@ function sCalendar(){
     const personName=person?person.name:'Family';
     const personFirst=person?person.name.split(' ')[0]:'Family';
     const profileKind=isAdult?'adult':'child';
-    const profileParams=isAdult?`{kind:'adult',uid:'${person.id}'}`:`{kind:'child',childId:'${person.id}'}`;
+    // Only build profile-nav params when there's a real person to navigate to.
+    // Family-wide events (no specific person) pass person=null and shouldn't
+    // try to access .id — that was the source of the calendar-tab crash.
+    const profileParams=person?(isAdult?`{kind:'adult',uid:'${person.id}'}`:`{kind:'child',childId:'${person.id}'}`):'';
     return `<div style="width:calc(100% - 32px);margin:0 16px 12px;background:${col};border-radius:16px;box-shadow:var(--shadow-md);overflow:hidden;display:flex;align-items:stretch;color:#fff">
       <div style="flex:1;padding:14px 14px 14px 18px;min-width:0">
         ${person?`<div onclick="go('personProfile',${profileParams})" style="display:flex;align-items:center;gap:8px;margin-bottom:10px;cursor:pointer;padding-bottom:8px;border-bottom:1px solid rgba(255,255,255,0.25)">
@@ -2501,6 +2504,27 @@ function sCalendar(){
         <div style="font-size:15px;font-weight:700;color:var(--text)">${MONTHS[wStart.getMonth()]} ${wStart.getFullYear()}</div>
         <button class="btn" onclick="S.calWeekOffset++;render()" style="color:var(--navy);font-size:28px;padding:0 12px">›</button>
       </div>
+      ${view==='week'?(()=>{
+        // Person-filter chips for the week view. Tap "Family" to see everyone,
+        // or any individual to see only their events for the week. Filter state
+        // lives on S.calWeekFilter (null = show all). Built from the family
+        // roster (children + adults) so it always reflects who's in the family.
+        const filt=S.calWeekFilter||null;
+        const peopleChips=[
+          '<button onclick="S.calWeekFilter=null;render()" style="padding:6px 12px;border-radius:8px;border:none;background:'+(filt===null?'var(--navy)':'var(--bg)')+';color:'+(filt===null?'#fff':'var(--text-secondary)')+';font-size:12px;font-weight:600;cursor:pointer;font-family:inherit;flex-shrink:0">👨‍👩‍👧 All</button>'
+        ];
+        (S.children||[]).forEach(c=>{
+          const on=filt===c.id;
+          const col=c.color||NAVY;
+          peopleChips.push('<button onclick="S.calWeekFilter=\''+c.id+'\';render()" style="padding:6px 12px;border-radius:8px;border:none;background:'+(on?col:'var(--bg)')+';color:'+(on?'#fff':'var(--text-secondary)')+';font-size:12px;font-weight:600;cursor:pointer;font-family:inherit;flex-shrink:0">'+c.name.split(' ')[0]+'</button>');
+        });
+        members().forEach(m=>{
+          const on=filt===m.uid;
+          const col=m.color||NAVY;
+          peopleChips.push('<button onclick="S.calWeekFilter=\''+m.uid+'\';render()" style="padding:6px 12px;border-radius:8px;border:none;background:'+(on?col:'var(--bg)')+';color:'+(on?'#fff':'var(--text-secondary)')+';font-size:12px;font-weight:600;cursor:pointer;font-family:inherit;flex-shrink:0">'+m.name.split(' ')[0]+'</button>');
+        });
+        return '<div style="display:flex;gap:6px;overflow-x:auto;padding-bottom:10px;margin-bottom:-2px;-webkit-overflow-scrolling:touch">'+peopleChips.join('')+'</div>';
+      })():''}
       ${view==='day'?`<div style="display:flex;margin:0 -16px">
         ${wDates.map(d=>{
           const ds=fd(d),isSel=ds===sel,isTod=ds===todayStr;
@@ -2578,20 +2602,54 @@ function sCalendar(){
           Each cell shows how many drop-offs / pick-ups that adult has on that day. Tap any number to jump to that day's events.
         </div>`;
       })():`
-        ${wDates.map(d=>{
-          const ds=fd(d);
-          const evs=eventsOnDate(ds);
-          const isTod=ds===todayStr;
-          // Group events by person (children + adults) for week view
-          const byPerson={};
-          evs.forEach(ev=>{
-            let key;
-            if(ev.adultUid)key='adult:'+ev.adultUid;
-            else if(ev.childId)key='child:'+ev.childId;
-            else key='__family';
-            if(!byPerson[key])byPerson[key]=[];
-            byPerson[key].push(ev);
-          });
+        ${(()=>{
+          // Per-person filter: when set, restrict every week-row to events
+          // that include the chosen person. Otherwise show everyone.
+          const filt=S.calWeekFilter||null;
+          const eventBelongsTo=(ev,personId)=>{
+            if(!personId)return true; // null filter = show all
+            if(Array.isArray(ev.participantIds)&&ev.participantIds.length>0){
+              return ev.participantIds.includes(personId);
+            }
+            if(ev.childId===personId||ev.adultUid===personId)return true;
+            return false;
+          };
+          return wDates.map(d=>{
+            const ds=fd(d);
+            const allEvs=eventsOnDate(ds);
+            const evs=allEvs.filter(ev=>eventBelongsTo(ev,filt));
+            const isTod=ds===todayStr;
+            // Group events by person (children + adults) for week view.
+            // Uses participantIds (the source of truth) and falls back to
+            // legacy adultUid/childId. Family-wide events with neither go
+            // under the __family bucket. When a person filter is on, we
+            // only key by that one person so the visual is uncluttered.
+            const byPerson={};
+            const addToKey=(key,ev)=>{
+              if(!byPerson[key])byPerson[key]=[];
+              if(!byPerson[key].includes(ev))byPerson[key].push(ev);
+            };
+            evs.forEach(ev=>{
+              if(filt){
+                // Show this event under the filtered person's bucket only
+                const isChild=(S.children||[]).some(c=>c.id===filt);
+                addToKey((isChild?'child:':'adult:')+filt,ev);
+                return;
+              }
+              const pids=Array.isArray(ev.participantIds)?ev.participantIds:[];
+              if(pids.length===0){
+                if(ev.adultUid)addToKey('adult:'+ev.adultUid,ev);
+                else if(ev.childId)addToKey('child:'+ev.childId,ev);
+                else addToKey('__family',ev);
+              }else{
+                pids.forEach(pid=>{
+                  const isChild=(S.children||[]).some(c=>c.id===pid);
+                  const isAdult=members().some(m=>m.uid===pid);
+                  if(isChild)addToKey('child:'+pid,ev);
+                  else if(isAdult)addToKey('adult:'+pid,ev);
+                });
+              }
+            });
           return `<div style="margin-bottom:18px">
             <div style="padding:0 16px;display:flex;align-items:baseline;gap:10px;margin-bottom:8px">
               <div style="font-size:13px;font-weight:700;color:${isTod?'#FF3B30':'var(--text-secondary)'};letter-spacing:0.5px;text-transform:uppercase">${DAYNAMES[d.getDay()]}${isTod?' · TODAY':''}</div>
@@ -2624,7 +2682,8 @@ function sCalendar(){
               </div>`;
             }).join('')}
           </div>`;
-        }).join('')}
+        }).join('');
+        })()}
       `}
     </div>
     <div class="fab"><button class="fab-btn" style="background:var(--navy)" onclick="go('addEvent')">+</button></div>`;
