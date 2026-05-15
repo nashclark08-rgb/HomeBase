@@ -640,11 +640,19 @@ function renderLastSaved(){
   setTimeout(function(){const b=document.getElementById('last-saved-bar');if(b)b.remove();},5000);
 }
 
-function go(sc,params){S.screen=sc;S.screenParams=params||{};S.fabOpen=false;render();}
+function go(sc,params){
+  // Leaving Settings? Clear the transient open-section flag so the next visit
+  // starts with all sections collapsed.
+  if(S.tab==='settings'&&sc&&sc!=='settings')S._settingsOpenSection=null;
+  S.screen=sc;S.screenParams=params||{};S.fabOpen=false;render();
+}
 function back(){S.screen=null;S.screenParams={};render();}
 function setTab(t){
   // Reset Events sub-view state when leaving so coming back lands on the tile home
   if(S.tab==='events'&&t!=='events'){S.evView='tiles';S.evCategory='';S.evSport='';}
+  // Clear Settings transient state when switching tabs so sections always
+  // start collapsed on re-entry.
+  if(S.tab==='settings'&&t!=='settings')S._settingsOpenSection=null;
   S.tab=t;S.screen=null;S.screenParams={};S.morningMode=false;S.fabOpen=false;render();
 }
 function gc(){return S.children.find(c=>c.id===S.activeChild)||S.children[0];}
@@ -1530,7 +1538,7 @@ function sToday(){
   // Onboarding checklist - shows until all 3 steps done
   const hasKids=S.children.length>0;
   const hasEvents=S.events.length>0;
-  const hasOtherAdult=members().filter(m=>m.uid!==S.user?.uid).length>0;
+  const hasOtherAdult=coreMembers().filter(m=>m.uid!==S.user?.uid).length>0;
   const onboardingDone=hasKids&&hasEvents&&hasOtherAdult;
   // If completely fresh (no kids), show the big welcome
   if(!hasKids){
@@ -1825,7 +1833,7 @@ function sToday(){
         if(isViewToday){
           const allPeople=[
             ...S.children.map(c=>({id:c.id,name:c.name,color:c.color,photo:c.photoURL,dob:c.dob,kind:'child'})),
-            ...members().map(m=>({id:m.uid,name:m.name,color:m.color,photo:m.photoURL,dob:m.dob,
+            ...coreMembers().map(m=>({id:m.uid,name:m.name,color:m.color,photo:m.photoURL,dob:m.dob,
               celebrateMothersDay:m.celebrateMothersDay,celebrateFathersDay:m.celebrateFathersDay,
               kind:'adult'}))
           ];
@@ -2178,7 +2186,7 @@ function sMorning(){
 // ── ADD EVENT ─────────────────────────────────────
 function sAddEvent(){
   const ef=S.ef;
-  const mems=members();
+  const mems=coreMembers();
   const preChildId=S.screenParams?.childId||'';
   const preAdultUid=S.screenParams?.adultUid||'';
   const preDate=S.screenParams?.date||'';
@@ -3976,7 +3984,7 @@ function sFixturesImport(){
   const fi=S.fixtureImport;
   const familySports=Array.isArray(S.family?.sports)?S.family.sports:[];
   const allPeople=[...S.children.map(c=>({id:c.id,name:c.name,color:c.color||NAVY,photo:c.photoURL})),
-                   ...members().map(m=>({id:m.uid,name:m.name,color:m.color||NAVY,photo:m.photoURL}))];
+                   ...coreMembers().map(m=>({id:m.uid,name:m.name,color:m.color||NAVY,photo:m.photoURL}))];
 
   return `
     <div style="min-height:100%;display:flex;flex-direction:column;background:var(--bg)">
@@ -5439,7 +5447,7 @@ function sEmailImport(){
   const ei=S.emailImport;
   const allPeople=[
     ...S.children.map(c=>({id:c.id,name:c.name,color:c.color||NAVY,photo:c.photoURL})),
-    ...members().map(m=>({id:m.uid,name:m.name,color:m.color||NAVY,photo:m.photoURL}))
+    ...coreMembers().map(m=>({id:m.uid,name:m.name,color:m.color||NAVY,photo:m.photoURL}))
   ];
 
   return `
@@ -6456,7 +6464,7 @@ function sQuickTraining(){
   const familySports=Array.isArray(S.family?.sports)?S.family.sports:[];
   const allPeople=[
     ...S.children.map(c=>({id:c.id,name:c.name,color:c.color||NAVY,photo:c.photoURL,kind:'child'})),
-    ...members().map(m=>({id:m.uid,name:m.name,color:m.color||NAVY,photo:m.photoURL,kind:'adult'}))
+    ...coreMembers().map(m=>({id:m.uid,name:m.name,color:m.color||NAVY,photo:m.photoURL,kind:'adult'}))
   ];
   const dayBtns=['Mon','Tue','Wed','Thu','Fri','Sat','Sun'].map(d=>
     `<button type="button" id="qt-day-${d}" onclick="toggleQTDay('${d}')" class="freq-btn ${qt.days[d]?'on':''}" style="flex:1;padding:10px 4px;font-size:12px;font-weight:700">${d}</button>`
@@ -6827,7 +6835,7 @@ function sGifts(tabBar){
   const uid=S.user?.uid;
   const people=[
     ...S.children.map(c=>({id:c.id,name:c.name,color:c.color||NAVY,photo:c.photoURL})),
-    ...members().map(m=>({id:m.uid,name:m.name,color:m.color,photo:null}))
+    ...coreMembers().map(m=>({id:m.uid,name:m.name,color:m.color,photo:null}))
   ];
   return `
     <div style="background:#fff;padding:14px 16px 0;border-bottom:1px solid #F2F2F7;position:sticky;top:0;z-index:10">
@@ -6893,12 +6901,15 @@ function sDinners(){
               <div style="font-size:11px;font-weight:700;color:${isToday?'#FF3B30':'var(--text-secondary)'}">${dayLabel}</div>
               <div style="font-size:12px;color:var(--text-secondary);margin-top:1px">${dateLabel}</div>
             </div>
-            ${d.meal?`<div style="flex:1">
-              <div style="font-size:15px;font-weight:600">${d.meal.meal}</div>
-              ${d.meal.cook?`<div style="font-size:12px;color:var(--text-secondary)">👨‍🍳 ${d.meal.cook}</div>`:''}
-              ${d.meal.notes?`<div style="font-size:12px;color:var(--text-secondary);font-style:italic">${d.meal.notes}</div>`:''}
-            </div>
-            <button onclick="dDinner('${d.meal.id}')" style="color:#FF3B30;font-size:20px;opacity:0.5;border:none;background:none;cursor:pointer">×</button>`:
+            ${d.meal?`<button onclick="editDinner('${d.meal.id}')" style="flex:1;display:flex;align-items:center;gap:6px;background:none;border:none;padding:0;text-align:left;cursor:pointer;font-family:inherit;min-width:0">
+              <div style="flex:1;min-width:0">
+                <div style="font-size:15px;font-weight:600;color:var(--text);overflow:hidden;text-overflow:ellipsis;white-space:nowrap">${d.meal.meal}</div>
+                ${d.meal.cook?`<div style="font-size:12px;color:var(--text-secondary)">👨‍🍳 ${d.meal.cook}</div>`:''}
+                ${d.meal.notes?`<div style="font-size:12px;color:var(--text-secondary);font-style:italic;overflow:hidden;text-overflow:ellipsis;white-space:nowrap">${d.meal.notes}</div>`:''}
+              </div>
+              <span class="chev" style="flex-shrink:0"></span>
+            </button>
+            <button onclick="event.stopPropagation();dDinner('${d.meal.id}')" style="color:#FF3B30;font-size:20px;opacity:0.5;border:none;background:none;cursor:pointer;padding:0 4px;margin-left:4px">×</button>`:
             `<button onclick="go('addDinner',{date:'${d.date}'})" style="flex:1;text-align:left;color:var(--navy);font-size:14px;font-weight:600;background:none;border:none;cursor:pointer;padding:0;font-family:inherit">+ Plan a meal</button>`}
           </div>`;
         }).join('')}
@@ -6919,25 +6930,31 @@ function sDinners(){
       </div>
 
       ${pastDinners.length>0?`
-      <div class="sh" style="margin-bottom:6px;display:flex;justify-content:space-between;align-items:center;padding-right:16px">
-        <span>📖 Meal History (${pastDinners.length})</span>
-        ${totalUnique>=10?`<span style="font-size:11px;color:var(--text-secondary);font-weight:500;text-transform:none;letter-spacing:0">Auto-suggesting ✨</span>`:`<span style="font-size:11px;color:var(--text-secondary);font-weight:500;text-transform:none;letter-spacing:0">${10-totalUnique} more for suggestions</span>`}
-      </div>
-      <div class="card" style="margin-bottom:14px">
-        ${pastDinners.slice(0,30).map((d,i,arr)=>{
-          const dt=new Date(d.date+'T12:00');
-          return `<div class="row" style="border-bottom:${i<Math.min(arr.length,30)-1?'1px solid var(--row-border)':'none'}">
-            <div style="width:70px;flex-shrink:0;font-size:11px;color:var(--text-secondary)">${DAYSH[dt.getDay()]} ${dt.getDate()}/${dt.getMonth()+1}</div>
-            <div style="flex:1">
-              <div style="font-size:14px;font-weight:600">${d.meal}</div>
-              ${d.cook?`<div style="font-size:11px;color:var(--text-secondary)">👨‍🍳 ${d.cook}</div>`:''}
-            </div>
-            <button onclick="reuseDinner('${d.id}')" style="padding:5px 10px;border-radius:8px;background:var(--navy-soft);border:none;cursor:pointer;color:var(--navy);font-size:12px;font-weight:600;font-family:inherit;margin-right:6px">↻ Reuse</button>
-            <button onclick="saveAsMealIdea('${d.id}')" style="padding:5px 10px;border-radius:8px;background:#34C75920;border:none;cursor:pointer;color:#34C759;font-size:12px;font-weight:600;font-family:inherit" title="Save to ideas bank">💡</button>
-          </div>`;
-        }).join('')}
-        ${pastDinners.length>30?`<div class="row" style="justify-content:center;color:var(--text-secondary);font-size:12px">+${pastDinners.length-30} older meals</div>`:''}
-      </div>
+      <details class="hb-meal-history" style="margin:0 16px 14px">
+        <summary style="padding:13px 14px;background:var(--card);border:1px solid var(--row-border);border-radius:12px;font-size:13px;font-weight:700;color:var(--text-secondary);text-transform:uppercase;letter-spacing:0.6px;cursor:pointer;list-style:none;display:flex;align-items:center;justify-content:space-between">
+          <span>📖 Meal History (${pastDinners.length})</span>
+          <span style="display:flex;align-items:center;gap:8px">
+            ${totalUnique>=10?`<span style="font-size:11px;color:var(--text-secondary);font-weight:500;text-transform:none;letter-spacing:0">Auto-suggesting ✨</span>`:`<span style="font-size:11px;color:var(--text-secondary);font-weight:500;text-transform:none;letter-spacing:0">${10-totalUnique} more for suggestions</span>`}
+            <span class="hb-meal-history-chev" style="font-size:14px;color:var(--text-secondary);transition:transform 0.15s">▾</span>
+          </span>
+        </summary>
+        <div class="card" style="margin-top:8px">
+          ${pastDinners.slice(0,30).map((d,i,arr)=>{
+            const dt=new Date(d.date+'T12:00');
+            return `<div class="row" style="border-bottom:${i<Math.min(arr.length,30)-1?'1px solid var(--row-border)':'none'}">
+              <div style="width:70px;flex-shrink:0;font-size:11px;color:var(--text-secondary)">${DAYSH[dt.getDay()]} ${dt.getDate()}/${dt.getMonth()+1}</div>
+              <div style="flex:1">
+                <div style="font-size:14px;font-weight:600">${d.meal}</div>
+                ${d.cook?`<div style="font-size:11px;color:var(--text-secondary)">👨‍🍳 ${d.cook}</div>`:''}
+              </div>
+              <button onclick="reuseDinner('${d.id}')" style="padding:5px 10px;border-radius:8px;background:var(--navy-soft);border:none;cursor:pointer;color:var(--navy);font-size:12px;font-weight:600;font-family:inherit;margin-right:6px">↻ Reuse</button>
+              <button onclick="saveAsMealIdea('${d.id}')" style="padding:5px 10px;border-radius:8px;background:#34C75920;border:none;cursor:pointer;color:#34C759;font-size:12px;font-weight:600;font-family:inherit" title="Save to ideas bank">💡</button>
+            </div>`;
+          }).join('')}
+          ${pastDinners.length>30?`<div class="row" style="justify-content:center;color:var(--text-secondary);font-size:12px">+${pastDinners.length-30} older meals</div>`:''}
+        </div>
+      </details>
+      <style>.hb-meal-history summary::-webkit-details-marker{display:none}.hb-meal-history[open] .hb-meal-history-chev{transform:rotate(180deg)}</style>
       `:''}
     </div>
   </div>`;
@@ -6948,7 +6965,7 @@ function sAddPlayDate(){
   const presetId=S.screenParams?.editId;
   const existing=presetId?S.playdates.find(p=>p.id===presetId):null;
   const data=existing||{};
-  const mems=members();
+  const mems=coreMembers();
   return `<div style="min-height:100%;display:flex;flex-direction:column;background:var(--bg)">
     <div style="background:var(--card);padding:14px 16px;display:flex;align-items:center;border-bottom:1px solid var(--row-border);position:sticky;top:0;z-index:10">
       <button class="back-btn" onclick="back()">${bk()} Back</button>
@@ -7117,7 +7134,7 @@ function sAddDinner(){
   const prefillMeal=S.screenParams?.prefillMeal||'';
   const prefillCook=S.screenParams?.prefillCook||'';
   const prefillNotes=S.screenParams?.prefillNotes||'';
-  const mems=members();
+  const mems=coreMembers();
   // Combine meal ideas + history for suggestions
   const mealCounts={};
   (S.dinners||[]).forEach(d=>{
@@ -7377,12 +7394,16 @@ function sSettings(){
   if(typeof S._calPickPerson==='undefined')S._calPickPerson='';
 
   // Reusable section opener — wraps each card in <details> so users can collapse
-  // sections they aren't using. open=true on Family Setup since that's the
-  // most likely entry point on first visit.
-  const section=(title,bodyHtml,opts)=>{
-    opts=opts||{};
-    const open=opts.open===true?' open':'';
-    return '<details class="hb-set-section" style="margin-bottom:10px"'+open+'>'
+  // sections they aren't using. By default every section is collapsed on a fresh
+  // visit to Settings. BUT if an action button inside a section triggers a
+  // render (e.g. tap "Re-register this device" inside Notifications), the
+  // function that handles the action can set `S._settingsOpenSection` to that
+  // section's id — the next render keeps it open so the user doesn't get bounced
+  // back to the collapsed view. That flag is cleared on navigating away from
+  // Settings (see go() patch below).
+  const section=(id,title,bodyHtml)=>{
+    const open=S._settingsOpenSection===id?' open':'';
+    return '<details class="hb-set-section" data-section="'+id+'" style="margin-bottom:10px"'+open+'>'
       +'<summary style="padding:13px 14px;background:var(--card);border:1px solid var(--row-border);border-radius:12px;font-size:14px;font-weight:700;color:var(--text);cursor:pointer;list-style:none;display:flex;align-items:center;justify-content:space-between">'
       +'<span>'+title+'</span>'
       +'<span class="hb-set-chev" style="font-size:14px;color:var(--text-secondary);transition:transform 0.15s">▾</span>'
@@ -7614,13 +7635,13 @@ function sSettings(){
     +'<div style="font-size:10px;color:rgba(255,255,255,0.5);margin-top:5px">Family: '+(S.family&&S.family.name||'')+'</div>'
     +'</div>'
     // Collapsible sections. Family setup defaults open; everything else closed.
-    +section('🏡 Family setup',familySetupBody)
-    +section('🔔 Notifications & alerts',notifBody)
-    +section('📥 Email & inbox',inboxBody)
-    +section('📆 Calendar sync',calendarBody)
-    +section('🎨 Appearance',appearanceBody)
-    +section('📖 About',aboutBody)
-    +section('⚠️ Danger zone',dangerBody)
+    +section('family','🏡 Family setup',familySetupBody)
+    +section('notifs','🔔 Notifications & alerts',notifBody)
+    +section('inbox','📥 Email & inbox',inboxBody)
+    +section('calendar','📆 Calendar sync',calendarBody)
+    +section('appearance','🎨 Appearance',appearanceBody)
+    +section('about','📖 About',aboutBody)
+    +section('danger','⚠️ Danger zone',dangerBody)
     +'<div style="text-align:center;padding:14px 0 4px;color:var(--text-secondary);font-size:11px;opacity:0.8">HomeBase · ourhomebase.com.au</div>'
     +'</div>';
 }
@@ -8315,7 +8336,7 @@ function sAddReminder(){
   if(!S.rmMode)S.rmMode='ondate'; // 'ondate' (default) or 'ongoing'
   const all=[
     ...S.children.map(c=>({key:'child:'+c.id,label:c.name,color:c.color||NAVY,photo:c.photoURL,kind:'child'})),
-    ...members().map(m=>({key:'adult:'+m.uid,label:m.name,color:m.color||NAVY,photo:m.photoURL,kind:'adult'}))
+    ...coreMembers().map(m=>({key:'adult:'+m.uid,label:m.name,color:m.color||NAVY,photo:m.photoURL,kind:'adult'}))
   ];
   return `<div style="min-height:100%;display:flex;flex-direction:column;background:var(--bg)">
     <div style="background:var(--card);padding:14px 16px;display:flex;align-items:center;border-bottom:1px solid var(--row-border);position:sticky;top:0;z-index:10">
@@ -10154,6 +10175,15 @@ window.reuseDinner=async function(id){
   if(!d){notify('Meal not found');return;}
   go('addDinner',{prefillMeal:d.meal,prefillCook:d.cook,prefillNotes:d.notes||''});
 };
+// Edit an already-scheduled meal: open the Plan Dinner screen with all fields
+// prefilled AND the existing date locked in so it overwrites rather than
+// creates a duplicate row. The save handler (hAddDinner) already replaces
+// any dinner on the same date, so passing date+prefills is enough.
+window.editDinner=function(id){
+  const d=S.dinners.find(x=>x.id===id);
+  if(!d){notify('Meal not found');return;}
+  go('addDinner',{date:d.date,prefillMeal:d.meal,prefillCook:d.cook||'',prefillNotes:d.notes||'',editingId:id});
+};
 window.selCalDate=function(ds){
   S.calDate=ds;
   render();
@@ -10354,6 +10384,9 @@ window.requestNotifPerm=async function(){
   // call FCM getToken, save token to Firestore so Cloud Functions can target
   // this device. All status flows through console.log + the inline `notify`
   // toast — no more alert() popups (those were diagnostic from April debug).
+  // Pin the Notifications section open across re-renders so the user sees
+  // the result of their action without the section bouncing back to closed.
+  S._settingsOpenSection='notifs';
   const dlog=(msg)=>{try{console.log('[push] '+msg);}catch(e){}};
   dlog('requestNotifPerm called');
 
@@ -10793,7 +10826,7 @@ function openPersonPicker(opts){
   const peopleArr=[];
   S.children.forEach(c=>peopleArr.push({id:c.id,name:c.name,color:c.color||NAVY,photo:c.photoURL,kind:'child'}));
   if(opts.includeAdults){
-    members().forEach(m=>peopleArr.push({id:m.uid,name:m.name,color:m.color||NAVY,photo:m.photoURL,kind:'adult'}));
+    coreMembers().forEach(m=>peopleArr.push({id:m.uid,name:m.name,color:m.color||NAVY,photo:m.photoURL,kind:'adult'}));
   }
   sheet.innerHTML=`
     <div style="text-align:center;margin-bottom:14px">
@@ -11667,7 +11700,7 @@ async function routeVoiceViaAI(transcript){
   // Pull people hints for the AI so it can match names
   const peopleHints=[
     ...S.children.map(c=>({name:c.name,kind:'child'})),
-    ...members().map(m=>({name:m.name,kind:'adult'}))
+    ...coreMembers().map(m=>({name:m.name,kind:'adult'}))
   ];
 
   // Try AI first
@@ -11788,7 +11821,7 @@ window.saveAllVoiceIntents=async function(){
       if(it.type==='event'){
         const allPeople=[
           ...S.children.map(c=>({id:c.id,name:c.name,kind:'child'})),
-          ...members().map(m=>({id:m.uid,name:m.name,kind:'adult'}))
+          ...coreMembers().map(m=>({id:m.uid,name:m.name,kind:'adult'}))
         ];
         const participantIds=[];
         if(Array.isArray(it.participants)){
@@ -11879,7 +11912,7 @@ window.saveAllVoiceIntents=async function(){
         // to match what sGifts and sPersonProfile read.
         const allPeople=[
           ...S.children.map(c=>({id:c.id,name:c.name})),
-          ...members().map(m=>({id:m.uid,name:m.name}))
+          ...coreMembers().map(m=>({id:m.uid,name:m.name}))
         ];
         const norm=String(it.for||'').toLowerCase().trim();
         const match=allPeople.find(p=>p.name.split(' ')[0].toLowerCase()===norm||p.name.toLowerCase()===norm);
@@ -12035,7 +12068,7 @@ window.saveVoiceGift=async function(recipientId,idea,isPrivate){
 window.showGiftPrivacyPicker=function(){
   const pending=S._giftIdeaPending;
   if(!pending){closeVoiceQuickAdd();return;}
-  const allPeople=[...S.children.map(c=>({id:c.id,name:c.name})),...members().map(m=>({id:m.uid,name:m.name}))];
+  const allPeople=[...S.children.map(c=>({id:c.id,name:c.name})),...coreMembers().map(m=>({id:m.uid,name:m.name}))];
   const recipient=allPeople.find(p=>p.id===pending.recipientId);
   if(!recipient){closeVoiceQuickAdd();return;}
   const iconEl=document.getElementById('voice-state-icon');
