@@ -226,7 +226,7 @@ posthog.init('phc_sjjHwttCHDD4zVzZy62Pnp7UN9Lf7PDVYLCbQPBaqRGL',{api_host:'https
 </div>
 <script type="module">
 import{initializeApp}from'https://www.gstatic.com/firebasejs/10.7.1/firebase-app.js';
-import{getAuth,createUserWithEmailAndPassword,signInWithEmailAndPassword,signOut,onAuthStateChanged,updateProfile,GoogleAuthProvider,signInWithPopup,sendPasswordResetEmail}from'https://www.gstatic.com/firebasejs/10.7.1/firebase-auth.js';
+import{getAuth,createUserWithEmailAndPassword,signInWithEmailAndPassword,signOut,onAuthStateChanged,updateProfile,GoogleAuthProvider,signInWithRedirect,getRedirectResult,sendPasswordResetEmail}from'https://www.gstatic.com/firebasejs/10.7.1/firebase-auth.js';
 import{getFirestore,doc,setDoc,getDoc,collection,addDoc,onSnapshot,updateDoc,deleteDoc,query,where,getDocs}from'https://www.gstatic.com/firebasejs/10.7.1/firebase-firestore.js';
 import{getStorage,ref as sref,uploadString,getDownloadURL}from'https://www.gstatic.com/firebasejs/10.7.1/firebase-storage.js';
 import{getMessaging,getToken,onMessage,isSupported as isMessagingSupported}from'https://www.gstatic.com/firebasejs/10.7.1/firebase-messaging.js';
@@ -9413,10 +9413,18 @@ window.hForgotPassword=async()=>{
 };
 window.hGoogle=async()=>{
   try{
-    await signInWithPopup(auth,gp);
+    // signInWithRedirect navigates the whole page to Google's OAuth screen
+    // instead of opening a popup. After the user authenticates Google
+    // redirects back to this app, the page loads fresh, and the
+    // onAuthStateChanged listener at the bottom fires with the new user.
+    // The getRedirectResult() call earlier in this script surfaces any
+    // errors from the redirect leg (e.g. cancelled, network failure).
+    // Eliminates all the Cross-Origin-Opener-Policy popup warnings AND
+    // fixes silent popup-blocking on iOS PWA installations.
+    await signInWithRedirect(auth,gp);
   }catch(ex){
     const code=ex.code||'';
-    // User cancelled or closed the popup - no error needed
+    // User dismissed the prompt before navigation — silent (no-op)
     if(code==='auth/popup-closed-by-user'||code==='auth/cancelled-popup-request')return;
     // Real error - tell the user
     let msg='Google sign-in failed';
@@ -13625,6 +13633,20 @@ try{
   if(nm==='1'){S.nightMode=true;document.documentElement.setAttribute('data-theme','dark');}
   if(localStorage.getItem('hb_hide_onboarding')==='1')S.hideOnboarding=true;
 }catch(e){}
+
+// Handle the return leg of signInWithRedirect: when the user clicked
+// "Sign in with Google", we navigated them to Google's OAuth screen; Google
+// then redirected them back here, and Firebase Auth has the credential
+// queued. getRedirectResult() consumes it. On success: returns a UserCredential
+// and onAuthStateChanged below fires automatically with the new user (no
+// extra work needed). On error: we surface it to the user via notify().
+// Returns null (not an error) on page loads that aren't following a redirect.
+getRedirectResult(auth).catch(function(ex){
+  var code = (ex && ex.code) || '';
+  if (code === 'auth/popup-closed-by-user' || code === 'auth/cancelled-popup-request') return;
+  console.error('Google sign-in redirect error:', ex);
+  try { if (typeof notify === 'function') notify('Google sign-in failed: ' + (ex.message || code), '⚠️'); } catch (e) {}
+});
 
 onAuthStateChanged(auth,async user=>{
   // Fade out the splash overlay once we know the auth state
