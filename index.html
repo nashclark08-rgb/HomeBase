@@ -116,6 +116,36 @@ body{font-family:-apple-system,BlinkMacSystemFont,system-ui,sans-serif;backgroun
 @keyframes hbSplashIn{from{opacity:0;transform:translateY(8px)}to{opacity:1;transform:translateY(0)}}
 @keyframes fin{from{opacity:0;transform:translateY(6px)}to{opacity:1;transform:translateY(0)}}
 </style>
+<!-- Sentry browser SDK (loader pattern — tiny ~5KB shim that lazy-loads the
+     full SDK on first error and auto-updates to latest version). Placed
+     before PostHog so it catches errors in PostHog init too. -->
+<script src="https://js.sentry-cdn.com/53459da65b27b797ff0b28822746c59c.min.js" crossorigin="anonymous"></script>
+<script>
+  if (window.Sentry && typeof Sentry.onLoad === 'function') {
+    Sentry.onLoad(function() {
+      Sentry.init({
+        environment: (location.hostname === 'localhost' || location.hostname.endsWith('.local')) ? 'development' : 'production',
+        release: 'homebase-web@2026-05-17',
+        tracesSampleRate: 0.10,
+        sendDefaultPii: false,
+        beforeSend: function(event) {
+          var msg = (event.exception && event.exception.values && event.exception.values[0] && event.exception.values[0].value) || '';
+          // Filter known-noisy errors that don't tell us anything useful
+          if (/ResizeObserver loop|Non-Error promise rejection captured|Network Error|Load failed/i.test(msg)) return null;
+          return event;
+        }
+      });
+    });
+  }
+</script>
+<!-- PostHog analytics — only sees events we explicitly capture(). No autocapture,
+     no page-view tracking, no session recording. Person profiles only created
+     once we call posthog.identify() after auth — anonymous visitors don't count
+     against the free-tier event budget. -->
+<script>
+!function(t,e){var o,n,p,r;e.__SV||(window.posthog=e,e._i=[],e.init=function(i,s,a){function g(t,e){var o=e.split(".");2==o.length&&(t=t[o[0]],e=o[1]),t[e]=function(){t.push([e].concat(Array.prototype.slice.call(arguments,0)))}}(p=t.createElement("script")).type="text/javascript",p.crossOrigin="anonymous",p.async=!0,p.src=s.api_host.replace(".i.posthog.com","-assets.i.posthog.com")+"/static/array.js",(r=t.getElementsByTagName("script")[0]).parentNode.insertBefore(p,r);var u=e;for(void 0!==a?u=e[a]=[]:a="posthog",u.people=u.people||[],u.toString=function(t){var e="posthog";return"posthog"!==a&&(e+="."+a),t||(e+=" (stub)"),e},u.people.toString=function(){return u.toString(1)+".people (stub)"},o="init me group identify opt_out_capturing has_opted_out_capturing opt_in_capturing reset isFeatureEnabled onFeatureFlags getFeatureFlag getFeatureFlagPayload reloadFeatureFlags group updateEarlyAccessFeatureEnrollment getEarlyAccessFeatures getActiveMatchingSurveys getSurveys getNextSurveyStep onSessionId capture register register_once register_for_session unregister unregister_for_session getDistinctId getSessionId getSessionReplayUrl alias set_config startSessionRecording stopSessionRecording sessionRecordingStarted captureException loaded".split(" "),n=0;n<o.length;n++)g(u,o[n]);e._i.push([i,s,a])},e.__SV=1)}(document,window.posthog||[]);
+posthog.init('phc_sjjHwttCHDD4zVzZy62Pnp7UN9Lf7PDVYLCbQPBaqRGL',{api_host:'https://us.i.posthog.com',person_profiles:'identified_only',capture_pageview:false,capture_pageleave:false,disable_session_recording:true,autocapture:false});
+</script>
 </head>
 <body>
 <!-- Full-screen splash that covers everything until Firebase auth state is known -->
@@ -946,7 +976,14 @@ async function joinFamily(code){
 const fid=()=>S.familyId;
 const fcol=(p)=>collection(db,'families',fid(),...p);
 const fdoc=(p)=>doc(db,'families',fid(),...p);
-const fadd=(p,d)=>addDoc(fcol(p),{...d,createdAt:new Date()});
+// fadd: family-scoped addDoc. Instrumented to fire a typed PostHog event
+// (e.g. "reminders.created", "events.created") so we know which features
+// actually get used. Returns the DocumentReference just like the original.
+const fadd=async(p,d)=>{
+  const ref=await addDoc(fcol(p),{...d,createdAt:new Date()});
+  try{if(window.posthog&&Array.isArray(p)&&p[0]){posthog.capture(p[0]+'.created',{id:ref.id});}}catch(e){}
+  return ref;
+};
 const fupd=(p,d)=>updateDoc(fdoc(p),d);
 const fdel=(p)=>deleteDoc(fdoc(p));
 
@@ -11742,6 +11779,7 @@ window.requestNotifPerm=async function(){
         standalone:isStandalonePWA
       };
       S._pushLastError=null;
+      try{if(window.posthog)posthog.capture('push.registered',{platform:platformLabel,standalone:isStandalonePWA});}catch(e){}
       // Brief confirmation flash on the button itself ("✓ Re-registered just
       // now") that auto-clears after 3s. Combined with the persistent line
       // above, the user gets both an immediate ack and ongoing visible state.
@@ -13563,6 +13601,10 @@ onAuthStateChanged(auth,async user=>{
   },150);
   S.user=user;
   if(user){
+    // PostHog: identify the user and emit a sign-in event so all subsequent
+    // captures are attributed to this person. Wrapped in try so an analytics
+    // outage never blocks app boot.
+    try{if(window.posthog){posthog.identify(user.uid,{email:user.email||'',name:user.displayName||''});posthog.capture('app.signed_in');}}catch(e){}
     try{const ud=await getDoc(doc(db,'users',user.uid));if(ud.exists()){const d=ud.data();if(d.familyId){S.familyId=d.familyId;subscribe();}if(d.notifTime)S.notifTime=d.notifTime;if(typeof d.notifMorning==='boolean')S.notifMorning=d.notifMorning;if(typeof d.notifEvents==='boolean')S.notifEvents=d.notifEvents;if(typeof d.notifEventLead==='number')S.notifEventLead=d.notifEventLead;}}
     catch(ex){}
     // If the user is signed in, has no family, AND we have a pending invite from the URL — auto-join
