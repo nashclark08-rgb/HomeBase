@@ -640,19 +640,37 @@ function renderLastSaved(){
   setTimeout(function(){const b=document.getElementById('last-saved-bar');if(b)b.remove();},5000);
 }
 
+// Form-dirty guard. When the user is on a sub-screen (S.screen!=null) and has
+// touched any input, navigating away via tab bar / go() / back() triggers a
+// confirm prompt — protects against accidental loss of unsaved form data.
+// The flag is set by a global document-level 'input' listener (see init below)
+// and reset on any successful nav. Returns true if it's safe to proceed.
+function guardLeaveScreen(){
+  if(!S.screen)return true; // not on a sub-screen → nothing to guard
+  if(!S._formTouched)return true; // nothing touched → safe
+  return confirm('You have unsaved changes. Leave this page?');
+}
 function go(sc,params){
   // Leaving Settings? Clear the transient open-section flag so the next visit
   // starts with all sections collapsed.
   if(S.tab==='settings'&&sc&&sc!=='settings')S._settingsOpenSection=null;
+  if(!guardLeaveScreen())return;
+  S._formTouched=false;
   S.screen=sc;S.screenParams=params||{};S.fabOpen=false;render();
 }
-function back(){S.screen=null;S.screenParams={};render();}
+function back(){
+  if(!guardLeaveScreen())return;
+  S._formTouched=false;
+  S.screen=null;S.screenParams={};render();
+}
 function setTab(t){
+  if(!guardLeaveScreen())return;
   // Reset Events sub-view state when leaving so coming back lands on the tile home
   if(S.tab==='events'&&t!=='events'){S.evView='tiles';S.evCategory='';S.evSport='';}
   // Clear Settings transient state when switching tabs so sections always
   // start collapsed on re-entry.
   if(S.tab==='settings'&&t!=='settings')S._settingsOpenSection=null;
+  S._formTouched=false;
   S.tab=t;S.screen=null;S.screenParams={};S.morningMode=false;S.fabOpen=false;render();
 }
 function gc(){return S.children.find(c=>c.id===S.activeChild)||S.children[0];}
@@ -751,7 +769,7 @@ function downloadICS(events,filename){
   setTimeout(()=>{document.body.removeChild(a);URL.revokeObjectURL(url);},100);
 }
 
-function members(){return Object.entries(S.family&&S.family.members||{}).map(([uid,m])=>({uid,name:m.name,role:m.role,color:m.color||NAVY,relationship:m.relationship||'',photoURL:m.photoURL||'',phone:m.phone||'',email:m.email||'',personalCode:m.personalCode||'',dob:m.dob||'',celebrateMothersDay:!!m.celebrateMothersDay,celebrateFathersDay:!!m.celebrateFathersDay}));}
+function members(){return Object.entries(S.family&&S.family.members||{}).map(([uid,m])=>({uid,name:m.name,role:m.role,color:m.color||NAVY,relationship:m.relationship||'',photoURL:m.photoURL||'',phone:m.phone||'',email:m.email||'',personalCode:m.personalCode||'',dob:m.dob||'',dietary:m.dietary||'',celebrateMothersDay:!!m.celebrateMothersDay,celebrateFathersDay:!!m.celebrateFathersDay}));}
 
 // Filtered version of members() that excludes role==='Logistics' adults.
 // Logistics adults (e.g. a grandparent who only handles drop-offs/pickups)
@@ -1261,6 +1279,8 @@ function sAddChild(){
         <div style="font-size:12px;color:#8E8E93;margin-top:-6px;padding-left:4px">Date of birth</div>
         <input class="input" id="cyear" type="text" placeholder="Year / Grade (e.g. Year 4)"/>
         <input class="input" id="cschool" type="text" placeholder="School name"/>
+        <input class="input" id="cdietary" type="text" placeholder="Dietary requirements (e.g. coeliac, dairy-free, vegetarian)"/>
+        <div style="font-size:11px;color:#8E8E93;margin-top:-6px;padding-left:4px">Used by AI recipe suggestions to avoid allergens — leave blank if none.</div>
         <div style="font-size:15px;font-weight:600;color:#1C1C1E;margin-top:4px">Profile colour</div>
         <div id="ccolor-grid">${renderColourGrid('col',COLORS[0],"pickColor('HEX')")}</div>
         <input type="hidden" id="ccolor" value="${COLORS[0]}"/>
@@ -1370,6 +1390,8 @@ function sEditChild(){
         <div style="font-size:12px;color:#8E8E93;margin-top:-6px;padding-left:4px">Date of birth</div>
         <input class="input" id="cyear" type="text" placeholder="Year" value="${child.year||''}"/>
         <input class="input" id="cschool" type="text" placeholder="School" value="${child.school||''}"/>
+        <input class="input" id="cdietary" type="text" placeholder="Dietary requirements (e.g. coeliac, dairy-free)" value="${(child.dietary||'').replace(/"/g,'&quot;')}"/>
+        <div style="font-size:11px;color:#8E8E93;margin-top:-6px;padding-left:4px">Used by AI recipe suggestions to avoid allergens — leave blank if none.</div>
         <div style="font-size:15px;font-weight:600;margin-top:4px">Profile colour</div>
         <div id="ccolor-grid">${renderColourGrid('col',child.color||COLORS[0],"pickColor('HEX')")}</div>
         <input type="hidden" id="ccolor" value="${child.color||COLORS[0]}"/>
@@ -1396,6 +1418,8 @@ function sEditFamily(){
         <input class="input" id="ef-fname" type="text" placeholder="Family name" value="${S.family.name||''}"/>
         <div style="font-size:13px;color:#8E8E93;margin-top:4px">🎂 Birthday (optional — shows in Reminders 10 days out)</div>
         <input class="input" id="ef-dob" type="date" value="${m.dob||''}"/>
+        <input class="input" id="ef-dietary" type="text" placeholder="Dietary requirements (optional)" value="${(m.dietary||'').replace(/"/g,'&quot;')}"/>
+        <div style="font-size:11px;color:#8E8E93;margin-top:-6px;padding-left:4px">e.g. vegetarian, gluten-free — feeds AI recipe suggestions.</div>
         <div style="background:#fff;border-radius:10px;padding:12px 14px;margin-top:4px">
           <div style="font-size:13px;color:#1C1C1E;font-weight:600;margin-bottom:8px">🌸 Annual reminders (optional)</div>
           <label style="display:flex;align-items:center;gap:10px;font-size:13px;color:#1C1C1E;cursor:pointer;padding:6px 0">
@@ -2077,7 +2101,7 @@ function sToday(){
       <!-- DINNERS THIS WEEK (collapsible) -->
       ${upcomingDinners.length>0?`<div class="card" style="margin-bottom:14px;overflow:hidden">
         <div onclick="toggleSection('dinners')" style="display:flex;align-items:center;gap:10px;padding:13px 16px;cursor:pointer;user-select:none">
-          <span style="font-size:18px">🍽</span>
+          <span style="font-size:18px">🍲</span>
           <span style="flex:1;font-size:14px;font-weight:700;color:var(--text)">This Week's Dinners</span>
           <span class="collapse-chev ${S.openSections?.dinners?'open':''}" style="font-size:13px;color:var(--text-secondary)">▾</span>
         </div>
@@ -6888,10 +6912,17 @@ function sDinners(){
   return `<div style="min-height:100%;display:flex;flex-direction:column">
     <div style="background:var(--card);padding:14px 16px;display:flex;align-items:center;border-bottom:1px solid var(--row-border);position:sticky;top:0;z-index:10">
       <button class="back-btn" onclick="S.listTab='menu';render()">${bk()} Back</button>
-      <div style="flex:1;text-align:center;font-size:17px;font-weight:600">🍽 Dinners</div>
+      <div style="flex:1;text-align:center;font-size:17px;font-weight:600">🍲 Dinners</div>
       <button class="btn" onclick="go('addDinner')" style="color:var(--navy);font-size:15px;font-weight:600">+ Add</button>
     </div>
     <div style="padding:14px 0 100px">
+      <div style="margin:0 16px 10px">
+        <button onclick="openRecipeSuggestions('weekly')" style="width:100%;padding:14px 16px;border-radius:14px;background:linear-gradient(135deg,#7B5CFF,#5B3FE0);border:none;color:#fff;font-size:14px;font-weight:700;cursor:pointer;font-family:inherit;display:flex;align-items:center;justify-content:center;gap:8px;box-shadow:0 4px 14px #7B5CFF40">
+          <span style="font-size:18px">🍳</span>
+          <span>Suggest recipes</span>
+        </button>
+        <div style="font-size:11px;color:var(--text-secondary);text-align:center;margin-top:6px">AI suggests new recipes using your family's tastes, ages and dietary needs.</div>
+      </div>
       ${(()=>{
         // Show the AI shopping-list button when at least one meal is planned
         // for the coming week. Skip if no meals planned (nothing to shop for).
@@ -6921,12 +6952,17 @@ function sDinners(){
                 <div style="font-size:15px;font-weight:600;color:var(--text);overflow:hidden;text-overflow:ellipsis;white-space:nowrap">${d.meal.meal}</div>
                 ${d.meal.cook?`<div style="font-size:12px;color:var(--text-secondary)">👨‍🍳 ${d.meal.cook}</div>`:''}
                 ${d.meal.notes?`<div style="font-size:12px;color:var(--text-secondary);font-style:italic;overflow:hidden;text-overflow:ellipsis;white-space:nowrap">${d.meal.notes}</div>`:''}
+                ${d.meal.allergens&&d.meal.allergens.length?`<div style="font-size:10px;color:#FF9500;font-weight:600;margin-top:2px">⚠️ ${d.meal.allergens.join(', ')}</div>`:''}
               </div>
               <span class="chev" style="flex-shrink:0"></span>
             </button>
-            <button onclick="event.stopPropagation();findRecipeOnline('${(d.meal.meal||'').replace(/'/g,'&#39;').replace(/\"/g,'&quot;')}')" title="Find recipe online" style="color:var(--navy);font-size:14px;border:none;background:none;cursor:pointer;padding:6px 4px;margin-left:2px">🔗</button>
-            <button onclick="event.stopPropagation();dDinner('${d.meal.id}')" style="color:#FF3B30;font-size:20px;opacity:0.5;border:none;background:none;cursor:pointer;padding:0 4px;margin-left:2px">×</button>`:
-            `<button onclick="go('addDinner',{date:'${d.date}'})" style="flex:1;text-align:left;color:var(--navy);font-size:14px;font-weight:600;background:none;border:none;cursor:pointer;padding:0;font-family:inherit">+ Plan a meal</button>`}
+            ${d.meal.sourceUrl?`<button onclick="event.stopPropagation();openSavedRecipeUrl('${d.meal.id}','source')" title="Open saved recipe link" style="display:flex;align-items:center;justify-content:center;background:var(--navy-soft);color:var(--navy);font-size:13px;border:none;cursor:pointer;width:30px;height:30px;border-radius:8px;margin-left:4px;flex-shrink:0">🔗</button>`:`<button onclick="event.stopPropagation();findRecipeOnline('${(d.meal.meal||'').replace(/'/g,'&#39;').replace(/\"/g,'&quot;')}')" title="Search for this recipe online" style="color:var(--text-secondary);font-size:13px;border:none;background:none;cursor:pointer;padding:6px 4px;margin-left:2px;flex-shrink:0">🔗</button>`}
+            ${d.meal.thermomixUrl?`<button onclick="event.stopPropagation();openSavedRecipeUrl('${d.meal.id}','thermomix')" title="Open Thermomix recipe link" style="display:flex;align-items:center;justify-content:center;background:#7B5CFF18;color:#7B5CFF;font-size:13px;border:none;cursor:pointer;width:30px;height:30px;border-radius:8px;margin-left:4px;flex-shrink:0">🌀</button>`:''}
+            <button onclick="event.stopPropagation();dDinner('${d.meal.id}')" style="color:#FF3B30;font-size:20px;opacity:0.5;border:none;background:none;cursor:pointer;padding:0 4px;margin-left:2px;flex-shrink:0">×</button>`:
+            `<div style="flex:1;display:flex;align-items:center;gap:10px;min-width:0">
+              <button onclick="go('addDinner',{date:'${d.date}'})" style="flex:1;text-align:left;color:var(--navy);font-size:14px;font-weight:600;background:none;border:none;cursor:pointer;padding:0;font-family:inherit;min-width:0;overflow:hidden;text-overflow:ellipsis;white-space:nowrap">+ Plan a meal</button>
+              <button onclick="openRecipeSuggestions('single','${d.date}')" title="AI suggest one recipe for ${DAYSH[d.dateObj.getDay()]}" style="color:#7B5CFF;font-size:12px;font-weight:600;background:#7B5CFF12;border:none;cursor:pointer;padding:5px 10px;border-radius:8px;font-family:inherit;flex-shrink:0">✨ Suggest</button>
+            </div>`}
           </div>`;
         }).join('')}
       </div>
@@ -7071,11 +7107,12 @@ function sShoppingListBuilder(){
   const tickedCount=items.filter(it=>it._ticked).length;
   const allTicked=items.length>0&&tickedCount===items.length;
 
-  // Meal attribution block — top of screen
+  // Built From attribution removed per Nash — style/source listing was noise.
+  // Just show the meal list without chef attribution.
   const mealsBlock=meals.length>0?
     '<div style="margin:0 16px 14px;padding:12px 14px;background:var(--navy-soft);border:1px solid var(--navy);border-radius:12px">'
     +'<div style="font-size:11px;font-weight:700;color:var(--navy);letter-spacing:0.5px;margin-bottom:6px">📋 BUILT FROM</div>'
-    +meals.map(m=>'<div style="font-size:12px;color:var(--text);line-height:1.5;margin-bottom:2px"><strong>'+(m.meal||'').replace(/</g,'&lt;')+'</strong>'+(m.servings?' · '+m.servings+' servings':'')+(m.source?' <span style="color:var(--text-secondary);font-style:italic">— '+m.source.replace(/</g,'&lt;')+'</span>':'')+'</div>').join('')
+    +meals.map(m=>'<div style="font-size:12px;color:var(--text);line-height:1.5;margin-bottom:2px"><strong>'+(m.meal||'').replace(/</g,'&lt;')+'</strong>'+(m.servings?' · '+m.servings+' servings':'')+'</div>').join('')
     +'</div>':'';
 
   // Action bar — sticky bottom. Uses the brand navy from the style guide
@@ -7118,6 +7155,177 @@ function sShoppingListBuilder(){
     +'</div>';
 }
 
+
+// ─── RECIPE SUGGESTIONS ──────────────────────────────────────────────
+// Displays AI-generated recipe suggestions, sectioned by intent
+// (favourites / new / quick / healthy). Each card shows the meal name,
+// blurb, prep time, allergen badges, and recipe-link buttons. Tapping a
+// suggestion opens a bottom-sheet day-picker to assign it to a weekday;
+// the selected day saves the recipe to S.dinners with its URLs preserved
+// so the 🔗 button on the planner row opens the source recipe later.
+function sRecipeSuggestions(){
+  const rs=S._recipeSuggestions;
+  const mode=S.screenParams?.mode||'weekly';
+  const dayHint=S.screenParams?.dayHint||'';
+
+  // Header — always shown
+  const header='<div style="background:var(--card);padding:14px 16px;display:flex;align-items:center;border-bottom:1px solid var(--row-border);position:sticky;top:0;z-index:10">'
+    +'<button class="back-btn" onclick="back()">'+bk()+' Back</button>'
+    +'<div style="flex:1;text-align:center;font-size:17px;font-weight:600">🍳 Recipe Suggestions</div>'
+    +'<button onclick="openRecipeSuggestions(\''+mode+'\','+(dayHint?"'"+dayHint+"'":"''")+',true)" title="Generate fresh suggestions" style="color:var(--navy);font-size:13px;font-weight:600;background:none;border:none;cursor:pointer;font-family:inherit;padding:6px">↻</button>'
+    +'</div>';
+
+  if(!rs||rs.loading){
+    return '<div style="min-height:100%;display:flex;flex-direction:column">'
+      +header
+      +'<div style="flex:1;display:flex;align-items:center;justify-content:center;padding:40px 20px;flex-direction:column;gap:14px">'
+      +'<div style="font-size:60px">🤖</div>'
+      +'<div style="font-size:18px;font-weight:800;color:var(--text)">Thinking up recipes…</div>'
+      +'<div style="font-size:13px;color:var(--text-secondary);text-align:center;max-width:280px;line-height:1.5">AI is considering your family\'s tastes, ages and dietary needs. Takes 5–10 seconds.</div>'
+      +'<div style="width:32px;height:32px;border:3px solid #7B5CFF;border-top-color:transparent;border-radius:16px;animation:spin 0.8s linear infinite"></div>'
+      +'</div></div>';
+  }
+  if(rs.error){
+    return '<div style="min-height:100%;display:flex;flex-direction:column">'
+      +header
+      +'<div style="flex:1;display:flex;align-items:center;justify-content:center;padding:40px 20px;flex-direction:column;gap:14px">'
+      +'<div style="font-size:48px">⚠️</div>'
+      +'<div style="font-size:16px;font-weight:700;color:var(--text);text-align:center">Couldn\'t generate suggestions</div>'
+      +'<div style="font-size:12px;color:var(--text-secondary);text-align:center;max-width:280px;line-height:1.5">'+String(rs.error).replace(/</g,'&lt;')+'</div>'
+      +'<button onclick="openRecipeSuggestions(\''+mode+'\','+(dayHint?"'"+dayHint+"'":"''")+',true)" style="padding:11px 20px;border-radius:10px;background:var(--navy);border:none;color:#fff;font-size:13px;font-weight:600;cursor:pointer;font-family:inherit">Try again</button>'
+      +'</div></div>';
+  }
+
+  const suggestions=Array.isArray(rs.suggestions)?rs.suggestions:[];
+  if(suggestions.length===0){
+    return '<div style="min-height:100%;display:flex;flex-direction:column">'
+      +header
+      +'<div style="flex:1;display:flex;align-items:center;justify-content:center;padding:40px 20px;flex-direction:column;gap:14px">'
+      +'<div style="font-size:48px">🤷</div>'
+      +'<div style="font-size:16px;font-weight:700;color:var(--text);text-align:center">No suggestions returned</div>'
+      +'<button onclick="openRecipeSuggestions(\''+mode+'\','+(dayHint?"'"+dayHint+"'":"''")+',true)" style="padding:11px 20px;border-radius:10px;background:var(--navy);border:none;color:#fff;font-size:13px;font-weight:600;cursor:pointer;font-family:inherit">Try again</button>'
+      +'</div></div>';
+  }
+
+  // Group by section. Order matters — favourites first, then new, quick, healthy.
+  const sectionOrder=['favourites','new','quick','healthy'];
+  const sectionMeta={
+    'favourites':{label:'🍝 Family Favourites',blurb:'Proven classics, high success rate',color:'#FF6B35'},
+    'new':{label:'🆕 Try Something New',blurb:'Gentle palate-expansion, not exotic',color:'#7B5CFF'},
+    'quick':{label:'⚡ Quick & Easy',blurb:'30 minutes or less',color:'#34C759'},
+    'healthy':{label:'🥗 Healthier Choice',blurb:'Lean protein, lots of veg',color:'#1C3A6B'}
+  };
+  const bySection={};
+  suggestions.forEach(s=>{
+    const sec=s.section||'favourites';
+    if(!bySection[sec])bySection[sec]=[];
+    bySection[sec].push(s);
+  });
+
+  // Family dietary context — for inline conflict warnings on suggestion cards
+  const dietaryPeople=[];
+  (S.children||[]).forEach(c=>{ if(c.dietary&&c.dietary.trim())dietaryPeople.push({name:c.name,note:c.dietary.trim()}); });
+  coreMembers().forEach(m=>{ if(m.dietary&&m.dietary.trim())dietaryPeople.push({name:m.name,note:m.dietary.trim()}); });
+  // Quick allergen → likely-affected-person mapping. Very simple keyword match
+  // on the dietary text; not perfect, but good enough for a "watch out" badge.
+  const allergenKeywordMap={
+    gluten:['gluten','coeliac','celiac','wheat'],
+    dairy:['dairy','lactose','milk'],
+    nuts:['nut','peanut','almond'],
+    egg:['egg'],
+    soy:['soy','soya'],
+    fish:['fish','pescatarian'],
+    shellfish:['shellfish','prawn','crab','shrimp'],
+    sesame:['sesame']
+  };
+  const allergenConflicts=(allergens)=>{
+    if(!Array.isArray(allergens)||allergens.length===0||dietaryPeople.length===0)return [];
+    const conflicts=[];
+    allergens.forEach(allergen=>{
+      const keywords=allergenKeywordMap[allergen]||[];
+      dietaryPeople.forEach(p=>{
+        const noteLower=p.note.toLowerCase();
+        if(keywords.some(k=>noteLower.includes(k))){
+          conflicts.push({allergen,person:p.name});
+        }
+      });
+    });
+    return conflicts;
+  };
+
+  // Render one suggestion card
+  const card=(s)=>{
+    const meal=(s.meal||'').replace(/</g,'&lt;');
+    const blurb=(s.blurb||'').replace(/</g,'&lt;');
+    const prep=s.prepMinutes?s.prepMinutes+' min':'';
+    const sv=s.servings?s.servings+' servings':'';
+    const allergenBadges=Array.isArray(s.allergens)&&s.allergens.length>0?
+      '<div style="display:flex;gap:4px;flex-wrap:wrap;margin-top:6px">'
+      +s.allergens.map(a=>'<span style="font-size:10px;font-weight:700;padding:2px 8px;border-radius:8px;background:#FF950018;color:#FF9500">'+a+'</span>').join('')
+      +'</div>':'';
+    const conflicts=allergenConflicts(s.allergens);
+    const conflictBlock=conflicts.length>0?
+      '<div style="margin-top:8px;padding:8px 10px;background:#FF3B3014;border-left:3px solid #FF3B30;border-radius:6px;font-size:11px;color:#FF3B30;font-weight:600;line-height:1.4">'
+      +'⚠️ '+conflicts.map(c=>c.person+': '+c.allergen).join(' · ')
+      +'</div>':'';
+    // Suggestion data needs to survive a render — store via index. Use a
+    // base64-ish encoding to round-trip through onclick safely.
+    const idx=suggestions.indexOf(s);
+    return '<div style="background:var(--card);border-radius:14px;padding:14px;margin-bottom:10px;border:1px solid var(--row-border);box-shadow:var(--shadow-sm)">'
+      +'<div style="display:flex;align-items:flex-start;gap:10px">'
+      +'<div style="flex:1;min-width:0">'
+      +'<div style="font-size:15px;font-weight:700;color:var(--text);line-height:1.3">'+meal+'</div>'
+      +(blurb?'<div style="font-size:12px;color:var(--text-secondary);margin-top:4px;line-height:1.45">'+blurb+'</div>':'')
+      +'<div style="font-size:11px;color:var(--text-secondary);margin-top:6px;display:flex;gap:10px">'
+      +(prep?'<span>⏱ '+prep+'</span>':'')
+      +(sv?'<span>👥 '+sv+'</span>':'')
+      +'</div>'
+      +allergenBadges
+      +conflictBlock
+      +'</div>'
+      +'</div>'
+      +'<div style="display:flex;gap:6px;margin-top:10px;flex-wrap:wrap">'
+      +(s.sourceUrl?'<button onclick="openUrl(\''+s.sourceUrl.replace(/'/g,"\\'")+'\')" style="flex:1;min-width:0;padding:9px 12px;border-radius:9px;background:var(--navy-soft);border:none;color:var(--navy);font-size:12px;font-weight:700;cursor:pointer;font-family:inherit;display:flex;align-items:center;justify-content:center;gap:6px">🔗 Recipe</button>':'<button onclick="findRecipeOnline(\''+meal.replace(/'/g,"&#39;")+'\')" style="flex:1;min-width:0;padding:9px 12px;border-radius:9px;background:var(--bg);border:1px solid var(--border);color:var(--text-secondary);font-size:12px;font-weight:600;cursor:pointer;font-family:inherit;display:flex;align-items:center;justify-content:center;gap:6px">🔍 Search recipe</button>')
+      +(s.thermomixUrl?'<button onclick="openUrl(\''+s.thermomixUrl.replace(/'/g,"\\'")+'\')" style="padding:9px 12px;border-radius:9px;background:#7B5CFF18;border:none;color:#7B5CFF;font-size:12px;font-weight:700;cursor:pointer;font-family:inherit;display:flex;align-items:center;justify-content:center;gap:6px">🌀 Thermomix</button>':'')
+      +'<button onclick="openAssignToDay('+idx+')" style="flex:1;min-width:0;padding:9px 12px;border-radius:9px;background:var(--navy);border:none;color:#fff;font-size:12px;font-weight:700;cursor:pointer;font-family:inherit;display:flex;align-items:center;justify-content:center;gap:6px">📅 Add to planner</button>'
+      +'</div>'
+      +'</div>';
+  };
+
+  // Top context band — what we factored in
+  const familyContextBlock=(()=>{
+    const bits=[];
+    const kidNames=(S.children||[]).map(c=>c.name.split(' ')[0]);
+    if(kidNames.length)bits.push(kidNames.join(', '));
+    if(S.family?.hasThermomix)bits.push('Thermomix on 🌀');
+    if(dietaryPeople.length)bits.push(dietaryPeople.length+' dietary requirement'+(dietaryPeople.length===1?'':'s'));
+    if(bits.length===0)return '';
+    return '<div style="margin:0 16px 14px;padding:10px 14px;background:#7B5CFF10;border:1px solid #7B5CFF44;border-radius:10px;font-size:11px;color:var(--text);line-height:1.5">'
+      +'<strong style="color:#7B5CFF;font-weight:700">✨ Personalised for:</strong> '+bits.join(' · ')
+      +'</div>';
+  })();
+
+  const sectionsHtml=sectionOrder.filter(s=>bySection[s]&&bySection[s].length>0).map(sec=>{
+    const meta=sectionMeta[sec];
+    return '<div style="margin-bottom:18px">'
+      +'<div style="padding:0 16px 8px">'
+      +'<div style="font-size:13px;font-weight:800;color:'+meta.color+';letter-spacing:0.3px">'+meta.label+'</div>'
+      +'<div style="font-size:11px;color:var(--text-secondary);margin-top:2px">'+meta.blurb+'</div>'
+      +'</div>'
+      +'<div style="padding:0 16px">'
+      +bySection[sec].map(card).join('')
+      +'</div>'
+      +'</div>';
+  }).join('');
+
+  return '<div style="min-height:100%;display:flex;flex-direction:column;background:var(--bg)">'
+    +header
+    +'<div style="flex:1;padding:14px 0 20px;overflow-y:auto">'
+    +familyContextBlock
+    +sectionsHtml
+    +'</div>'
+    +'</div>';
+}
 
 function sAddPlayDate(){
   const presetType=S.screenParams?.type||'playdate';
@@ -7293,6 +7501,13 @@ function sAddDinner(){
   const prefillMeal=S.screenParams?.prefillMeal||'';
   const prefillCook=S.screenParams?.prefillCook||'';
   const prefillNotes=S.screenParams?.prefillNotes||'';
+  // Recipe URLs — carried via screenParams from the editDinner handler or
+  // from the Recipe Suggestions assign-to-day flow. If we're editing an
+  // existing dinner, look it up to grab any persisted URLs.
+  const editingId=S.screenParams?.editingId||'';
+  const editingDinner=editingId?(S.dinners||[]).find(x=>x.id===editingId):null;
+  const prefillSourceUrl=S.screenParams?.prefillSourceUrl||editingDinner?.sourceUrl||'';
+  const prefillThermomixUrl=S.screenParams?.prefillThermomixUrl||editingDinner?.thermomixUrl||'';
   const mems=coreMembers();
   // Combine meal ideas + history for suggestions
   const mealCounts={};
@@ -7333,6 +7548,9 @@ function sAddDinner(){
           <option value="Out" ${prefillCook==='Out'?'selected':''}>🍽 Eating out</option>
         </select>
         <textarea class="input" id="dn-notes" placeholder="Notes (e.g. need to defrost mince)" rows="2" style="resize:none;line-height:1.4">${prefillNotes}</textarea>
+        <input class="input" id="dn-source-url" type="url" placeholder="🔗 Recipe link (optional)" value="${(prefillSourceUrl||'').replace(/"/g,'&quot;')}"/>
+        <div style="font-size:11px;color:var(--text-secondary);margin-top:-6px;padding-left:4px">Paste a URL to the recipe. A 🔗 button will appear on this meal so the cook can open it on the night.</div>
+        ${prefillThermomixUrl?`<input class="input" id="dn-tmx-url" type="url" placeholder="🌀 Thermomix recipe link" value="${prefillThermomixUrl.replace(/"/g,'&quot;')}"/>`:''}
         <div id="dnerr" class="err"></div>
         <button class="primary-btn" onclick="hAddDinner()">Save Dinner</button>
       </div>
@@ -7352,7 +7570,7 @@ function sLists(){
     <div class="scroll-view" style="padding:16px 0">
       <div class="card">
         ${[{id:'groceries',icon:'🛒',label:'Groceries',sub:'Family shopping list',badge:0},
-           {id:'dinners',icon:'🍽',label:'Dinners',sub:'Weekly meal plan'+(S.dinners?.length?' · '+S.dinners.length+' meals':''),badge:0}
+           {id:'dinners',icon:'🍲',label:'Dinners',sub:'Weekly meal plan'+(S.dinners?.length?' · '+S.dinners.length+' meals':''),badge:0}
           ].map((cat,i,arr)=>`<button class="btn" onclick="S.listTab='${cat.id}';render()" style="width:100%;padding:14px 16px;display:flex;align-items:center;gap:14px;border-bottom:${i<arr.length-1?'1px solid #F2F2F7':'none'};text-align:left">
           <div style="width:48px;height:48px;border-radius:12px;background:#F2F2F7;font-size:26px;display:flex;align-items:center;justify-content:center">${cat.icon}</div>
           <div style="flex:1"><div style="font-size:16px;font-weight:600">${cat.label}</div><div style="font-size:13px;color:#8E8E93">${cat.sub}</div></div>
@@ -7641,6 +7859,15 @@ function sSettings(){
     +'</div>'
     +'<div style="padding:10px 14px">'
     +'<button onclick="saveTermDates()" style="width:100%;padding:11px;border-radius:10px;background:var(--navy);border:none;color:#fff;font-size:13px;font-weight:600;cursor:pointer;font-family:inherit">Save term dates</button>'
+    +'</div>'
+    +'</div>'
+    // Thermomix toggle — feeds the suggestRecipes Cloud Function so AI
+    // includes Thermomix-compatible recipes when ON.
+    +'<div class="card" style="margin-top:10px;margin-bottom:0">'
+    +'<div class="row" style="padding:13px 14px">'
+    +'<span style="font-size:18px">🌀</span>'
+    +'<div style="flex:1"><div style="font-size:13px;font-weight:600">Thermomix in the kitchen</div><div style="font-size:11px;color:var(--text-secondary);margin-top:1px">When on, AI recipe suggestions mix in Thermomix-friendly options with Thermomix Recipe Community links.</div></div>'
+    +tog(!!S.family?.hasThermomix,"toggleHasThermomix()")
     +'</div>'
     +'</div>';
 
@@ -8608,7 +8835,11 @@ function render(){
     tb.style.display='none';
     html=sFamilySetup();
   } else if(S.screen){
-    tb.style.display='none';
+    // Sub-screens (Add Event, Plan Dinner, Edit Child, etc.) — tab bar
+    // remains visible per Nash's UX request so users can jump back to a
+    // top-level tab at any time. The form-dirty guard in setTab()/go()
+    // shows a confirm prompt if there are unsaved changes.
+    showTabs=true;tb.style.display='flex';
     const map={
       signup:sSignup,addChild:sAddChild,addEvent:sAddEvent,
       addPackItem:sAddPackItem,addNote:sAddNote,addAssessment:sAddAssessment,
@@ -8626,6 +8857,7 @@ function render(){
       emailImport:sEmailImport,emailPreview:sEmailPreview,
       inboxReview:sInboxReview,inboxSetup:sInboxSetup,
       shoppingListBuilder:sShoppingListBuilder,
+      recipeSuggestions:sRecipeSuggestions,
       quickTraining:sQuickTraining
     };
     html=(map[S.screen]||sToday)();
@@ -8633,6 +8865,41 @@ function render(){
     showTabs=true;tb.style.display='flex';
     const map={today:sToday,calendar:sCalendar,events:sEvents,lists:sLists,family:sFamily,settings:sSettings};
     html=(map[S.tab]||sToday)();
+  }
+
+  // Day-picker bottom sheet — overlays the current screen when the user has
+  // tapped "Add to planner" on a recipe suggestion. Lets them pick a day
+  // this week (or next), with overwrite-confirm if the day already has a
+  // planned meal. Tap outside or Cancel to dismiss.
+  if(S._assignToDay){
+    const s=S._assignToDay.suggestion;
+    const safeMeal=String(s.meal||'').replace(/</g,'&lt;');
+    const dayButtons=[];
+    for(let i=0;i<14;i++){
+      const dt=new Date(today);dt.setDate(today.getDate()+i);
+      const ds=fd(dt);
+      const dayName=['Sun','Mon','Tue','Wed','Thu','Fri','Sat'][dt.getDay()];
+      const dateLbl=dt.getDate()+' '+MONTHS[dt.getMonth()];
+      const existing=(S.dinners||[]).find(d=>d.date===ds);
+      const isToday=i===0;
+      const taken=!!existing;
+      dayButtons.push(
+        '<button onclick="assignRecipeToDate(\''+ds+'\')" style="display:flex;flex-direction:column;align-items:center;gap:2px;padding:10px 8px;border-radius:10px;background:'+(taken?'#FF950018':isToday?'var(--navy-soft)':'var(--bg)')+';border:1px solid '+(taken?'#FF950055':isToday?'var(--navy)':'var(--border)')+';color:var(--text);cursor:pointer;font-family:inherit;min-width:62px;flex-shrink:0">'
+        +'<span style="font-size:10px;font-weight:700;color:'+(isToday?'var(--navy)':'var(--text-secondary)')+';letter-spacing:0.4px">'+dayName.toUpperCase()+'</span>'
+        +'<span style="font-size:13px;font-weight:700;color:var(--text)">'+dateLbl+'</span>'
+        +(taken?'<span style="font-size:9px;color:#FF9500;font-weight:600;margin-top:1px">⚠️ taken</span>':isToday?'<span style="font-size:9px;color:var(--navy);font-weight:600;margin-top:1px">today</span>':'')
+        +'</button>'
+      );
+    }
+    html+='<div onclick="cancelAssignToDay()" style="position:fixed;inset:0;background:rgba(0,0,0,0.5);z-index:9998;display:flex;align-items:flex-end;justify-content:center" id="assign-day-overlay">'
+      +'<div onclick="event.stopPropagation()" style="background:var(--card);width:100%;max-width:560px;border-radius:20px 20px 0 0;padding:18px 16px;box-shadow:0 -8px 28px rgba(0,0,0,0.2);max-height:85vh;overflow-y:auto">'
+      +'<div style="width:36px;height:4px;background:var(--border);border-radius:2px;margin:0 auto 14px"></div>'
+      +'<div style="font-size:11px;color:var(--text-secondary);font-weight:700;letter-spacing:0.5px;margin-bottom:4px">📅 ADD TO PLANNER</div>'
+      +'<div style="font-size:17px;font-weight:800;color:var(--text);line-height:1.3;margin-bottom:14px">'+safeMeal+'</div>'
+      +'<div style="font-size:12px;color:var(--text-secondary);margin-bottom:8px">Pick a day:</div>'
+      +'<div style="display:flex;gap:6px;overflow-x:auto;padding-bottom:8px;-webkit-overflow-scrolling:touch">'+dayButtons.join('')+'</div>'
+      +'<button onclick="cancelAssignToDay()" style="width:100%;margin-top:14px;padding:12px;border-radius:11px;background:var(--bg);border:1px solid var(--border);color:var(--text);font-size:13px;font-weight:600;cursor:pointer;font-family:inherit">Cancel</button>'
+      +'</div></div>';
   }
 
   sc.innerHTML=html;
@@ -8828,7 +9095,7 @@ window.onPhoto=async(input)=>{
   r.readAsDataURL(file);
 };
 window.hAddChild=async()=>{
-  const name=$('cname')?.value?.trim(),dob=$('cdob')?.value,year=$('cyear')?.value?.trim(),school=$('cschool')?.value?.trim(),color=$('ccolor')?.value||NAVY,photoData=$('photo-data')?.value,err=$('cerr');
+  const name=$('cname')?.value?.trim(),dob=$('cdob')?.value,year=$('cyear')?.value?.trim(),school=$('cschool')?.value?.trim(),dietary=$('cdietary')?.value?.trim()||'',color=$('ccolor')?.value||NAVY,photoData=$('photo-data')?.value,err=$('cerr');
   if(!name){if(err)err.textContent='Please enter a name';return;}
   try{
     let photoURL='';
@@ -8848,7 +9115,7 @@ window.hAddChild=async()=>{
         photoURL=await shrinkImage(photoData,200);
       }
     }
-    await fadd(['children'],{name,dob,year,school,color,photoURL});
+    await fadd(['children'],{name,dob,year,school,dietary,color,photoURL});
     S.activeChild=null;back();notify(name+' added! 🎉');
   }catch(ex){if(err)err.textContent=ex.message;}
 };
@@ -8868,6 +9135,7 @@ window.hSaveEditChild=async function(childId){
   const dob=document.getElementById('cdob')?.value;
   const year=document.getElementById('cyear')?.value?.trim();
   const school=document.getElementById('cschool')?.value?.trim();
+  const dietary=document.getElementById('cdietary')?.value?.trim()||'';
   const color=document.getElementById('ccolor')?.value||NAVY;
   const photoData=document.getElementById('photo-data')?.value;
   const err=document.getElementById('cerr');
@@ -8889,7 +9157,7 @@ window.hSaveEditChild=async function(childId){
         photoURL=await shrinkImage(photoData,200);
       }
     }
-    await fupd(['children',childId],{name,dob,year,school,color,photoURL});
+    await fupd(['children',childId],{name,dob,year,school,dietary,color,photoURL});
     back();notify(name+' updated! ✅');
   }catch(ex){if(err)err.textContent=ex.message;}
 };
@@ -9009,6 +9277,7 @@ window.hSaveEditFamily=async function(){
   const fname=document.getElementById('ef-fname')?.value?.trim();
   const color=document.getElementById('ef-color')?.value||NAVY;
   const dob=document.getElementById('ef-dob')?.value||'';
+  const dietary=document.getElementById('ef-dietary')?.value?.trim()||'';
   const celebrateMothersDay=document.getElementById('ef-mum')?.checked||false;
   const celebrateFathersDay=document.getElementById('ef-dad')?.checked||false;
   const err=document.getElementById('eferr');
@@ -9018,6 +9287,7 @@ window.hSaveEditFamily=async function(){
       ['members.'+S.user.uid+'.name']:name,
       ['members.'+S.user.uid+'.color']:color,
       ['members.'+S.user.uid+'.dob']:dob,
+      ['members.'+S.user.uid+'.dietary']:dietary,
       ['members.'+S.user.uid+'.celebrateMothersDay']:celebrateMothersDay,
       ['members.'+S.user.uid+'.celebrateFathersDay']:celebrateFathersDay,
       ...(fname?{name:fname}:{})
@@ -10056,14 +10326,28 @@ window.hAddDinner=async function(){
   const meal=document.getElementById('dn-meal')?.value?.trim();
   const cook=document.getElementById('dn-cook')?.value;
   const notes=document.getElementById('dn-notes')?.value?.trim()||'';
+  // Optional recipe URLs — validated as http(s) before save. If user typed
+  // something that isn't a valid URL, we save empty rather than corrupt data.
+  const validUrl=(raw)=>{
+    const u=(raw||'').trim();
+    if(!u)return '';
+    try{const p=new URL(u);return (p.protocol==='https:'||p.protocol==='http:')?u:'';}catch(e){return '';}
+  };
+  const sourceUrl=validUrl(document.getElementById('dn-source-url')?.value);
+  const thermomixUrl=validUrl(document.getElementById('dn-tmx-url')?.value);
+  // Allergens come from suggestion-assignment flow only; preserve them if
+  // editing an existing dinner. New manual entries don't auto-populate.
+  const editingId=S.screenParams?.editingId||'';
+  const existingForAllergens=editingId?(S.dinners||[]).find(x=>x.id===editingId):null;
+  const allergens=Array.isArray(existingForAllergens?.allergens)?existingForAllergens.allergens:[];
   const err=document.getElementById('dnerr');
   if(!date||!meal){if(err)err.textContent='Please enter date and meal';return;}
   try{
     // Replace existing dinner for this date if present
     const existing=S.dinners.find(d=>d.date===date);
     if(existing)await fdel(['dinners',existing.id]);
-    await fadd(['dinners'],{date,meal,cook,notes});
-    back();notify('✅ Dinner planned!','🍽');
+    await fadd(['dinners'],{date,meal,cook,notes,sourceUrl,thermomixUrl,allergens});
+    back();notify('✅ Dinner planned!','🍲');
   }catch(ex){if(err)err.textContent=ex.message;}
 };
 window.dDinner=async function(id){
@@ -10372,6 +10656,141 @@ window.findRecipeOnline=function(mealName){
   catch(e){window.location.href='https://www.google.com/search?q='+q;}
 };
 
+// Open a URL in a new tab safely (used for recipe links). Falls back to
+// same-tab navigation if window.open is blocked.
+window.openUrl=function(url){
+  if(!url)return;
+  try{window.open(String(url),'_blank','noopener');}
+  catch(e){window.location.href=String(url);}
+};
+
+// Open the saved recipe URL on a scheduled meal. If the saved URL is missing
+// or invalid for whatever reason, fall back to a Google search using the
+// meal name. Used by the 🔗/🌀 buttons on scheduled meal rows.
+window.openSavedRecipeUrl=function(dinnerId,which){
+  const d=(S.dinners||[]).find(x=>x.id===dinnerId);
+  if(!d)return;
+  const url=which==='thermomix'?d.thermomixUrl:d.sourceUrl;
+  if(url){window.openUrl(url);return;}
+  window.findRecipeOnline(d.meal);
+};
+
+// Trigger an AI recipe suggestion call. Two modes:
+//   weekly  — 8 sectioned suggestions
+//   single  — 1 suggestion for a specific day (dayHint)
+// Setting forceRefresh=true bypasses any cached state and re-fetches.
+window.openRecipeSuggestions=async function(mode,dayHint,forceRefresh){
+  if(!S.familyId){notify('Sign in first','⚠️');return;}
+  mode=mode==='single'?'single':'weekly';
+  // Build family-context payload from current state
+  const childrenWithAge=(S.children||[]).map(c=>{
+    let ageYears=null;
+    if(c.dob){
+      try{
+        const dob=new Date(c.dob+'T12:00');
+        if(!isNaN(dob)){
+          const now=new Date();
+          let a=now.getFullYear()-dob.getFullYear();
+          if(now.getMonth()<dob.getMonth()||(now.getMonth()===dob.getMonth()&&now.getDate()<dob.getDate()))a--;
+          if(a>=0&&a<25)ageYears=a;
+        }
+      }catch(e){}
+    }
+    return {name:c.name||'',ageYears};
+  });
+  // Recent meals (last 30) — names only, for "avoid repeating" guidance
+  const recentMeals=(S.dinners||[])
+    .filter(d=>d.date&&d.date<=todayStr&&d.meal)
+    .sort((a,b)=>(b.date||'').localeCompare(a.date||''))
+    .slice(0,30)
+    .map(d=>d.meal);
+  const mealIdeas=(S.mealIdeas||[]).map(m=>m.label).filter(Boolean);
+  const dietaryNotes=[];
+  (S.children||[]).forEach(c=>{ if(c.dietary&&c.dietary.trim())dietaryNotes.push({person:c.name||'child',note:c.dietary.trim()}); });
+  coreMembers().forEach(m=>{ if(m.dietary&&m.dietary.trim())dietaryNotes.push({person:m.name||'adult',note:m.dietary.trim()}); });
+  const hasThermomix=!!S.family?.hasThermomix;
+
+  // Convert dayHint date string ("2026-05-19") to a weekday label for the prompt
+  let dayLabel='';
+  if(dayHint){
+    try{const dt=new Date(dayHint+'T12:00');if(!isNaN(dt))dayLabel=['Sunday','Monday','Tuesday','Wednesday','Thursday','Friday','Saturday'][dt.getDay()];}catch(e){}
+  }
+
+  // Show loading screen immediately, then fire the AI call
+  S._recipeSuggestions={loading:true,suggestions:[]};
+  go('recipeSuggestions',{mode,dayHint});
+
+  try{
+    const callable=httpsCallable(functions,'suggestRecipes');
+    const resp=await callable({
+      children:childrenWithAge,
+      recentMeals,
+      mealIdeas,
+      dietaryNotes,
+      hasThermomix,
+      mode,
+      dayHint:dayLabel,
+      familyId:S.familyId
+    });
+    const data=resp?.data||{};
+    S._recipeSuggestions={
+      loading:false,
+      suggestions:Array.isArray(data.suggestions)?data.suggestions:[],
+      summary:data.summary||'',
+      sourceDate:dayHint||''
+    };
+    render();
+  }catch(ex){
+    console.error('[suggest-recipes] failed',ex);
+    S._recipeSuggestions={loading:false,error:ex.message||String(ex),suggestions:[]};
+    render();
+  }
+};
+
+// Open the day-picker bottom sheet to assign a suggestion to a weekday.
+window.openAssignToDay=function(suggestionIdx){
+  const rs=S._recipeSuggestions;
+  if(!rs||!Array.isArray(rs.suggestions))return;
+  const s=rs.suggestions[suggestionIdx];
+  if(!s)return;
+  S._assignToDay={suggestion:s,suggestionIdx};
+  render();
+};
+
+// Save a suggestion to a specific date in S.dinners. Confirms overwrite if
+// that date already has a planned meal. Preserves sourceUrl, thermomixUrl
+// and allergens so the planner row's 🔗 button + dietary warnings work later.
+window.assignRecipeToDate=async function(dateStr){
+  const a=S._assignToDay;
+  if(!a||!a.suggestion){S._assignToDay=null;render();return;}
+  const s=a.suggestion;
+  const existing=(S.dinners||[]).find(d=>d.date===dateStr);
+  if(existing&&!confirm('Replace "'+existing.meal+'" on this day with "'+s.meal+'"?')){return;}
+  try{
+    if(existing)await fdel(['dinners',existing.id]);
+    await fadd(['dinners'],{
+      date:dateStr,
+      meal:s.meal,
+      cook:'',
+      notes:s.blurb||'',
+      sourceUrl:s.sourceUrl||'',
+      thermomixUrl:s.thermomixUrl||'',
+      allergens:Array.isArray(s.allergens)?s.allergens:[]
+    });
+    notify('"'+s.meal+'" added to your meal plan 🍲','✅');
+    S._assignToDay=null;
+    // Stay on the suggestions screen so user can assign more
+    render();
+  }catch(ex){notify('Save failed: '+(ex.message||ex),'⚠️');}
+};
+
+// Cancel/close the assign-to-day sheet without saving
+window.cancelAssignToDay=function(){
+  S._assignToDay=null;
+  render();
+};
+
+
 // === AI-GENERATED SHOPPING LIST ===
 // Collects this week's scheduled meals, asks the Cloud Function for a
 // combined ingredient list (categorised by supermarket section, deduped
@@ -10483,6 +10902,22 @@ window.saveTermDates=async function(){
     notify('✅ Term dates saved & synced!','📅');
   }catch(e){notify('Saved locally (sync failed)','⚠️');}
   setTimeout(function(){render();},1000);
+};
+// Toggle Thermomix family-level setting. Feeds the suggestRecipes Cloud
+// Function — when on, AI mixes Thermomix-friendly recipes into suggestions.
+window.toggleHasThermomix=async function(){
+  if(!S.family)S.family={};
+  const next=!S.family.hasThermomix;
+  S.family.hasThermomix=next;
+  S._settingsOpenSection='family'; // keep section open across re-render
+  try{
+    if(S.familyId)await updateDoc(doc(db,'families',S.familyId),{hasThermomix:next});
+    notify(next?'Thermomix mode on 🌀':'Thermomix mode off','✅');
+  }catch(e){
+    S.family.hasThermomix=!next;
+    notify('Save failed: '+(e.message||e),'⚠️');
+  }
+  render();
 };
 
 // === TERM WEEK PICKER ===
@@ -12413,6 +12848,19 @@ window.openComingSoon=function(kind){
 };
 
 window.go=go;window.back=back;window.setTab=setTab;window.render=render;window.S=S;
+
+// Global form-dirty tracker. Whenever a user types in any input/textarea/select
+// while on a sub-screen, mark the form as touched. guardLeaveScreen() in
+// go()/back()/setTab() then prompts before allowing navigation. Use capture
+// phase so we catch events from inputs inside shadow trees or nested wrappers.
+document.addEventListener('input',function(e){
+  if(S.screen)S._formTouched=true;
+},true);
+document.addEventListener('change',function(e){
+  // 'change' catches <select>, checkboxes/radios, and date pickers — 'input'
+  // alone misses some of these on iOS Safari.
+  if(S.screen)S._formTouched=true;
+},true);
 // Diagnostic wrapper for inbox review — logs everything so we can debug
 window.openInboxReview=function(){
   try{
