@@ -2098,34 +2098,45 @@ function sToday(){
         </div>`;
       })()}
 
-      <!-- TONIGHT'S DINNER (always expanded if planned for today) -->
+      <!-- TONIGHT'S DINNER (always expanded if planned for the viewed day) -->
       ${(()=>{
-        // Surface tonight's planned dinner as a top-line item — separate from
-        // the collapsible weekly list so the cook for the night doesn't have
-        // to expand a section to see what's on. Includes recipe link button,
-        // edit-on-tap, Thermomix button if set, dietary-allergen alert, and
-        // delete. Long-press also works (same context menu as elsewhere).
-        const tonight=(S.dinners||[]).find(d=>d.date===todayStr&&d.meal);
+        // Surface the planned dinner for the day currently being viewed —
+        // not the literal "today". This way when the user navigates to
+        // tomorrow on the date picker, the card swaps to tomorrow's meal.
+        // No card if no dinner is planned for the viewed date.
+        const tonight=(S.dinners||[]).find(d=>d.date===viewDateStr&&d.meal);
         if(!tonight)return '';
         const mealEscaped=(tonight.meal||'').replace(/'/g,'&#39;').replace(/"/g,'&quot;');
+        // Label adapts to whether we're looking at today, tomorrow, or a
+        // specific weekday — clearer than always saying "TONIGHT'S DINNER".
+        let label='DINNER';
+        if(viewDateStr===todayStr){
+          label="TONIGHT'S DINNER";
+        }else{
+          const dt=new Date(viewDateStr+'T12:00');
+          const tomorrowStr=fd(new Date(today.getTime()+86400000));
+          if(viewDateStr===tomorrowStr){
+            label="TOMORROW'S DINNER";
+          }else{
+            const dayName=['SUNDAY','MONDAY','TUESDAY','WEDNESDAY','THURSDAY','FRIDAY','SATURDAY'][dt.getDay()];
+            label=dayName+"'S DINNER";
+          }
+        }
         return `<div class="card" style="margin-bottom:14px;overflow:hidden;border-left:4px solid #FF6B35">
           <div style="padding:10px 14px 4px;display:flex;align-items:center;gap:8px;background:linear-gradient(90deg,#FF6B3510,transparent)">
             <span style="font-size:16px">🍲</span>
-            <span style="flex:1;font-size:11px;font-weight:700;color:#FF6B35;letter-spacing:0.5px">TONIGHT'S DINNER</span>
+            <span style="flex:1;font-size:11px;font-weight:700;color:#FF6B35;letter-spacing:0.5px">${label}</span>
           </div>
           <div class="row" data-longpress="dinner:${tonight.id}" style="padding-top:6px">
             <button onclick="editDinner('${tonight.id}')" style="flex:1;display:flex;align-items:center;gap:6px;background:none;border:none;padding:0;text-align:left;cursor:pointer;font-family:inherit;min-width:0">
               <div style="flex:1;min-width:0">
                 <div style="font-size:16px;font-weight:700;color:var(--text);overflow:hidden;text-overflow:ellipsis;white-space:nowrap">${tonight.meal}</div>
                 ${tonight.cook?`<div style="font-size:12px;color:var(--text-secondary);margin-top:2px">👨‍🍳 ${tonight.cook}</div>`:''}
-                ${tonight.notes?`<div style="font-size:12px;color:var(--text-secondary);font-style:italic;margin-top:2px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap">${tonight.notes}</div>`:''}
-                ${Array.isArray(tonight.allergens)&&tonight.allergens.length?`<div style="font-size:11px;color:#FF9500;font-weight:600;margin-top:3px">⚠️ Contains: ${tonight.allergens.join(', ')}</div>`:''}
               </div>
               <span class="chev" style="flex-shrink:0"></span>
             </button>
             ${tonight.sourceUrl?`<button onclick="event.stopPropagation();openSavedRecipeUrl('${tonight.id}','source')" title="Open saved recipe" style="display:flex;align-items:center;justify-content:center;background:var(--navy-soft);color:var(--navy);font-size:14px;border:none;cursor:pointer;width:34px;height:34px;border-radius:9px;margin-left:6px;flex-shrink:0">🔗</button>`:`<button onclick="event.stopPropagation();findRecipeOnline('${mealEscaped}')" title="Search recipe online" style="display:flex;align-items:center;justify-content:center;background:var(--bg);color:var(--text-secondary);font-size:14px;border:1px solid var(--border);cursor:pointer;width:34px;height:34px;border-radius:9px;margin-left:6px;flex-shrink:0">🔍</button>`}
             ${tonight.thermomixUrl?`<button onclick="event.stopPropagation();openSavedRecipeUrl('${tonight.id}','thermomix')" title="Open Thermomix recipe" style="display:flex;align-items:center;justify-content:center;background:#7B5CFF18;color:#7B5CFF;font-size:14px;border:none;cursor:pointer;width:34px;height:34px;border-radius:9px;margin-left:6px;flex-shrink:0">🌀</button>`:''}
-            <button onclick="event.stopPropagation();dDinner('${tonight.id}')" title="Delete" style="color:#FF3B30;font-size:20px;opacity:0.5;border:none;background:none;cursor:pointer;padding:0 4px;margin-left:2px;flex-shrink:0">×</button>
           </div>
         </div>`;
       })()}
@@ -2150,13 +2161,11 @@ function sToday(){
                     <div style="flex:1;min-width:0">
                       <div style="font-size:14px;font-weight:600;color:var(--text);overflow:hidden;text-overflow:ellipsis;white-space:nowrap">${d.meal}</div>
                       ${d.cook?`<div style="font-size:12px;color:var(--text-secondary)">👨‍🍳 ${d.cook}</div>`:''}
-                      ${Array.isArray(d.allergens)&&d.allergens.length?`<div style="font-size:10px;color:#FF9500;font-weight:600;margin-top:2px">⚠️ ${d.allergens.join(', ')}</div>`:''}
                     </div>
                     <span class="chev" style="flex-shrink:0"></span>
                   </button>
                   ${d.sourceUrl?`<button onclick="event.stopPropagation();openSavedRecipeUrl('${d.id}','source')" title="Open saved recipe" style="display:flex;align-items:center;justify-content:center;background:var(--navy-soft);color:var(--navy);font-size:13px;border:none;cursor:pointer;width:30px;height:30px;border-radius:8px;margin-left:4px;flex-shrink:0">🔗</button>`:`<button onclick="event.stopPropagation();findRecipeOnline('${mealEscaped}')" title="Search recipe online" style="color:var(--text-secondary);font-size:13px;border:none;background:none;cursor:pointer;padding:6px 4px;margin-left:2px;flex-shrink:0">🔗</button>`}
                   ${d.thermomixUrl?`<button onclick="event.stopPropagation();openSavedRecipeUrl('${d.id}','thermomix')" title="Open Thermomix recipe" style="display:flex;align-items:center;justify-content:center;background:#7B5CFF18;color:#7B5CFF;font-size:13px;border:none;cursor:pointer;width:30px;height:30px;border-radius:8px;margin-left:4px;flex-shrink:0">🌀</button>`:''}
-                  <button onclick="event.stopPropagation();dDinner('${d.id}')" title="Delete" style="color:#FF3B30;font-size:18px;opacity:0.5;border:none;background:none;cursor:pointer;padding:0 4px;margin-left:2px;flex-shrink:0">×</button>
                 </div>`;
               }).join('')}
               <div style="padding:10px 16px;text-align:center;border-top:1px solid var(--row-border)">
@@ -7593,6 +7602,7 @@ function sAddDinner(){
         ${prefillThermomixUrl?`<input class="input" id="dn-tmx-url" type="url" placeholder="🌀 Thermomix recipe link" value="${prefillThermomixUrl.replace(/"/g,'&quot;')}"/>`:''}
         <div id="dnerr" class="err"></div>
         <button class="primary-btn" onclick="hAddDinner()">Save Dinner</button>
+        ${editingId?`<button onclick="if(confirm('Delete this dinner?'))hDeleteDinner('${editingId}')" style="width:100%;margin-top:8px;padding:13px;border-radius:11px;background:#FF3B3010;border:1px solid #FF3B3055;color:#FF3B30;font-size:14px;font-weight:600;cursor:pointer;font-family:inherit">🗑️ Delete this dinner</button>`:''}
       </div>
     </div>
   </div>`;
@@ -10386,8 +10396,31 @@ window.hAddDinner=async function(){
     // Replace existing dinner for this date if present
     const existing=S.dinners.find(d=>d.date===date);
     if(existing)await fdel(['dinners',existing.id]);
-    await fadd(['dinners'],{date,meal,cook,notes,sourceUrl,thermomixUrl,allergens});
-    back();notify('✅ Dinner planned!','🍲');
+    // Capture the new doc's data so we can update it later if AI finds a URL
+    const newDocRef=await fadd(['dinners'],{date,meal,cook,notes,sourceUrl,thermomixUrl,allergens});
+    back();
+    notify('✅ Dinner planned!','🍲');
+    // If user didn't provide a sourceUrl, fire an AI lookup in the background
+    // to find one. Updates the dinner record silently when (if) a verified
+    // URL comes back. Doesn't block the save flow — user sees a quick toast
+    // when the URL is attached. If lookup fails or returns empty, no toast,
+    // user can always add manually later.
+    if(!sourceUrl&&meal&&newDocRef?.id&&S.familyId){
+      (async()=>{
+        try{
+          const callable=httpsCallable(functions,'findRecipeUrl');
+          const resp=await callable({mealName:meal,familyId:S.familyId});
+          const foundUrl=resp?.data?.url||'';
+          if(foundUrl){
+            await fupd(['dinners',newDocRef.id],{sourceUrl:foundUrl});
+            notify('🔗 Recipe link auto-attached','✨');
+          }
+        }catch(e){
+          // Silent — no toast on failure. User can still add a URL manually.
+          console.warn('[auto-url] lookup failed:',e.message||e);
+        }
+      })();
+    }
   }catch(ex){if(err)err.textContent=ex.message;}
 };
 window.dDinner=async function(id){
@@ -10682,7 +10715,16 @@ window.reuseDinner=async function(id){
 window.editDinner=function(id){
   const d=S.dinners.find(x=>x.id===id);
   if(!d){notify('Meal not found');return;}
-  go('addDinner',{date:d.date,prefillMeal:d.meal,prefillCook:d.cook||'',prefillNotes:d.notes||'',editingId:id});
+  go('addDinner',{date:d.date,prefillMeal:d.meal,prefillCook:d.cook||'',prefillNotes:d.notes||'',prefillSourceUrl:d.sourceUrl||'',prefillThermomixUrl:d.thermomixUrl||'',editingId:id});
+};
+// Delete a dinner from the Edit Dinner screen. Returns to previous screen.
+window.hDeleteDinner=async function(id){
+  try{
+    await fdel(['dinners',id]);
+    notify('Dinner deleted','🗑️');
+    S._formTouched=false; // skip the unsaved-changes prompt
+    back();
+  }catch(ex){notify('Delete failed: '+(ex.message||ex),'⚠️');}
 };
 
 // Open a google search for the meal name + "recipe" in a new tab so the user
