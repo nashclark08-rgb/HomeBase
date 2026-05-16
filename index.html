@@ -779,6 +779,29 @@ function downloadICS(events,filename){
 
 function members(){return Object.entries(S.family&&S.family.members||{}).map(([uid,m])=>({uid,name:m.name,role:m.role,color:m.color||NAVY,relationship:m.relationship||'',photoURL:m.photoURL||'',phone:m.phone||'',email:m.email||'',personalCode:m.personalCode||'',dob:m.dob||'',dietary:m.dietary||'',celebrateMothersDay:!!m.celebrateMothersDay,celebrateFathersDay:!!m.celebrateFathersDay}));}
 
+// Reusable empty-state card. Returns a friendly placeholder with an emoji,
+// title, optional explanation, and an optional call-to-action button. Used
+// across the app instead of "No X yet" plain text. Promotes consistency and
+// discoverability — users see what each section is for and how to start it.
+//   emoji      : a single emoji or short string shown large at the top
+//   title      : the short hook line, bold
+//   body       : optional supporting sentence explaining what the section does
+//   ctaLabel   : if present, renders a navy button with this label
+//   ctaOnclick : the onclick JS (no quotes) to fire when the button is tapped
+//   compact    : true → smaller padding for use inside narrow cards
+function emptyState(emoji,title,body,ctaLabel,ctaOnclick,compact){
+  const pad=compact?'24px 18px':'40px 22px';
+  const emojiSize=compact?'40px':'56px';
+  const titleSize=compact?'15px':'17px';
+  const ctaHtml=ctaLabel?'<button onclick="'+(ctaOnclick||'').replace(/"/g,'&quot;')+'" style="margin-top:14px;padding:11px 20px;border-radius:11px;background:var(--navy);border:none;color:#fff;font-size:13px;font-weight:700;cursor:pointer;font-family:inherit">'+ctaLabel+'</button>':'';
+  return '<div style="text-align:center;padding:'+pad+';color:var(--text-secondary)">'
+    +'<div style="font-size:'+emojiSize+';margin-bottom:10px;line-height:1">'+emoji+'</div>'
+    +'<div style="font-size:'+titleSize+';font-weight:700;color:var(--text);margin-bottom:6px">'+title+'</div>'
+    +(body?'<div style="font-size:13px;line-height:1.5;max-width:320px;margin:0 auto">'+body+'</div>':'')
+    +ctaHtml
+    +'</div>';
+}
+
 // Filtered version of members() that excludes role==='Logistics' adults.
 // Logistics adults (e.g. a grandparent who only handles drop-offs/pickups)
 // shouldn't appear in: family-wide person filters, the iOS Calendar sync
@@ -2022,7 +2045,7 @@ function sToday(){
           <span>⏰ Reminders</span>
           <button onclick="go('addReminder')" style="font-size:11px;font-weight:700;background:var(--navy);color:#fff;padding:4px 10px;border-radius:8px;border:none;cursor:pointer;font-family:inherit;text-transform:none;letter-spacing:0">+ Add</button>
         </div>`;
-        if(dueReminders.length===0)return remHeader+`<div class="card" style="margin-bottom:14px;padding:14px;text-align:center;color:var(--text-secondary);font-size:13px">No reminders due.</div>`;
+        if(dueReminders.length===0)return remHeader+`<div class="card" style="margin-bottom:14px">${emptyState('🔕','No reminders due','Add reminders for things you don’t want to forget — permission slips, hair appointments, gift ideas.','+ Add a reminder',"go('addReminder')",true)}</div>`;
         return remHeader+`
         <div class="card" style="margin-bottom:14px">
           ${dueReminders.map((r,i)=>{
@@ -2195,7 +2218,7 @@ function sToday(){
         <div class="collapsible ${S.openSections?.shopping?'open':''}">
           <div class="collapsible-inner">
             <div style="border-top:1px solid var(--row-border)">
-              ${shoppingTodo.length===0?`<div style="padding:14px;text-align:center;color:var(--text-secondary);font-size:14px">List is empty</div>`:
+              ${shoppingTodo.length===0?`${emptyState('🛒','Shopping list is empty','Add items as you run out — tap + Add or use a frequent item shortcut.','+ Add item',"setTab('lists');S.listTab='groceries';render()",true)}`:
                 shoppingTodo.slice(0,5).map(g=>`<div class="row" style="border-bottom:1px solid var(--row-border)">
                   <div class="cb" onclick="event.stopPropagation();tGroc('${g.id}',true)" style="border-color:#C7C7CC"></div>
                   <span style="flex:1;font-size:15px">${g.label}${g.quantity>1?' ×'+g.quantity:''}</span>
@@ -2315,7 +2338,7 @@ function sAddEvent(){
     <div style="background:#fff;padding:14px 16px;display:flex;align-items:center;border-bottom:1px solid #F2F2F7;position:sticky;top:0;z-index:10">
       <button class="back-btn" onclick="S.ef={freq:'once',days:{Mon:false,Tue:false,Wed:false,Thu:false,Fri:false,Sat:false,Sun:false},packItems:[],emoji:'📅',category:'',sport:'',participantIds:[]};back()">${bk()} Back</button>
       <div style="flex:1;text-align:center;font-size:17px;font-weight:600">${ef._editId?'Edit Event':'Add Event'}</div>
-      <div style="width:60px"></div>
+      <button onclick="openHelp('addEvent')" aria-label="Help" title="Help" style="width:30px;height:30px;border-radius:15px;background:var(--bg);border:1px solid var(--border);color:var(--navy);font-size:14px;font-weight:700;cursor:pointer;font-family:inherit;display:flex;align-items:center;justify-content:center;flex-shrink:0">?</button>
     </div>
     <div class="scroll-view" style="padding:16px;max-width:560px;margin:auto;width:100%">
       <div style="display:flex;flex-direction:column;gap:14px">
@@ -2939,7 +2962,7 @@ function sEvents(){
         </div>
       </div>
       <div class="scroll-view" style="padding:14px 16px 100px">
-        ${filtered.length===0?`<div style="text-align:center;padding:40px 20px;color:var(--text-secondary);font-size:14px">No ${sport} events yet.</div>`:`<div class="card">${filtered.map((ev,i)=>eventRow(ev,i,filtered.length)).join('')}</div>`}
+        ${filtered.length===0?`<div class="card">${emptyState('🏃','No '+sport+' events yet','Add fixtures, training sessions, or other events tagged to '+sport+'.','+ Add an event',"go('addEvent')",true)}</div>`:`<div class="card">${filtered.map((ev,i)=>eventRow(ev,i,filtered.length)).join('')}</div>`}
       </div>
       <div class="fab"><button class="fab-btn" style="background:#1C3A6B" onclick="go('addEvent')">+</button></div>`;
   }
@@ -3026,7 +3049,7 @@ function sEvents(){
           </div>
         </div>
         <div class="scroll-view" style="padding:14px 16px 100px">
-          ${pastOneoffs.length===0?`<div style="text-align:center;padding:40px 20px;color:var(--text-secondary);font-size:14px">No past one-offs.</div>`:`<div class="card" style="opacity:0.85">${pastOneoffs.map((ev,i)=>eventRow(ev,i,pastOneoffs.length)).join('')}</div>`}
+          ${pastOneoffs.length===0?`${emptyState('📜','No past one-offs','Once-off events you’ve hosted will appear here after their date passes.','','',true)}`:`<div class="card" style="opacity:0.85">${pastOneoffs.map((ev,i)=>eventRow(ev,i,pastOneoffs.length)).join('')}</div>`}
         </div>`;
     }
 
@@ -3081,7 +3104,7 @@ function sEvents(){
           </div>
         </div>
         <div class="scroll-view" style="padding:14px 16px 100px">
-          ${dEvs.length===0?`<div style="text-align:center;padding:40px 20px;color:var(--text-secondary);font-size:14px">Nothing deleted.<br><span style="font-size:12px;opacity:0.8">Deleted events appear here so you can restore them if you change your mind.</span></div>`:`<div class="card">${dEvs.map((ev,i)=>delRow(ev,i,dEvs.length)).join('')}</div>`}
+          ${dEvs.length===0?`${emptyState('🗑️','Nothing deleted','Deleted events appear here so you can restore them if you change your mind. They’re auto-cleared after 30 days.','','',true)}`:`<div class="card">${dEvs.map((ev,i)=>delRow(ev,i,dEvs.length)).join('')}</div>`}
         </div>`;
     }
 
@@ -3108,7 +3131,7 @@ function sEvents(){
         </div>
       </div>
       <div class="scroll-view" style="padding:14px 16px 100px">
-        ${filtered.length===0?`<div style="text-align:center;padding:40px 20px;color:var(--text-secondary);font-size:14px">No ${cat.label.toLowerCase()} events yet.</div>`:`<div class="card">${filtered.map((ev,i)=>eventRow(ev,i,filtered.length)).join('')}</div>`}
+        ${filtered.length===0?`<div class="card">${emptyState('📅','Nothing scheduled','No '+cat.label.toLowerCase()+' events on the books yet. Tap + to add one.','+ Add an event',"go('addEvent')",true)}</div>`:`<div class="card">${filtered.map((ev,i)=>eventRow(ev,i,filtered.length)).join('')}</div>`}
       </div>
       <div class="fab"><button class="fab-btn" style="background:#1C3A6B" onclick="go('addEvent')">+</button></div>`;
   }
@@ -7030,7 +7053,7 @@ function sDinners(){
         <button onclick="addMealIdea()" style="background:none;border:none;color:var(--navy);font-size:13px;font-weight:600;cursor:pointer;font-family:inherit">+ Add idea</button>
       </div>
       <div class="card" style="margin-bottom:14px">
-        ${(S.mealIdeas||[]).length===0?'<div class="row" style="color:var(--text-secondary);font-size:13px;justify-content:center;padding:14px">No ideas yet — tap "Add idea" to start your bank</div>':
+        ${(S.mealIdeas||[]).length===0?`<div class="row" style="padding:0;display:block">${emptyState('💡','No meal ideas yet','Save your family’s go-to meals here. They’ll appear as suggestions when planning dinners.','+ Add your first idea',"addMealIdea()",true)}</div>`:
           (S.mealIdeas||[]).sort((a,b)=>(a.label||'').localeCompare(b.label||'')).map((m,i,arr)=>`<div class="row" style="border-bottom:${i<arr.length-1?'1px solid var(--row-border)':'none'}">
             <div style="flex:1;font-size:14px">${m.label}</div>
             <button onclick="useMealIdea('${m.id}')" style="padding:5px 10px;border-radius:8px;background:var(--navy-soft);border:none;cursor:pointer;color:var(--navy);font-size:12px;font-weight:600;font-family:inherit;margin-right:6px">Use →</button>
@@ -7584,7 +7607,7 @@ function sAddDinner(){
     <div style="background:var(--card);padding:14px 16px;display:flex;align-items:center;border-bottom:1px solid var(--row-border);position:sticky;top:0;z-index:10">
       <button class="back-btn" aria-label="Go back" onclick="back()">${bk()} Back</button>
       <div style="flex:1;text-align:center;font-size:17px;font-weight:600">Plan Dinner</div>
-      <div style="width:60px"></div>
+      <button onclick="openHelp('addDinner')" aria-label="Help" title="Help" style="width:30px;height:30px;border-radius:15px;background:var(--bg);border:1px solid var(--border);color:var(--navy);font-size:14px;font-weight:700;cursor:pointer;font-family:inherit;display:flex;align-items:center;justify-content:center;flex-shrink:0">?</button>
     </div>
     <div style="padding:20px;max-width:560px;margin:auto;width:100%">
       <div style="display:flex;flex-direction:column;gap:12px">
@@ -7655,18 +7678,26 @@ function sGroceries(){
       <div class="scroll-view" style="padding:14px 0">
         <div class="sh" style="margin-bottom:6px">Shopping List (${todo.length})</div>
         <div class="card" style="margin-bottom:14px">
-          ${todo.length+done.length===0?`<div style="padding:40px 20px;text-align:center"><div style="font-size:48px;margin-bottom:10px">🛒</div><div style="font-size:15px;font-weight:600;color:var(--text);margin-bottom:4px">Your shopping list is empty</div><div style="font-size:13px;color:var(--text-secondary);margin-bottom:16px;line-height:1.5">Tap + Add to add items.<br>Mark them as "Frequent" to build a quick-add bank.</div></div>`:''}
-          ${todo.map((g,i)=>`<div class="row" style="border-bottom:${i<todo.length-1||done.length?'1px solid var(--row-border)':'none'}">
-            <div class="cb" onclick="tGroc('${g.id}',true)"></div>
+          ${todo.length+done.length===0?emptyState('🛒','Your shopping list is empty','Tap + Add to add items. Mark items as "Frequent" to build a quick-add bank for next time.','+ Add an item',"go('addGrocery')",true):''}
+          ${todo.map((g,i)=>{
+            const sel=S._bulkMode==='groceries'&&(S._bulkSelected||{})[g.id];
+            const inBulk=S._bulkMode==='groceries';
+            return `<div class="row" data-longpress="grocery:${g.id}" onclick="${inBulk?`hbBulkToggle('${g.id}')`:''}" style="border-bottom:${i<todo.length-1||done.length?'1px solid var(--row-border)':'none'};${sel?'background:var(--navy-soft)':''};${inBulk?'cursor:pointer':''}">
+            ${inBulk?`<div class="cb ${sel?'on':''}" style="${sel?'background:'+NAVY+';border:none':''}" onclick="event.stopPropagation();hbBulkToggle('${g.id}')">${sel?ck():''}</div>`:`<div class="cb" onclick="tGroc('${g.id}',true)"></div>`}
             <span style="flex:1;font-size:16px">${g.label}${g.quantity>1?' ×'+g.quantity:''}</span>
-            <button onclick="dGroc('${g.id}')" style="color:#FF3B30;font-size:20px;opacity:0.5;border:none;background:none;cursor:pointer">×</button>
-          </div>`).join('')}
-          ${done.map((g,i)=>`<div class="row" style="border-bottom:${i<done.length-1?'1px solid var(--row-border)':'none'}">
-            <div class="cb" style="background:#34C759;border:none" onclick="tGroc('${g.id}',false)">${ck()}</div>
+            ${inBulk?'':`<button onclick="dGroc('${g.id}')" aria-label="Delete" style="color:#FF3B30;font-size:20px;opacity:0.5;border:none;background:none;cursor:pointer">×</button>`}
+          </div>`;
+          }).join('')}
+          ${done.map((g,i)=>{
+            const sel=S._bulkMode==='groceries'&&(S._bulkSelected||{})[g.id];
+            const inBulk=S._bulkMode==='groceries';
+            return `<div class="row" data-longpress="grocery:${g.id}" onclick="${inBulk?`hbBulkToggle('${g.id}')`:''}" style="border-bottom:${i<done.length-1?'1px solid var(--row-border)':'none'};${sel?'background:var(--navy-soft)':''};${inBulk?'cursor:pointer':''}">
+            ${inBulk?`<div class="cb ${sel?'on':''}" style="${sel?'background:'+NAVY+';border:none':''}" onclick="event.stopPropagation();hbBulkToggle('${g.id}')">${sel?ck():''}</div>`:`<div class="cb" style="background:#34C759;border:none" onclick="tGroc('${g.id}',false)">${ck()}</div>`}
             <span style="flex:1;font-size:16px;color:#8E8E93;text-decoration:line-through">${g.label}</span>
-            <button onclick="dGroc('${g.id}')" style="color:#FF3B30;font-size:20px;opacity:0.5;border:none;background:none;cursor:pointer">×</button>
-          </div>`).join('')}
-          ${done.length?`<button class="btn" onclick="clearDone()" style="width:100%;padding:12px;color:#FF3B30;font-size:14px;font-weight:600;border-top:1px solid var(--row-border);text-align:center">Clear completed (${done.length})</button>`:''}
+            ${inBulk?'':`<button onclick="dGroc('${g.id}')" aria-label="Delete" style="color:#FF3B30;font-size:20px;opacity:0.5;border:none;background:none;cursor:pointer">×</button>`}
+          </div>`;
+          }).join('')}
+          ${done.length&&S._bulkMode!=='groceries'?`<button class="btn" onclick="clearDone()" style="width:100%;padding:12px;color:#FF3B30;font-size:14px;font-weight:600;border-top:1px solid var(--row-border);text-align:center">Clear completed (${done.length})</button>`:''}
         </div>
 
         <!-- FREQUENT ITEMS LIBRARY (always shown) -->
@@ -8802,7 +8833,7 @@ function sAddReminder(){
     <div style="background:var(--card);padding:14px 16px;display:flex;align-items:center;border-bottom:1px solid var(--row-border);position:sticky;top:0;z-index:10">
       <button class="back-btn" onclick="S.rmFor=[];S.rmMode='ondate';S.rmText='';S.rmDate='';S.rmNotes='';S.rmEditId=null;back()">${bk()} Back</button>
       <div style="flex:1;text-align:center;font-size:17px;font-weight:600">${S.rmEditId?'✏️ Edit reminder':'⏰ Set a reminder'}</div>
-      <div style="width:60px"></div>
+      <button onclick="openHelp('addReminder')" aria-label="Help" title="Help" style="width:30px;height:30px;border-radius:15px;background:var(--bg);border:1px solid var(--border);color:var(--navy);font-size:14px;font-weight:700;cursor:pointer;font-family:inherit;display:flex;align-items:center;justify-content:center;flex-shrink:0">?</button>
     </div>
     <div style="padding:20px;display:flex;flex-direction:column;gap:14px;max-width:560px;margin:auto;width:100%">
 
@@ -9075,6 +9106,126 @@ function render(){
         +'<div style="flex:1;overflow-y:auto">'+resultsHtml+'</div>'
       +'</div>'
     +'</div>';
+  }
+
+  // Bulk-select action bar — renders a sticky bottom bar when the user has
+  // entered multi-select mode by long-pressing a grocery item. Sits above
+  // the regular tab bar (which gets hidden in bulk mode for clarity).
+  if(S._bulkMode==='groceries'){
+    const sel=S._bulkSelected||{};
+    const ids=Object.keys(sel).filter(k=>sel[k]);
+    const n=ids.length;
+    html+='<div style="position:fixed;left:0;right:0;bottom:0;background:var(--card);border-top:1px solid var(--row-border);box-shadow:0 -4px 20px rgba(0,0,0,0.12);padding:10px 12px env(safe-area-inset-bottom);z-index:9999;animation:sup 0.18s ease-out">'
+      +'<div style="display:flex;align-items:center;gap:8px;max-width:640px;margin:0 auto">'
+        +'<div style="flex-shrink:0;background:var(--navy);color:#fff;font-size:13px;font-weight:700;padding:6px 12px;border-radius:14px">'+n+' selected</div>'
+        +'<button onclick="hbBulkTickAll()" '+(n===0?'disabled':'')+' style="flex:1;padding:9px 6px;border-radius:9px;background:#34C75922;border:1px solid #34C75955;color:#34C759;font-size:12px;font-weight:700;cursor:pointer;font-family:inherit;opacity:'+(n===0?'0.4':'1')+'">✓ Tick all</button>'
+        +'<button onclick="hbBulkMoveToFrequents()" '+(n===0?'disabled':'')+' style="flex:1;padding:9px 6px;border-radius:9px;background:#FFCC0022;border:1px solid #FFCC0055;color:#B8860B;font-size:12px;font-weight:700;cursor:pointer;font-family:inherit;opacity:'+(n===0?'0.4':'1')+'">⭐ Frequents</button>'
+        +'<button onclick="hbBulkDelete()" '+(n===0?'disabled':'')+' style="flex:1;padding:9px 6px;border-radius:9px;background:#FF3B3022;border:1px solid #FF3B3055;color:#FF3B30;font-size:12px;font-weight:700;cursor:pointer;font-family:inherit;opacity:'+(n===0?'0.4':'1')+'">🗑️ Delete</button>'
+        +'<button onclick="hbBulkCancel()" aria-label="Cancel" style="flex-shrink:0;padding:9px 12px;border-radius:9px;background:var(--bg);border:1px solid var(--border);color:var(--text);font-size:12px;font-weight:600;cursor:pointer;font-family:inherit">Cancel</button>'
+      +'</div>'
+    +'</div>';
+  }
+
+  // Help-sheet overlay — bottom sheet pops up when the user taps the ?
+  // button on any screen header. Topic-specific content is keyed by the
+  // S._helpTopic value (e.g. 'dinner', 'event', 'reminder', 'family').
+  if(S._helpTopic){
+    const topic=S._helpTopic;
+    // Topic dictionary — each entry: {title, items: [{icon, hd, body}]}.
+    // Keeping this inline rather than in a separate config so it's easy to
+    // edit and lives next to the rendering code. Add new screens here.
+    const helpContent={
+      today:{title:'Today screen',items:[
+        {icon:'📅',hd:'Date picker at the top',body:'Tap the chevrons to flip between days. The whole screen updates to that day\u2019s schedule, reminders, and dinner.'},
+        {icon:'🔍',hd:'Search anything',body:'The magnifying glass in the topbar searches events, dinners, reminders, and family members across the entire app.'},
+        {icon:'⏰',hd:'Long-press for actions',body:'Hold any event, reminder, or dinner for ~500ms to see Edit / Duplicate / Delete options.'},
+        {icon:'🍲',hd:'Tonight\u2019s Dinner',body:'When a meal is planned for the date you\u2019re viewing, it shows in an orange card. Tap the 🔗 to open the recipe, or tap the chevron to edit.'}
+      ]},
+      events:{title:'Events',items:[
+        {icon:'📂',hd:'Tiled by category',body:'School, sport, music, work, social, medical and other — each tile shows the upcoming count for that category.'},
+        {icon:'🏃',hd:'Sport split',body:'The Sport tile drills into your tagged sports (Netball, Swimming, etc). Add new sports under Settings → Family setup.'},
+        {icon:'🔁',hd:'Recurring events',body:'Create a once-a-week event and it auto-appears each week. Skip individual occurrences via the long-press menu.'},
+        {icon:'📥',hd:'Bulk import',body:'Settings → Inbox lets you forward fixture emails or paste schedules — AI extracts events for you to approve.'}
+      ]},
+      addEvent:{title:'Adding an event',items:[
+        {icon:'👥',hd:'Who\u2019s involved',body:'Pick child(ren) AND/OR adults. An event can have multiple participants — useful for family outings.'},
+        {icon:'🚗',hd:'Drop-off & pick-up',body:'Choose which adult is responsible for each leg. The Today screen highlights events where YOU are on duty.'},
+        {icon:'🎒',hd:'Pack list',body:'Optionally attach items the child needs to bring. The Today screen prompts to tick them off the night before.'},
+        {icon:'📍',hd:'Location',body:'Free text. If it looks like an address, the Today screen shows a 📍 to open Apple/Google Maps.'}
+      ]},
+      addDinner:{title:'Planning a dinner',items:[
+        {icon:'🍳',hd:'AI recipe suggestions',body:'Use the 🍳 Suggest recipes button on the Dinners screen to get family-aware suggestions instead of typing manually.'},
+        {icon:'🔗',hd:'Recipe link',body:'Paste a URL (RecipeTin Eats, BBC Food, etc.) — a 🔗 button will appear on the meal for the cook to open. If you leave it blank, AI auto-attaches one in the background.'},
+        {icon:'💡',hd:'Meal Ideas',body:'Saved ideas appear as quick-pick chips above the input. Build the bank by tapping ⭐ on any past meal.'},
+        {icon:'🌀',hd:'Thermomix recipes',body:'When Thermomix mode is on (Settings → Family setup), suggestions include Thermomix Recipe Community links.'}
+      ]},
+      addReminder:{title:'Adding a reminder',items:[
+        {icon:'🎯',hd:'Who it\u2019s for',body:'Pick one or more family members — or leave empty for a family-wide reminder. Affects whose Today screen shows the alert.'},
+        {icon:'🔔',hd:'Push notifications',body:'If event reminders are enabled in Settings → Notifications, each reminder fires a push alert at the chosen time.'},
+        {icon:'📅',hd:'Due date vs ongoing',body:'Due date = one-shot deadline. Ongoing = persistent until manually marked done (good for "buy a birthday gift").'}
+      ]},
+      family:{title:'Family',items:[
+        {icon:'👤',hd:'Adults & children',body:'Tap any avatar to view their schedule, upcoming events, reminders, and gift ideas. Tap ⚙️ on the profile to edit.'},
+        {icon:'🎨',hd:'Profile colour',body:'Each member has a colour used across the app for event ownership, calendar avatars, and filter chips.'},
+        {icon:'🥗',hd:'Dietary requirements',body:'Fields on Add/Edit Child and Edit Adult feed into AI recipe suggestions and trigger allergen warnings.'},
+        {icon:'🤝',hd:'Inviting partners',body:'Family code in Settings → About. Other adults install HomeBase, paste the code on signup, and join automatically.'}
+      ]},
+      lists:{title:'Lists',items:[
+        {icon:'🛒',hd:'Groceries',body:'Items can be marked Frequent — they then appear as quick-add chips so weekly shopping is one tap each.'},
+        {icon:'🍲',hd:'Dinners',body:'Plan up to 14 days ahead. The weekly view shows what\u2019s coming + who\u2019s cooking.'},
+        {icon:'🎁',hd:'Gifts',body:'Track gift ideas per person. Private ideas are hidden from the recipient even if they sign in.'},
+        {icon:'📝',hd:'Notes & Assessments',body:'Notes are free-form per child. Assessments track upcoming tests/projects with a days-until countdown.'}
+      ]},
+      calendar:{title:'Calendar',items:[
+        {icon:'📅',hd:'Day vs Week view',body:'Toggle between a tall day-pane and a 7-day grid. The week view shows colour-coded blocks per person.'},
+        {icon:'👤',hd:'Per-person filter',body:'In Week view, tap a family photo to filter to just that person\u2019s events.'},
+        {icon:'📤',hd:'Subscribe in Apple Calendar',body:'Settings → Calendar → Subscribe URL gives you a read-only feed for your iOS Calendar app.'}
+      ]},
+      settings:{title:'Settings',items:[
+        {icon:'🏠',hd:'Family setup',body:'Sports tags, school term dates, week-A/B picker, and the Thermomix toggle live here.'},
+        {icon:'🔔',hd:'Notifications',body:'Morning summary + per-event reminders. Times are customisable. Push must be enabled in your browser first.'},
+        {icon:'📥',hd:'Inbox',body:'Forward fixture or schedule emails to your unique HomeBase address — AI parses them and you approve before they go in.'},
+        {icon:'📅',hd:'Calendar sync',body:'iOS Calendar subscription URL, plus settings for which member\u2019s events sync.'},
+        {icon:'💾',hd:'About',body:'Family invite code lives here. Share it with partners. Personal codes for each adult are under their profile.'}
+      ]},
+      recipeSuggestions:{title:'AI Recipe Suggestions',items:[
+        {icon:'🤖',hd:'How it works',body:'Claude reads your family setup (kids\u2019 ages, dietary needs, Thermomix on/off, last 30 meals) and returns sectioned ideas avoiding recent repeats.'},
+        {icon:'🔗',hd:'URL verification',body:'Every link is HEAD-checked before display. Dead links get stripped, you see 🔍 Search instead. Live URLs land on a real recipe page.'},
+        {icon:'📅',hd:'Assign to a day',body:'Tap 📅 Add to planner on any suggestion → pick a day → meal saves with the recipe URL attached.'},
+        {icon:'⚠️',hd:'Dietary warnings',body:'If a suggestion contains an allergen flagged for someone in your family, an orange warning shows on the card.'}
+      ]},
+      shoppingListBuilder:{title:'AI Shopping List',items:[
+        {icon:'🛒',hd:'How it works',body:'Claude combines ingredients across this week\u2019s planned meals, deduplicates them (e.g. "2 onions" from two recipes merges), and skips pantry staples.'},
+        {icon:'☑️',hd:'Tick what you need',body:'Items you tick get added to your main shopping list. Items you don\u2019t tick are discarded.'},
+        {icon:'🏷️',hd:'Categorised',body:'Items are grouped by supermarket section (produce, meat, dairy, etc.) for faster shopping.'}
+      ]}
+    };
+    const c=helpContent[topic];
+    if(c){
+      const itemsHtml=c.items.map(it=>
+        '<div style="padding:12px 14px;border-bottom:1px solid var(--row-border);display:flex;gap:12px;align-items:flex-start">'
+          +'<span style="font-size:22px;flex-shrink:0;line-height:1.2">'+it.icon+'</span>'
+          +'<div style="flex:1;min-width:0">'
+            +'<div style="font-size:14px;font-weight:700;color:var(--text);margin-bottom:3px">'+it.hd+'</div>'
+            +'<div style="font-size:12px;color:var(--text-secondary);line-height:1.5">'+it.body+'</div>'
+          +'</div>'
+        +'</div>'
+      ).join('');
+      html+='<div onclick="closeHelp()" id="hb-help-overlay" style="position:fixed;inset:0;background:rgba(0,0,0,0.5);z-index:9998;display:flex;align-items:flex-end;justify-content:center;animation:hbFadeIn 0.15s ease-out">'
+        +'<div onclick="event.stopPropagation()" style="background:var(--card);width:100%;max-width:640px;border-radius:20px 20px 0 0;box-shadow:0 -8px 28px rgba(0,0,0,0.25);max-height:85vh;display:flex;flex-direction:column;overflow:hidden;animation:hbSlideUp 0.2s ease-out">'
+          +'<div style="width:36px;height:4px;background:var(--border);border-radius:2px;margin:10px auto 4px;flex-shrink:0"></div>'
+          +'<div style="padding:8px 16px 12px;display:flex;align-items:center;gap:10px;border-bottom:1px solid var(--row-border);flex-shrink:0">'
+            +'<span style="font-size:20px">❓</span>'
+            +'<div style="flex:1;font-size:16px;font-weight:700;color:var(--text)">'+c.title+'</div>'
+            +'<button onclick="closeHelp()" aria-label="Close help" style="background:var(--bg);border:1px solid var(--border);color:var(--text);width:28px;height:28px;border-radius:14px;cursor:pointer;font-family:inherit;font-size:14px;display:flex;align-items:center;justify-content:center">×</button>'
+          +'</div>'
+          +'<div style="flex:1;overflow-y:auto">'+itemsHtml+'</div>'
+          +'<div style="padding:10px 16px;border-top:1px solid var(--row-border);flex-shrink:0;text-align:center">'
+            +'<button onclick="closeHelp();go(\'quickTraining\')" style="background:none;border:none;color:var(--navy);font-size:13px;font-weight:600;cursor:pointer;font-family:inherit;padding:6px">📖 See full guide</button>'
+          +'</div>'
+        +'</div>'
+      +'</div>';
+    }
   }
 
   sc.innerHTML=html;
@@ -10419,6 +10570,74 @@ window.undoLastDelete=async function(){
   window._pendingUndo=null;
 };
 window.clearDone=async()=>{const done=S.groceries.filter(g=>g.addedToList&&g.checked);let failed=0;for(const g of done)try{await fdel(['groceries',g.id]);}catch(e){failed++;}if(failed>0){notify('Cleared with '+failed+' errors','⚠️');}else{notify('List cleared ✅');}};
+
+// ── BULK-SELECT HANDLERS (groceries) ──────────────────────────────
+// Toggle one item in/out of the selection set. Called from row taps when
+// the user is already in bulk mode.
+window.hbBulkToggle=function(id){
+  if(!S._bulkSelected)S._bulkSelected={};
+  if(S._bulkSelected[id])delete S._bulkSelected[id];
+  else S._bulkSelected[id]=true;
+  render();
+};
+// Cancel bulk mode — clear selection and re-render normally.
+window.hbBulkCancel=function(){
+  S._bulkMode=null;
+  S._bulkSelected={};
+  render();
+};
+// Tick (mark as checked/bought) every selected grocery item. Runs each fupd
+// in parallel since these are independent docs. Failures are counted and
+// surfaced as one toast at the end so the user knows if something didn't
+// stick.
+window.hbBulkTickAll=async function(){
+  const sel=S._bulkSelected||{};
+  const ids=Object.keys(sel).filter(k=>sel[k]);
+  if(ids.length===0)return;
+  let failed=0;
+  await Promise.all(ids.map(async id=>{
+    try{await fupd(['groceries',id],{checked:true,addedToList:true});}
+    catch(e){failed++;}
+  }));
+  S._bulkMode=null;S._bulkSelected={};
+  if(failed>0)notify('Ticked '+(ids.length-failed)+' · '+failed+' failed','⚠️');
+  else notify('Ticked '+ids.length+' items ✅');
+  render();
+};
+// Promote every selected grocery item to the Frequent items library. Items
+// stay on the shopping list — they just gain isFrequent:true so they appear
+// as quick-add chips next time. Common workflow after a big shop.
+window.hbBulkMoveToFrequents=async function(){
+  const sel=S._bulkSelected||{};
+  const ids=Object.keys(sel).filter(k=>sel[k]);
+  if(ids.length===0)return;
+  let failed=0;
+  await Promise.all(ids.map(async id=>{
+    try{await fupd(['groceries',id],{isFrequent:true});}
+    catch(e){failed++;}
+  }));
+  S._bulkMode=null;S._bulkSelected={};
+  if(failed>0)notify('Promoted '+(ids.length-failed)+' · '+failed+' failed','⚠️');
+  else notify('Added to frequents ⭐');
+  render();
+};
+// Delete every selected grocery item. Confirms first since this is destructive.
+// No undo because the count may be large; user opted in via the confirm prompt.
+window.hbBulkDelete=async function(){
+  const sel=S._bulkSelected||{};
+  const ids=Object.keys(sel).filter(k=>sel[k]);
+  if(ids.length===0)return;
+  if(!confirm('Delete '+ids.length+' item'+(ids.length===1?'':'s')+'?'))return;
+  let failed=0;
+  await Promise.all(ids.map(async id=>{
+    try{await fdel(['groceries',id]);}
+    catch(e){failed++;}
+  }));
+  S._bulkMode=null;S._bulkSelected={};
+  if(failed>0)notify('Deleted '+(ids.length-failed)+' · '+failed+' failed','⚠️');
+  else notify('Deleted '+ids.length+' items 🗑️');
+  render();
+};
 window.addFreq=async id=>{try{await fupd(['groceries',id],{addedToList:true});notify('Added to list ✅');}catch(ex){notify('Add failed: '+(ex.message||ex),'⚠️');}};
 window.unmarkFreq=async id=>{
   if(!confirm('Remove this from frequent items? It will no longer appear in your quick-add bank.'))return;
@@ -10874,6 +11093,19 @@ window.findRecipeOnline=function(mealName){
   const q=encodeURIComponent(String(mealName).trim()+' recipe');
   try{window.open('https://www.google.com/search?q='+q,'_blank','noopener');}
   catch(e){window.location.href='https://www.google.com/search?q='+q;}
+};
+
+// ── HELP SHEETS ───────────────────────────────────────────────────
+// openHelp(topic) pops a context-specific help bottom sheet on any
+// screen. Topics keyed in helpContent (rendered above). Falls back
+// silently if the topic isn't registered. Tap outside or Escape to close.
+window.openHelp=function(topic){
+  S._helpTopic=topic||'today';
+  render();
+};
+window.closeHelp=function(){
+  S._helpTopic=null;
+  render();
 };
 
 // ── UNIVERSAL SEARCH ──────────────────────────────────────────────
@@ -12165,6 +12397,17 @@ window._lpStartXY=null;
 function hbShowContextMenu(x,y,kind,id){
   // Remove any existing menu
   hbCloseContextMenu();
+  // Long-press a grocery → enter bulk-select mode with this item pre-selected.
+  // No menu shown — we skip straight to the multi-select UI, which is the only
+  // sensible action for a list of items (vs Edit/Duplicate/Delete on a single).
+  if(kind==='grocery'){
+    S._bulkMode='groceries';
+    S._bulkSelected=S._bulkSelected||{};
+    S._bulkSelected[id]=true;
+    if(navigator.vibrate)try{navigator.vibrate(8);}catch(e){}
+    render();
+    return;
+  }
   let item;
   if(kind==='event'){item=S.events.find(e=>e.id===id);}
   else if(kind==='reminder'){item=S.reminders.find(r=>r.id===id);}
@@ -13191,14 +13434,13 @@ document.addEventListener('change',function(e){
   if(e.target&&e.target.id==='hb-search-input')return;
   if(S.screen)S._formTouched=true;
 },true);
-// Escape key closes the universal search overlay if it's open. Also keeps
-// the form-dirty tracker honest — search input typing shouldn't flag a form
-// as dirty (the search query lives in S, not on a sub-screen form).
+// Escape key closes the universal search overlay or help sheet if open.
+// Also keeps the form-dirty tracker honest — search input typing shouldn't
+// flag a form as dirty (the search query lives in S, not on a sub-screen form).
 document.addEventListener('keydown',function(e){
-  if(e.key==='Escape'&&S._searchOpen){
-    e.preventDefault();
-    closeUniversalSearch();
-  }
+  if(e.key!=='Escape')return;
+  if(S._helpTopic){e.preventDefault();closeHelp();return;}
+  if(S._searchOpen){e.preventDefault();closeUniversalSearch();return;}
 });
 // Diagnostic wrapper for inbox review — logs everything so we can debug
 window.openInboxReview=function(){
