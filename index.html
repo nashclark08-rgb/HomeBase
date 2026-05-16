@@ -7983,7 +7983,16 @@ function sSettings(){
         statusHtml='<div style="background:#8E8E9314;border-left:3px solid #8E8E93;border-radius:6px;padding:9px 11px;font-size:11px;color:var(--text);line-height:1.5">Push isn\'t supported on this browser. Try Safari (iOS) or Chrome (desktop/Android).</div>';
       }else if(perm==='granted'){
         statusHtml='<div style="background:#34C75914;border-left:3px solid #34C759;border-radius:6px;padding:9px 11px;font-size:11px;color:var(--text);line-height:1.5"><strong style="color:#34C759">✓ Enabled</strong> on this device. You\'ll get pushes for new events, reminders, hand-offs, and the morning summary.</div>';
-        actionHtml='<button onclick="requestNotifPerm()" style="width:100%;margin-top:8px;padding:10px;border-radius:9px;background:var(--bg);border:1px solid var(--border);color:var(--text);font-size:12px;font-weight:600;cursor:pointer;font-family:inherit">🔄 Re-register this device</button>';
+        // Button label/state reflects in-flight + recent-success flags so the user
+        // gets immediate, visible feedback on a click. A fresh registration can
+        // take 5–10s for the FCM token exchange — without this it reads as a dead
+        // click. _pushBusy is set in requestNotifPerm before any async work and
+        // cleared in its finally; _pushJustSucceeded flashes for 3s after success.
+        let btnLabel='🔄 Re-register this device';
+        let btnDisabled='';
+        if(S._pushBusy){btnLabel='⟳ Registering…';btnDisabled=' disabled';}
+        else if(S._pushJustSucceeded){btnLabel='✓ Re-registered just now';}
+        actionHtml='<button onclick="requestNotifPerm()"'+btnDisabled+' style="width:100%;margin-top:8px;padding:10px;border-radius:9px;background:var(--bg);border:1px solid var(--border);color:var(--text);font-size:12px;font-weight:600;cursor:'+(S._pushBusy?'wait':'pointer')+';font-family:inherit;opacity:'+(S._pushBusy?'0.7':'1')+'">'+btnLabel+'</button>';
       }else if(perm==='denied'){
         statusHtml='<div style="background:#FF3B3014;border-left:3px solid #FF3B30;border-radius:6px;padding:9px 11px;font-size:11px;color:var(--text);line-height:1.5"><strong style="color:#FF3B30">Blocked.</strong> '+(isIOS?'iOS: Settings → Notifications → HomeBase → Allow Notifications.':'Browser: site settings → Notifications → Allow, then refresh.')+'</div>';
       }else{
@@ -7994,6 +8003,19 @@ function sSettings(){
       // diagnostic block so the user sees WHY (not just a fleeting "Push setup
       // failed" toast that disappears in 3 seconds). 403 errors get an explicit
       // hint about Google Cloud Console config since that's the usual cause.
+      // Persistent "Last registered" line — always visible if we have one,
+      // so the user can see at a glance whether the last attempt was recent
+      // and which device/platform last succeeded. Survives re-renders.
+      let successBlock='';
+      if(S._pushLastSuccess){
+        const ls=S._pushLastSuccess;
+        const lsDate=new Date(ls.at);
+        const today=new Date();
+        const isToday=lsDate.toDateString()===today.toDateString();
+        const tsLabel=lsDate.toLocaleTimeString([],{hour:'numeric',minute:'2-digit'})+(isToday?' today':' '+lsDate.toLocaleDateString());
+        const platLabel=ls.platform==='ios'?('iPhone'+(ls.standalone?' (PWA)':' (Safari)')):(ls.platform==='android'?'Android':'Web');
+        successBlock='<div style="margin-top:6px;font-size:11px;color:var(--text-secondary);line-height:1.5">Last registered: '+tsLabel+' · '+platLabel+'</div>';
+      }
       let errorBlock='';
       if(S._pushLastError){
         const err=S._pushLastError;
@@ -8009,6 +8031,7 @@ function sSettings(){
         +'<div style="font-size:13px;font-weight:600;color:var(--text);margin-bottom:6px">📲 Push notifications</div>'
         +statusHtml
         +actionHtml
+        +successBlock
         +errorBlock
         +'</div>';
     })()
@@ -11623,100 +11646,137 @@ window.useDeviceLocation=()=>{
 window.requestNotifPerm=async function(){
   // Push notification registration: get permission, register service worker,
   // call FCM getToken, save token to Firestore so Cloud Functions can target
-  // this device. All status flows through dlog + the inline `notify`
+  // this device. All status flows through pushLog + the inline `notify`
   // toast — no more alert() popups (those were diagnostic from April debug).
   // Pin the Notifications section open across re-renders so the user sees
   // the result of their action without the section bouncing back to closed.
   S._settingsOpenSection='notifs';
-  const dlog=(msg)=>{try{dlog('[push] '+msg);}catch(e){}};
-  dlog('requestNotifPerm called');
+  // pushLog wraps the outer dlog with a "[push]" tag. Previous version was
+  //   const dlog=(msg)=>{try{dlog('[push] '+msg);}catch(e){}};
+  // which referred to itself inside the body (recursed forever, silently
+  // swallowed by its own try/catch) — every push log was a no-op.
+  const pushLog=(msg)=>{try{(typeof dlog==='function')?dlog('[push] '+msg):console.log('[push] '+msg);}catch(e){console.log('[push] '+msg);}};
+  pushLog('requestNotifPerm called');
 
-  if(typeof Notification==='undefined'){
-    notify('Push notifications not supported on this browser','⚠️');
-    return;
-  }
-
-  // iOS PWA gate — Apple only delivers push to home-screen-installed PWAs (16.4+)
-  if(isIOS&&!isStandalonePWA){
-    notify('On iPhone, tap Share → Add to Home Screen, then enable from the home-screen icon 📲','ℹ️');
-    return;
-  }
-
-  // Permission prompt
-  let perm=Notification.permission;
-  if(perm!=='granted'&&perm!=='denied'){
-    dlog('requesting permission');
-    perm=await Notification.requestPermission();
-    dlog('permission result: '+perm);
-  }
-  if(perm!=='granted'){
-    notify('Permission denied. Re-enable in browser/iOS settings.','⚠️');
-    return;
-  }
+  // Immediate UI feedback: set busy flag + re-render so the button shows
+  // "Registering…" within one frame, before any async/network work begins.
+  // The finally block at the end always clears this — even on early return.
+  S._pushBusy=true;
+  try{render();}catch(e){}
 
   try{
-    if(!('serviceWorker' in navigator))throw new Error('Service workers not supported');
-    dlog('registering service worker');
-    const swReg=await navigator.serviceWorker.register('/firebase-messaging-sw.js');
-    if(swReg.installing||swReg.waiting){
-      await new Promise(res=>{
-        const sw=swReg.installing||swReg.waiting;
-        sw?.addEventListener('statechange',()=>{if(sw.state==='activated')res();});
-        setTimeout(res,5000);
-      });
+    if(typeof Notification==='undefined'){
+      notify('Push notifications not supported on this browser','⚠️');
+      return;
     }
-    if(!messaging){
-      dlog('initialising messaging');
-      const ok=await initMessaging();
-      dlog('initMessaging returned '+ok);
-    }
-    if(!messaging)throw new Error('Messaging unavailable');
 
-    dlog('requesting FCM token');
-    let token=null;
+    // iOS PWA gate — Apple only delivers push to home-screen-installed PWAs (16.4+)
+    if(isIOS&&!isStandalonePWA){
+      notify('On iPhone, tap Share → Add to Home Screen, then enable from the home-screen icon 📲','ℹ️');
+      return;
+    }
+
+    // Permission prompt
+    let perm=Notification.permission;
+    if(perm!=='granted'&&perm!=='denied'){
+      pushLog('requesting permission');
+      perm=await Notification.requestPermission();
+      pushLog('permission result: '+perm);
+    }
+    if(perm!=='granted'){
+      notify('Permission denied. Re-enable in browser/iOS settings.','⚠️');
+      return;
+    }
+
     try{
-      const tokenPromise=getToken(messaging,{vapidKey:VAPID_KEY,serviceWorkerRegistration:swReg});
-      const timeoutPromise=new Promise((_,rej)=>setTimeout(()=>rej(new Error('Token request timed out after 15s')),15000));
-      token=await Promise.race([tokenPromise,timeoutPromise]);
-    }catch(getErr){
-      console.error('[push] getToken failed:',getErr);
-      throw getErr;
-    }
-    if(!token)throw new Error('Empty token');
-    dlog('got token of length '+token.length);
+      if(!('serviceWorker' in navigator))throw new Error('Service workers not supported');
+      pushLog('registering service worker');
+      const swReg=await navigator.serviceWorker.register('/firebase-messaging-sw.js');
+      if(swReg.installing||swReg.waiting){
+        await new Promise(res=>{
+          const sw=swReg.installing||swReg.waiting;
+          sw?.addEventListener('statechange',()=>{if(sw.state==='activated')res();});
+          setTimeout(res,5000);
+        });
+      }
+      if(!messaging){
+        pushLog('initialising messaging');
+        const ok=await initMessaging();
+        pushLog('initMessaging returned '+ok);
+      }
+      if(!messaging)throw new Error('Messaging unavailable');
 
-    if(S.user?.uid){
-      await setDoc(doc(db,'users',S.user.uid,'fcmTokens',token),{
-        token,
-        platform:isIOS?'ios':(/Android/.test(navigator.userAgent)?'android':'web'),
-        standalone:isStandalonePWA,
-        userAgent:navigator.userAgent.slice(0,200),
-        familyId:S.familyId||'',
-        updatedAt:new Date()
-      });
-      dlog('token saved to Firestore');
-      S._pushEnabled=true;
-    }
+      pushLog('requesting FCM token');
+      let token=null;
+      try{
+        const tokenPromise=getToken(messaging,{vapidKey:VAPID_KEY,serviceWorkerRegistration:swReg});
+        const timeoutPromise=new Promise((_,rej)=>setTimeout(()=>rej(new Error('Token request timed out after 15s')),15000));
+        token=await Promise.race([tokenPromise,timeoutPromise]);
+      }catch(getErr){
+        console.error('[push] getToken failed:',getErr);
+        throw getErr;
+      }
+      if(!token)throw new Error('Empty token');
+      pushLog('got token of length '+token.length);
 
-    notify('Push notifications enabled 🔔','✅');
-    try{new Notification('HomeBase',{body:"Push notifications are on — you'll get reminders for events, packing and more.",tag:'enable-confirmation'});}catch(e){}
-    render();
-  }catch(ex){
-    console.error('[push] enable failed',ex);
-    // Surface the failure: write a structured error message to state so the
-    // Settings UI can render a persistent diagnostic banner instead of a
-    // fleeting toast that vanishes before the user can read it. The toast
-    // still fires so we don't break the existing UX.
-    const msg=String(ex.message||ex);
-    const is403=/403|PERMISSION_DENIED|permission/i.test(msg);
-    S._pushLastError={
-      at:new Date().toISOString(),
-      message:msg,
-      kind:is403?'403':'other',
-      hint:is403?'Firebase blocked the request. Check Google Cloud Console: API key restrictions must include Firebase Installations API, and HTTP referrer allowlist must include home-base-orcin.vercel.app/*':'See browser console for details.'
-    };
-    notify('Push setup failed — see Settings → Notifications for details','⚠️');
-    render();
+      const platformLabel=isIOS?'ios':(/Android/.test(navigator.userAgent)?'android':'web');
+      if(S.user?.uid){
+        await setDoc(doc(db,'users',S.user.uid,'fcmTokens',token),{
+          token,
+          platform:platformLabel,
+          standalone:isStandalonePWA,
+          userAgent:navigator.userAgent.slice(0,200),
+          familyId:S.familyId||'',
+          updatedAt:new Date()
+        });
+        pushLog('token saved to Firestore');
+        S._pushEnabled=true;
+      }
+
+      // Record success for the persistent "Last registered" line so the user
+      // always knows when push last worked on this device. Also clear any
+      // previous error — the new attempt succeeded.
+      S._pushLastSuccess={
+        at:new Date().toISOString(),
+        platform:platformLabel,
+        standalone:isStandalonePWA
+      };
+      S._pushLastError=null;
+      // Brief confirmation flash on the button itself ("✓ Re-registered just
+      // now") that auto-clears after 3s. Combined with the persistent line
+      // above, the user gets both an immediate ack and ongoing visible state.
+      S._pushJustSucceeded=true;
+      setTimeout(()=>{S._pushJustSucceeded=false;try{render();}catch(e){}},3000);
+
+      notify('Push notifications enabled 🔔','✅');
+      // Native Notification() constructor is unsupported in iOS PWAs (Apple
+      // only delivers push via the SW push event). Skip it there so we don't
+      // throw silently — the toast above is the on-screen confirmation on iOS.
+      if(!(isIOS&&isStandalonePWA)){
+        try{new Notification('HomeBase',{body:"Push notifications are on — you'll get reminders for events, packing and more.",tag:'enable-confirmation'});}catch(e){}
+      }
+    }catch(ex){
+      console.error('[push] enable failed',ex);
+      // Surface the failure: write a structured error message to state so the
+      // Settings UI can render a persistent diagnostic banner instead of a
+      // fleeting toast that vanishes before the user can read it. The toast
+      // still fires so we don't break the existing UX.
+      const msg=String(ex.message||ex);
+      const is403=/403|PERMISSION_DENIED|permission/i.test(msg);
+      S._pushLastError={
+        at:new Date().toISOString(),
+        message:msg,
+        kind:is403?'403':'other',
+        hint:is403?'Firebase blocked the request. Check Google Cloud Console: API key restrictions must include Firebase Installations API, and HTTP referrer allowlist must include home-base-orcin.vercel.app/*':'See browser console for details.'
+      };
+      notify('Push setup failed — see Settings → Notifications for details','⚠️');
+    }
+  }finally{
+    // Always clear the in-flight flag and re-render, even on early return
+    // or unexpected throw. This is what makes the button reliably return to
+    // an interactive state instead of staying stuck on "Registering…".
+    S._pushBusy=false;
+    try{render();}catch(e){}
   }
 };
 
