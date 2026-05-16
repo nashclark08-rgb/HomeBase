@@ -138,6 +138,39 @@ body{font-family:-apple-system,BlinkMacSystemFont,system-ui,sans-serif;backgroun
     });
   }
 </script>
+<!-- console.error → Sentry forwarder. Many Firebase library errors
+     (Firestore permission-denied, FCM token failures, network blips) are
+     logged via console.error rather than thrown — without this they'd never
+     reach Sentry. Wrapped in try/catch so analytics can never break the
+     console itself. Errors arriving before the Sentry SDK loads are dropped
+     (the original console.error still fires, so they appear in DevTools). -->
+<script>
+(function(){
+  var orig = console.error;
+  console.error = function() {
+    try { orig.apply(console, arguments); } catch (e) {}
+    try {
+      if (window.Sentry && Sentry.captureException) {
+        var args = Array.prototype.slice.call(arguments);
+        var errArg = null;
+        for (var i = 0; i < args.length; i++) {
+          if (args[i] instanceof Error) { errArg = args[i]; break; }
+        }
+        if (errArg) {
+          Sentry.captureException(errArg, { tags: { source: 'console.error' } });
+        } else {
+          var msg = args.map(function(a){
+            if (a instanceof Error) return a.message;
+            if (typeof a === 'object') { try { return JSON.stringify(a).slice(0, 500); } catch(e) { return String(a); } }
+            return String(a);
+          }).join(' ');
+          Sentry.captureMessage(msg, 'error');
+        }
+      }
+    } catch (e) { /* never break console */ }
+  };
+})();
+</script>
 <!-- PostHog analytics — only sees events we explicitly capture(). No autocapture,
      no page-view tracking, no session recording. Person profiles only created
      once we call posthog.identify() after auth — anonymous visitors don't count
@@ -13622,6 +13655,18 @@ onAuthStateChanged(auth,async user=>{
     }
     // Schedule daily notification + per-event reminders
     setTimeout(function(){scheduleDailyNotif();scheduleEventNotifs();},2000);
+  }else{
+    // User signed out — explicitly via hSignOut, OR via session expiry,
+    // token revocation, or account switch. Defensive cleanup: tear down
+    // active Firestore real-time listeners so they don't keep firing with
+    // an invalidated auth token (which logs noisy permission-denied errors).
+    // hSignOut already does this for the explicit sign-out path; this branch
+    // covers every other auth-null transition.
+    try { (S.unsubs || []).forEach(function(u){ try { u(); } catch(e) {} }); S.unsubs = []; } catch(e) {}
+    try { (S.packingUnsubs || []).forEach(function(u){ try { u(); } catch(e) {} }); S.packingUnsubs = []; } catch(e) {}
+    try { if (window.posthog && posthog.reset) posthog.reset(); } catch(e) {}
+    S.familyId = null;
+    S.family = null;
   }
   render();
 });
