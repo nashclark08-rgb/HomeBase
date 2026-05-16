@@ -2131,47 +2131,59 @@ function sToday(){
         </div>`;
       })()}
 
-      <!-- DINNERS THIS WEEK (collapsible — auto-opens if a meal is planned
-           for the viewed day so the cook sees what's on without expanding) -->
+      <!-- DINNERS THIS WEEK — the viewed day's meal (if any) is always
+           visible; other upcoming days sit inside a user-controlled
+           collapsible so they don't clutter the screen by default. -->
       ${(()=>{
         if(upcomingDinners.length===0)return '';
-        // Auto-expand the section if there's a dinner planned for the viewed day.
-        // The default behaviour is collapsed; this nudge keeps it expanded when
-        // the user is actively looking at a day with a meal lined up.
-        const hasDinnerForView=upcomingDinners.some(d=>d.date===viewDateStr);
-        const isOpen=S.openSections?.dinners||hasDinnerForView;
+        // Split into the day-being-viewed and everything else. The viewed-day
+        // row renders OUTSIDE the collapsible so it stays put even when the
+        // user collapses the section.
+        const viewedDayDinner=upcomingDinners.find(d=>d.date===viewDateStr);
+        const otherDinners=upcomingDinners.filter(d=>d.date!==viewDateStr);
+        const isOpen=!!S.openSections?.dinners; // strictly user-controlled
+        // Shared row renderer — same look for pinned and inside-collapsible.
+        // No yellow today-highlight; the red "TODAY" label is enough.
+        const dinnerRow=(d,i,arr)=>{
+          const dt=new Date(d.date+'T12:00');
+          const isToday=d.date===todayStr;
+          const mealEscaped=(d.meal||'').replace(/'/g,'&#39;').replace(/"/g,'&quot;');
+          return `<div class="row" data-longpress="dinner:${d.id}" style="border-bottom:${i<arr.length-1?'1px solid var(--row-border)':'none'}">
+            <div style="width:50px;flex-shrink:0;font-size:11px;font-weight:700;color:${isToday?'#FF3B30':'var(--text-secondary)'}">${isToday?'TODAY':DAYSH[dt.getDay()].toUpperCase()}</div>
+            <button onclick="editDinner('${d.id}')" style="flex:1;display:flex;align-items:center;gap:6px;background:none;border:none;padding:0;text-align:left;cursor:pointer;font-family:inherit;min-width:0">
+              <div style="flex:1;min-width:0">
+                <div style="font-size:14px;font-weight:600;color:var(--text);overflow:hidden;text-overflow:ellipsis;white-space:nowrap">${d.meal}</div>
+                ${d.cook?`<div style="font-size:12px;color:var(--text-secondary)">👨‍🍳 ${d.cook}</div>`:''}
+              </div>
+              <span class="chev" style="flex-shrink:0"></span>
+            </button>
+            ${d.sourceUrl?`<button onclick="event.stopPropagation();openSavedRecipeUrl('${d.id}','source')" title="Open saved recipe" style="display:flex;align-items:center;justify-content:center;background:var(--navy-soft);color:var(--navy);font-size:13px;border:none;cursor:pointer;width:30px;height:30px;border-radius:8px;margin-left:4px;flex-shrink:0" aria-label="Open saved recipe">🔗</button>`:`<button onclick="event.stopPropagation();findRecipeOnline('${mealEscaped}')" title="Search recipe online" style="color:var(--text-secondary);font-size:13px;border:none;background:none;cursor:pointer;padding:6px 4px;margin-left:2px;flex-shrink:0" aria-label="Search recipe online">🔗</button>`}
+            ${d.thermomixUrl?`<button onclick="event.stopPropagation();openSavedRecipeUrl('${d.id}','thermomix')" title="Open Thermomix recipe" style="display:flex;align-items:center;justify-content:center;background:#7B5CFF18;color:#7B5CFF;font-size:13px;border:none;cursor:pointer;width:30px;height:30px;border-radius:8px;margin-left:4px;flex-shrink:0" aria-label="Open Thermomix recipe">🌀</button>`:''}
+          </div>`;
+        };
+        // Pinned viewed-day row sits between the header and the collapsible.
+        // Empty when no dinner is planned for the viewed day.
+        const pinnedRow=viewedDayDinner?'<div style="border-top:1px solid var(--row-border)">'+dinnerRow(viewedDayDinner,0,[viewedDayDinner])+'</div>':'';
+        // Only show chev/collapsible mechanism when there ARE other days
+        // to collapse. Header click is inert otherwise.
+        const showCollapse=otherDinners.length>0;
         return `<div class="card" style="margin-bottom:14px;overflow:hidden">
-        <div onclick="toggleSection('dinners')" style="display:flex;align-items:center;gap:10px;padding:13px 16px;cursor:pointer;user-select:none">
+        <div ${showCollapse?'onclick="toggleSection(\'dinners\')"':''} style="display:flex;align-items:center;gap:10px;padding:13px 16px;${showCollapse?'cursor:pointer;':''}user-select:none">
           <span style="font-size:18px">🍲</span>
           <span style="flex:1;font-size:14px;font-weight:700;color:var(--text)">This Week's Dinners</span>
-          <span class="collapse-chev ${isOpen?'open':''}" style="font-size:13px;color:var(--text-secondary)">▾</span>
+          ${showCollapse?`<span class="collapse-chev ${isOpen?'open':''}" style="font-size:13px;color:var(--text-secondary)">▾</span>`:''}
         </div>
-        <div class="collapsible ${isOpen?'open':''}">
+        ${pinnedRow}
+        ${showCollapse?`<div class="collapsible ${isOpen?'open':''}">
           <div class="collapsible-inner">
             <div style="border-top:1px solid var(--row-border)">
-              ${upcomingDinners.map((d,i,arr)=>{
-                const dt=new Date(d.date+'T12:00');
-                const isToday=d.date===todayStr;
-                const mealEscaped=(d.meal||'').replace(/'/g,'&#39;').replace(/"/g,'&quot;');
-                return `<div class="row" data-longpress="dinner:${d.id}" style="border-bottom:${i<arr.length-1?'1px solid var(--row-border)':'none'};${isToday?'background:#FFF8E5':''}">
-                  <div style="width:50px;flex-shrink:0;font-size:11px;font-weight:700;color:${isToday?'#FF3B30':'var(--text-secondary)'}">${isToday?'TODAY':DAYSH[dt.getDay()].toUpperCase()}</div>
-                  <button onclick="editDinner('${d.id}')" style="flex:1;display:flex;align-items:center;gap:6px;background:none;border:none;padding:0;text-align:left;cursor:pointer;font-family:inherit;min-width:0">
-                    <div style="flex:1;min-width:0">
-                      <div style="font-size:14px;font-weight:600;color:var(--text);overflow:hidden;text-overflow:ellipsis;white-space:nowrap">${d.meal}</div>
-                      ${d.cook?`<div style="font-size:12px;color:var(--text-secondary)">👨‍🍳 ${d.cook}</div>`:''}
-                    </div>
-                    <span class="chev" style="flex-shrink:0"></span>
-                  </button>
-                  ${d.sourceUrl?`<button onclick="event.stopPropagation();openSavedRecipeUrl('${d.id}','source')" title="Open saved recipe" style="display:flex;align-items:center;justify-content:center;background:var(--navy-soft);color:var(--navy);font-size:13px;border:none;cursor:pointer;width:30px;height:30px;border-radius:8px;margin-left:4px;flex-shrink:0" aria-label="Open saved recipe">🔗</button>`:`<button onclick="event.stopPropagation();findRecipeOnline('${mealEscaped}')" title="Search recipe online" style="color:var(--text-secondary);font-size:13px;border:none;background:none;cursor:pointer;padding:6px 4px;margin-left:2px;flex-shrink:0" aria-label="Search recipe online">🔗</button>`}
-                  ${d.thermomixUrl?`<button onclick="event.stopPropagation();openSavedRecipeUrl('${d.id}','thermomix')" title="Open Thermomix recipe" style="display:flex;align-items:center;justify-content:center;background:#7B5CFF18;color:#7B5CFF;font-size:13px;border:none;cursor:pointer;width:30px;height:30px;border-radius:8px;margin-left:4px;flex-shrink:0" aria-label="Open Thermomix recipe">🌀</button>`:''}
-                </div>`;
-              }).join('')}
+              ${otherDinners.map((d,i,arr)=>dinnerRow(d,i,arr)).join('')}
               <div style="padding:10px 16px;text-align:center;border-top:1px solid var(--row-border)">
                 <button onclick="event.stopPropagation();setTab('lists');S.listTab='dinners';render()" style="background:none;border:none;color:var(--navy);font-size:13px;font-weight:600;cursor:pointer;font-family:inherit">View all dinners ›</button>
               </div>
             </div>
           </div>
-        </div>
+        </div>`:''}
       </div>`;
       })()}
 
@@ -3172,11 +3184,6 @@ function sEvents(){
           <div style="font-size:24px">📚</div>
           <div style="font-size:14px;font-weight:700;color:var(--text);line-height:1.25">School Timetable</div>
           <div style="font-size:11px;color:var(--text-secondary);line-height:1.4">Pick subjects to track. Weekly or fortnightly.</div>
-        </div>
-        <div onclick="go('emailImport')" style="background:var(--card);border:1px dashed var(--border);border-radius:14px;padding:14px;cursor:pointer;display:flex;flex-direction:column;gap:6px;min-height:96px">
-          <div style="font-size:24px">📧</div>
-          <div style="font-size:14px;font-weight:700;color:var(--text);line-height:1.25">From Email</div>
-          <div style="font-size:11px;color:var(--text-secondary);line-height:1.4">Paste a school email — auto-extract dates.</div>
         </div>
       </div>
 
