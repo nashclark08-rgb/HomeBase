@@ -225,7 +225,7 @@ const NAVY='#1C3A6B';
 // EDIT THIS to switch between Vercel default and your custom domain.
 // Currently set to Vercel default because app.ourhomebase.com.au DNS isn't resolving.
 // Once that subdomain is configured properly in Vercel, change to 'https://app.ourhomebase.com.au'.
-const APP_URL='https://home-base-orcin.vercel.app';
+const APP_URL='https://app.ourhomebase.com.au';
 // Curated 36-colour palette — organised by hue (reds → oranges → yellows → greens → blues → purples → neutrals).
 // All chosen for high contrast against white backgrounds + good distinguishability between family members.
 const COLORS=[
@@ -11767,7 +11767,7 @@ window.requestNotifPerm=async function(){
         at:new Date().toISOString(),
         message:msg,
         kind:is403?'403':'other',
-        hint:is403?'Firebase blocked the request. Check Google Cloud Console: API key restrictions must include Firebase Installations API, and HTTP referrer allowlist must include home-base-orcin.vercel.app/*':'See browser console for details.'
+        hint:is403?'Firebase blocked the request. Check Google Cloud Console: API key restrictions must include Firebase Installations API, and HTTP referrer allowlist must include app.ourhomebase.com.au/* (and home-base-orcin.vercel.app/* if you still use the Vercel preview URL).':'See browser console for details.'
       };
       notify('Push setup failed — see Settings → Notifications for details','⚠️');
     }
