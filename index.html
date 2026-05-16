@@ -2045,7 +2045,7 @@ function sToday(){
           <span>⏰ Reminders</span>
           <button onclick="go('addReminder')" style="font-size:11px;font-weight:700;background:var(--navy);color:#fff;padding:4px 10px;border-radius:8px;border:none;cursor:pointer;font-family:inherit;text-transform:none;letter-spacing:0">+ Add</button>
         </div>`;
-        if(dueReminders.length===0)return remHeader+`<div class="card" style="margin-bottom:14px">${emptyState('🔕','No reminders due','Add reminders for things you don’t want to forget — permission slips, hair appointments, gift ideas.','+ Add a reminder',"go('addReminder')",true)}</div>`;
+        if(dueReminders.length===0)return remHeader+`<div class="card" style="margin-bottom:14px;padding:14px;text-align:center;color:var(--text-secondary);font-size:13px">No reminders due.</div>`;
         return remHeader+`
         <div class="card" style="margin-bottom:14px">
           ${dueReminders.map((r,i)=>{
@@ -2115,71 +2115,38 @@ function sToday(){
               const dStr=DAYSH[dDate.getDay()]+' '+dDate.getDate()+' '+MONTHS[dDate.getMonth()];
               dueLabel=`<div style="font-size:11px;font-weight:700;color:${isDueToday?'#FF3B30':tcol};margin-top:3px">${isDueToday?'🔴 Due today · '+dStr:'📅 Due '+dStr}</div>`;
             }
-            return `<div class="row" data-longpress="reminder:${r.id}" style="border-bottom:${i<dueReminders.length-1?'1px solid var(--row-border)':'none'};${r.done?'opacity:0.55':''}">
-              <div class="cb ${r.done?'on':''}" onclick="tReminder('${r.id}',${!r.done})" style="${r.done?'background:'+tcol+';border:none':'border-color:'+tcol}">${r.done?ck():''}</div>
+            const inBulk=S._bulkMode==='reminders';
+            const sel=inBulk&&(S._bulkSelected||{})[r.id];
+            return `<div class="row" data-longpress="reminder:${r.id}" onclick="${inBulk?`hbBulkToggle('${r.id}')`:''}" style="border-bottom:${i<dueReminders.length-1?'1px solid var(--row-border)':'none'};${r.done?'opacity:0.55':''};${sel?'background:var(--navy-soft)':''};${inBulk?'cursor:pointer':''}">
+              ${inBulk?`<div class="cb ${sel?'on':''}" style="${sel?'background:'+NAVY+';border:none':'border-color:'+tcol}" onclick="event.stopPropagation();hbBulkToggle('${r.id}')">${sel?ck():''}</div>`:`<div class="cb ${r.done?'on':''}" onclick="tReminder('${r.id}',${!r.done})" style="${r.done?'background:'+tcol+';border:none':'border-color:'+tcol}">${r.done?ck():''}</div>`}
               <div style="flex:1;min-width:0">
                 <div style="font-size:15px;color:var(--text);font-weight:500;${r.done?'text-decoration:line-through':''}">${r.text}</div>
                 ${dueLabel}
                 ${targets.length===0?`<div style="font-size:11px;color:var(--text-secondary);font-weight:600;margin-top:3px">👨‍👩‍👧‍👦 Family-wide</div>`:`<div style="display:flex;align-items:center;gap:4px;margin-top:3px;flex-wrap:wrap">${targets.slice(0,4).map(t=>av(t.name,t.color,18,t.photo)).join('')}<span style="font-size:11px;color:${tcol};font-weight:600;margin-left:2px">${targets.map(t=>t.name.split(' ')[0]).join(', ')}${targets.length>4?' +'+(targets.length-4):''}</span></div>`}
                 ${r.notes?`<div style="font-size:11px;color:var(--text-secondary);font-style:italic;margin-top:2px">${r.notes}</div>`:''}
               </div>
-              <button onclick="dReminder('${r.id}')" aria-label="Delete reminder" style="color:#FF3B30;font-size:18px;opacity:0.5;border:none;background:none;cursor:pointer">×</button>
+              ${inBulk?'':`<button onclick="dReminder('${r.id}')" aria-label="Delete reminder" style="color:#FF3B30;font-size:18px;opacity:0.5;border:none;background:none;cursor:pointer">×</button>`}
             </div>`;
           }).join('')}
         </div>`;
       })()}
 
-      <!-- TONIGHT'S DINNER (always expanded if planned for the viewed day) -->
+      <!-- DINNERS THIS WEEK (collapsible — auto-opens if a meal is planned
+           for the viewed day so the cook sees what's on without expanding) -->
       ${(()=>{
-        // Surface the planned dinner for the day currently being viewed —
-        // not the literal "today". This way when the user navigates to
-        // tomorrow on the date picker, the card swaps to tomorrow's meal.
-        // No card if no dinner is planned for the viewed date.
-        const tonight=(S.dinners||[]).find(d=>d.date===viewDateStr&&d.meal);
-        if(!tonight)return '';
-        const mealEscaped=(tonight.meal||'').replace(/'/g,'&#39;').replace(/"/g,'&quot;');
-        // Label adapts to whether we're looking at today, tomorrow, or a
-        // specific weekday — clearer than always saying "TONIGHT'S DINNER".
-        let label='DINNER';
-        if(viewDateStr===todayStr){
-          label="TONIGHT'S DINNER";
-        }else{
-          const dt=new Date(viewDateStr+'T12:00');
-          const tomorrowStr=fd(new Date(today.getTime()+86400000));
-          if(viewDateStr===tomorrowStr){
-            label="TOMORROW'S DINNER";
-          }else{
-            const dayName=['SUNDAY','MONDAY','TUESDAY','WEDNESDAY','THURSDAY','FRIDAY','SATURDAY'][dt.getDay()];
-            label=dayName+"'S DINNER";
-          }
-        }
-        return `<div class="card" style="margin-bottom:14px;overflow:hidden;border-left:4px solid #FF6B35">
-          <div style="padding:10px 14px 4px;display:flex;align-items:center;gap:8px;background:linear-gradient(90deg,#FF6B3510,transparent)">
-            <span style="font-size:16px">🍲</span>
-            <span style="flex:1;font-size:11px;font-weight:700;color:#FF6B35;letter-spacing:0.5px">${label}</span>
-          </div>
-          <div class="row" data-longpress="dinner:${tonight.id}" style="padding-top:6px">
-            <button onclick="editDinner('${tonight.id}')" style="flex:1;display:flex;align-items:center;gap:6px;background:none;border:none;padding:0;text-align:left;cursor:pointer;font-family:inherit;min-width:0">
-              <div style="flex:1;min-width:0">
-                <div style="font-size:16px;font-weight:700;color:var(--text);overflow:hidden;text-overflow:ellipsis;white-space:nowrap">${tonight.meal}</div>
-                ${tonight.cook?`<div style="font-size:12px;color:var(--text-secondary);margin-top:2px">👨‍🍳 ${tonight.cook}</div>`:''}
-              </div>
-              <span class="chev" style="flex-shrink:0"></span>
-            </button>
-            ${tonight.sourceUrl?`<button onclick="event.stopPropagation();openSavedRecipeUrl('${tonight.id}','source')" title="Open saved recipe" style="display:flex;align-items:center;justify-content:center;background:var(--navy-soft);color:var(--navy);font-size:14px;border:none;cursor:pointer;width:34px;height:34px;border-radius:9px;margin-left:6px;flex-shrink:0" aria-label="Open saved recipe">🔗</button>`:`<button onclick="event.stopPropagation();findRecipeOnline('${mealEscaped}')" title="Search recipe online" style="display:flex;align-items:center;justify-content:center;background:var(--bg);color:var(--text-secondary);font-size:14px;border:1px solid var(--border);cursor:pointer;width:34px;height:34px;border-radius:9px;margin-left:6px;flex-shrink:0" aria-label="Search recipe online">🔍</button>`}
-            ${tonight.thermomixUrl?`<button onclick="event.stopPropagation();openSavedRecipeUrl('${tonight.id}','thermomix')" title="Open Thermomix recipe" style="display:flex;align-items:center;justify-content:center;background:#7B5CFF18;color:#7B5CFF;font-size:14px;border:none;cursor:pointer;width:34px;height:34px;border-radius:9px;margin-left:6px;flex-shrink:0" aria-label="Open Thermomix recipe">🌀</button>`:''}
-          </div>
-        </div>`;
-      })()}
-
-      <!-- DINNERS THIS WEEK (collapsible) -->
-      ${upcomingDinners.length>0?`<div class="card" style="margin-bottom:14px;overflow:hidden">
+        if(upcomingDinners.length===0)return '';
+        // Auto-expand the section if there's a dinner planned for the viewed day.
+        // The default behaviour is collapsed; this nudge keeps it expanded when
+        // the user is actively looking at a day with a meal lined up.
+        const hasDinnerForView=upcomingDinners.some(d=>d.date===viewDateStr);
+        const isOpen=S.openSections?.dinners||hasDinnerForView;
+        return `<div class="card" style="margin-bottom:14px;overflow:hidden">
         <div onclick="toggleSection('dinners')" style="display:flex;align-items:center;gap:10px;padding:13px 16px;cursor:pointer;user-select:none">
           <span style="font-size:18px">🍲</span>
           <span style="flex:1;font-size:14px;font-weight:700;color:var(--text)">This Week's Dinners</span>
-          <span class="collapse-chev ${S.openSections?.dinners?'open':''}" style="font-size:13px;color:var(--text-secondary)">▾</span>
+          <span class="collapse-chev ${isOpen?'open':''}" style="font-size:13px;color:var(--text-secondary)">▾</span>
         </div>
-        <div class="collapsible ${S.openSections?.dinners?'open':''}">
+        <div class="collapsible ${isOpen?'open':''}">
           <div class="collapsible-inner">
             <div style="border-top:1px solid var(--row-border)">
               ${upcomingDinners.map((d,i,arr)=>{
@@ -2205,7 +2172,8 @@ function sToday(){
             </div>
           </div>
         </div>
-      </div>`:''}
+      </div>`;
+      })()}
 
       <!-- SHOPPING LIST (collapsible) -->
       <div class="card" style="margin-bottom:14px;overflow:hidden">
@@ -9109,17 +9077,24 @@ function render(){
   }
 
   // Bulk-select action bar — renders a sticky bottom bar when the user has
-  // entered multi-select mode by long-pressing a grocery item. Sits above
-  // the regular tab bar (which gets hidden in bulk mode for clarity).
-  if(S._bulkMode==='groceries'){
+  // entered multi-select mode (groceries via long-press, reminders via the
+  // context menu's "Select multiple"). Action buttons adapt to the mode:
+  // groceries get Tick all / Frequents / Delete; reminders get Mark done /
+  // Delete. Cancel always exits.
+  if(S._bulkMode==='groceries'||S._bulkMode==='reminders'){
     const sel=S._bulkSelected||{};
     const ids=Object.keys(sel).filter(k=>sel[k]);
     const n=ids.length;
+    const isGroc=S._bulkMode==='groceries';
     html+='<div style="position:fixed;left:0;right:0;bottom:0;background:var(--card);border-top:1px solid var(--row-border);box-shadow:0 -4px 20px rgba(0,0,0,0.12);padding:10px 12px env(safe-area-inset-bottom);z-index:9999;animation:sup 0.18s ease-out">'
       +'<div style="display:flex;align-items:center;gap:8px;max-width:640px;margin:0 auto">'
         +'<div style="flex-shrink:0;background:var(--navy);color:#fff;font-size:13px;font-weight:700;padding:6px 12px;border-radius:14px">'+n+' selected</div>'
-        +'<button onclick="hbBulkTickAll()" '+(n===0?'disabled':'')+' style="flex:1;padding:9px 6px;border-radius:9px;background:#34C75922;border:1px solid #34C75955;color:#34C759;font-size:12px;font-weight:700;cursor:pointer;font-family:inherit;opacity:'+(n===0?'0.4':'1')+'">✓ Tick all</button>'
-        +'<button onclick="hbBulkMoveToFrequents()" '+(n===0?'disabled':'')+' style="flex:1;padding:9px 6px;border-radius:9px;background:#FFCC0022;border:1px solid #FFCC0055;color:#B8860B;font-size:12px;font-weight:700;cursor:pointer;font-family:inherit;opacity:'+(n===0?'0.4':'1')+'">⭐ Frequents</button>'
+        +(isGroc?
+          '<button onclick="hbBulkTickAll()" '+(n===0?'disabled':'')+' style="flex:1;padding:9px 6px;border-radius:9px;background:#34C75922;border:1px solid #34C75955;color:#34C759;font-size:12px;font-weight:700;cursor:pointer;font-family:inherit;opacity:'+(n===0?'0.4':'1')+'">✓ Tick all</button>'
+          +'<button onclick="hbBulkMoveToFrequents()" '+(n===0?'disabled':'')+' style="flex:1;padding:9px 6px;border-radius:9px;background:#FFCC0022;border:1px solid #FFCC0055;color:#B8860B;font-size:12px;font-weight:700;cursor:pointer;font-family:inherit;opacity:'+(n===0?'0.4':'1')+'">⭐ Frequents</button>'
+        :
+          '<button onclick="hbBulkMarkDone()" '+(n===0?'disabled':'')+' style="flex:1;padding:9px 6px;border-radius:9px;background:#34C75922;border:1px solid #34C75955;color:#34C759;font-size:12px;font-weight:700;cursor:pointer;font-family:inherit;opacity:'+(n===0?'0.4':'1')+'">✓ Mark done</button>'
+        )
         +'<button onclick="hbBulkDelete()" '+(n===0?'disabled':'')+' style="flex:1;padding:9px 6px;border-radius:9px;background:#FF3B3022;border:1px solid #FF3B3055;color:#FF3B30;font-size:12px;font-weight:700;cursor:pointer;font-family:inherit;opacity:'+(n===0?'0.4':'1')+'">🗑️ Delete</button>'
         +'<button onclick="hbBulkCancel()" aria-label="Cancel" style="flex-shrink:0;padding:9px 12px;border-radius:9px;background:var(--bg);border:1px solid var(--border);color:var(--text);font-size:12px;font-weight:600;cursor:pointer;font-family:inherit">Cancel</button>'
       +'</div>'
@@ -10621,21 +10596,42 @@ window.hbBulkMoveToFrequents=async function(){
   else notify('Added to frequents ⭐');
   render();
 };
-// Delete every selected grocery item. Confirms first since this is destructive.
-// No undo because the count may be large; user opted in via the confirm prompt.
+// Delete every selected item. Routes by S._bulkMode so the same button
+// works for both groceries and reminders. Confirms before destructive action.
+// No undo at this layer because the count may be large; user opted in via
+// the confirm prompt.
 window.hbBulkDelete=async function(){
   const sel=S._bulkSelected||{};
   const ids=Object.keys(sel).filter(k=>sel[k]);
   if(ids.length===0)return;
-  if(!confirm('Delete '+ids.length+' item'+(ids.length===1?'':'s')+'?'))return;
+  const mode=S._bulkMode;
+  const noun=mode==='groceries'?'item':'reminder';
+  if(!confirm('Delete '+ids.length+' '+noun+(ids.length===1?'':'s')+'?'))return;
   let failed=0;
+  const path=mode==='groceries'?'groceries':'reminders';
   await Promise.all(ids.map(async id=>{
-    try{await fdel(['groceries',id]);}
+    try{await fdel([path,id]);}
     catch(e){failed++;}
   }));
   S._bulkMode=null;S._bulkSelected={};
   if(failed>0)notify('Deleted '+(ids.length-failed)+' · '+failed+' failed','⚠️');
-  else notify('Deleted '+ids.length+' items 🗑️');
+  else notify('Deleted '+ids.length+' '+noun+(ids.length===1?'':'s')+' 🗑️');
+  render();
+};
+// Mark every selected reminder as done. Reminders-only — groceries use
+// hbBulkTickAll for the equivalent action.
+window.hbBulkMarkDone=async function(){
+  const sel=S._bulkSelected||{};
+  const ids=Object.keys(sel).filter(k=>sel[k]);
+  if(ids.length===0)return;
+  let failed=0;
+  await Promise.all(ids.map(async id=>{
+    try{await fupd(['reminders',id],{done:true});}
+    catch(e){failed++;}
+  }));
+  S._bulkMode=null;S._bulkSelected={};
+  if(failed>0)notify('Marked '+(ids.length-failed)+' done · '+failed+' failed','⚠️');
+  else notify('Marked '+ids.length+' done ✅');
   render();
 };
 window.addFreq=async id=>{try{await fupd(['groceries',id],{addedToList:true});notify('Added to list ✅');}catch(ex){notify('Add failed: '+(ex.message||ex),'⚠️');}};
@@ -12465,10 +12461,13 @@ function hbShowContextMenu(x,y,kind,id){
         <span style="font-size:16px">🗑️</span><span>Delete</span>
       </button>`;
   }else{
-    // Reminders: Edit + Delete only (no duplicate — reminders are one-time tasks)
+    // Reminders: Edit + Select multiple + Delete (no duplicate — reminders are one-time tasks)
     buttons=`
       <button onclick="hbCtxAction('edit-reminder','${id}')" style="width:100%;text-align:left;padding:11px 14px;border:none;background:transparent;color:var(--text);font-size:14px;font-weight:600;cursor:pointer;font-family:inherit;border-radius:8px;display:flex;align-items:center;gap:10px">
         <span style="font-size:16px">✏️</span><span>Edit reminder</span>
+      </button>
+      <button onclick="hbCtxAction('select-multiple-reminder','${id}')" style="width:100%;text-align:left;padding:11px 14px;border:none;background:transparent;color:var(--text);font-size:14px;font-weight:600;cursor:pointer;font-family:inherit;border-radius:8px;display:flex;align-items:center;gap:10px">
+        <span style="font-size:16px">☑️</span><span>Select multiple</span>
       </button>
       <div style="height:1px;background:var(--row-border);margin:4px 0"></div>
       <button onclick="hbCtxAction('delete-reminder','${id}')" style="width:100%;text-align:left;padding:11px 14px;border:none;background:transparent;color:#FF3B30;font-size:14px;font-weight:600;cursor:pointer;font-family:inherit;border-radius:8px;display:flex;align-items:center;gap:10px">
@@ -12546,6 +12545,14 @@ window.hbCtxAction=function(action,id){
   }else if(action==='delete-reminder'){
     if(!confirm('Delete this reminder?'))return;
     fdel(['reminders',id]).then(()=>notify('Reminder deleted','🗑️')).catch(e=>notify('Delete failed: '+e.message,'⚠️'));
+  }else if(action==='select-multiple-reminder'){
+    // Enter reminder bulk-select mode with this reminder already selected.
+    // Action bar appears at the bottom; tapping more rows adds them.
+    S._bulkMode='reminders';
+    S._bulkSelected=S._bulkSelected||{};
+    S._bulkSelected[id]=true;
+    if(navigator.vibrate)try{navigator.vibrate(8);}catch(e){}
+    render();
   }else if(action==='edit-dinner'){
     // Open Plan Dinner with the existing row's data prefilled. editingId
     // signals hAddDinner to overwrite the date row rather than duplicate.
