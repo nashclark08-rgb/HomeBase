@@ -2098,6 +2098,38 @@ function sToday(){
         </div>`;
       })()}
 
+      <!-- TONIGHT'S DINNER (always expanded if planned for today) -->
+      ${(()=>{
+        // Surface tonight's planned dinner as a top-line item — separate from
+        // the collapsible weekly list so the cook for the night doesn't have
+        // to expand a section to see what's on. Includes recipe link button,
+        // edit-on-tap, Thermomix button if set, dietary-allergen alert, and
+        // delete. Long-press also works (same context menu as elsewhere).
+        const tonight=(S.dinners||[]).find(d=>d.date===todayStr&&d.meal);
+        if(!tonight)return '';
+        const mealEscaped=(tonight.meal||'').replace(/'/g,'&#39;').replace(/"/g,'&quot;');
+        return `<div class="card" style="margin-bottom:14px;overflow:hidden;border-left:4px solid #FF6B35">
+          <div style="padding:10px 14px 4px;display:flex;align-items:center;gap:8px;background:linear-gradient(90deg,#FF6B3510,transparent)">
+            <span style="font-size:16px">🍲</span>
+            <span style="flex:1;font-size:11px;font-weight:700;color:#FF6B35;letter-spacing:0.5px">TONIGHT'S DINNER</span>
+          </div>
+          <div class="row" data-longpress="dinner:${tonight.id}" style="padding-top:6px">
+            <button onclick="editDinner('${tonight.id}')" style="flex:1;display:flex;align-items:center;gap:6px;background:none;border:none;padding:0;text-align:left;cursor:pointer;font-family:inherit;min-width:0">
+              <div style="flex:1;min-width:0">
+                <div style="font-size:16px;font-weight:700;color:var(--text);overflow:hidden;text-overflow:ellipsis;white-space:nowrap">${tonight.meal}</div>
+                ${tonight.cook?`<div style="font-size:12px;color:var(--text-secondary);margin-top:2px">👨‍🍳 ${tonight.cook}</div>`:''}
+                ${tonight.notes?`<div style="font-size:12px;color:var(--text-secondary);font-style:italic;margin-top:2px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap">${tonight.notes}</div>`:''}
+                ${Array.isArray(tonight.allergens)&&tonight.allergens.length?`<div style="font-size:11px;color:#FF9500;font-weight:600;margin-top:3px">⚠️ Contains: ${tonight.allergens.join(', ')}</div>`:''}
+              </div>
+              <span class="chev" style="flex-shrink:0"></span>
+            </button>
+            ${tonight.sourceUrl?`<button onclick="event.stopPropagation();openSavedRecipeUrl('${tonight.id}','source')" title="Open saved recipe" style="display:flex;align-items:center;justify-content:center;background:var(--navy-soft);color:var(--navy);font-size:14px;border:none;cursor:pointer;width:34px;height:34px;border-radius:9px;margin-left:6px;flex-shrink:0">🔗</button>`:`<button onclick="event.stopPropagation();findRecipeOnline('${mealEscaped}')" title="Search recipe online" style="display:flex;align-items:center;justify-content:center;background:var(--bg);color:var(--text-secondary);font-size:14px;border:1px solid var(--border);cursor:pointer;width:34px;height:34px;border-radius:9px;margin-left:6px;flex-shrink:0">🔍</button>`}
+            ${tonight.thermomixUrl?`<button onclick="event.stopPropagation();openSavedRecipeUrl('${tonight.id}','thermomix')" title="Open Thermomix recipe" style="display:flex;align-items:center;justify-content:center;background:#7B5CFF18;color:#7B5CFF;font-size:14px;border:none;cursor:pointer;width:34px;height:34px;border-radius:9px;margin-left:6px;flex-shrink:0">🌀</button>`:''}
+            <button onclick="event.stopPropagation();dDinner('${tonight.id}')" title="Delete" style="color:#FF3B30;font-size:20px;opacity:0.5;border:none;background:none;cursor:pointer;padding:0 4px;margin-left:2px;flex-shrink:0">×</button>
+          </div>
+        </div>`;
+      })()}
+
       <!-- DINNERS THIS WEEK (collapsible) -->
       ${upcomingDinners.length>0?`<div class="card" style="margin-bottom:14px;overflow:hidden">
         <div onclick="toggleSection('dinners')" style="display:flex;align-items:center;gap:10px;padding:13px 16px;cursor:pointer;user-select:none">
@@ -2111,12 +2143,20 @@ function sToday(){
               ${upcomingDinners.map((d,i,arr)=>{
                 const dt=new Date(d.date+'T12:00');
                 const isToday=d.date===todayStr;
-                return `<div class="row" style="border-bottom:${i<arr.length-1?'1px solid var(--row-border)':'none'}">
+                const mealEscaped=(d.meal||'').replace(/'/g,'&#39;').replace(/"/g,'&quot;');
+                return `<div class="row" data-longpress="dinner:${d.id}" style="border-bottom:${i<arr.length-1?'1px solid var(--row-border)':'none'};${isToday?'background:#FFF8E5':''}">
                   <div style="width:50px;flex-shrink:0;font-size:11px;font-weight:700;color:${isToday?'#FF3B30':'var(--text-secondary)'}">${isToday?'TODAY':DAYSH[dt.getDay()].toUpperCase()}</div>
-                  <div style="flex:1">
-                    <div style="font-size:14px;font-weight:600">${d.meal}</div>
-                    ${d.cook?`<div style="font-size:12px;color:var(--text-secondary)">👨‍🍳 ${d.cook}</div>`:''}
-                  </div>
+                  <button onclick="editDinner('${d.id}')" style="flex:1;display:flex;align-items:center;gap:6px;background:none;border:none;padding:0;text-align:left;cursor:pointer;font-family:inherit;min-width:0">
+                    <div style="flex:1;min-width:0">
+                      <div style="font-size:14px;font-weight:600;color:var(--text);overflow:hidden;text-overflow:ellipsis;white-space:nowrap">${d.meal}</div>
+                      ${d.cook?`<div style="font-size:12px;color:var(--text-secondary)">👨‍🍳 ${d.cook}</div>`:''}
+                      ${Array.isArray(d.allergens)&&d.allergens.length?`<div style="font-size:10px;color:#FF9500;font-weight:600;margin-top:2px">⚠️ ${d.allergens.join(', ')}</div>`:''}
+                    </div>
+                    <span class="chev" style="flex-shrink:0"></span>
+                  </button>
+                  ${d.sourceUrl?`<button onclick="event.stopPropagation();openSavedRecipeUrl('${d.id}','source')" title="Open saved recipe" style="display:flex;align-items:center;justify-content:center;background:var(--navy-soft);color:var(--navy);font-size:13px;border:none;cursor:pointer;width:30px;height:30px;border-radius:8px;margin-left:4px;flex-shrink:0">🔗</button>`:`<button onclick="event.stopPropagation();findRecipeOnline('${mealEscaped}')" title="Search recipe online" style="color:var(--text-secondary);font-size:13px;border:none;background:none;cursor:pointer;padding:6px 4px;margin-left:2px;flex-shrink:0">🔗</button>`}
+                  ${d.thermomixUrl?`<button onclick="event.stopPropagation();openSavedRecipeUrl('${d.id}','thermomix')" title="Open Thermomix recipe" style="display:flex;align-items:center;justify-content:center;background:#7B5CFF18;color:#7B5CFF;font-size:13px;border:none;cursor:pointer;width:30px;height:30px;border-radius:8px;margin-left:4px;flex-shrink:0">🌀</button>`:''}
+                  <button onclick="event.stopPropagation();dDinner('${d.id}')" title="Delete" style="color:#FF3B30;font-size:18px;opacity:0.5;border:none;background:none;cursor:pointer;padding:0 4px;margin-left:2px;flex-shrink:0">×</button>
                 </div>`;
               }).join('')}
               <div style="padding:10px 16px;text-align:center;border-top:1px solid var(--row-border)">
@@ -11874,13 +11914,17 @@ window._lpStartXY=null;
 function hbShowContextMenu(x,y,kind,id){
   // Remove any existing menu
   hbCloseContextMenu();
-  const item=kind==='event'?S.events.find(e=>e.id===id):S.reminders.find(r=>r.id===id);
+  let item;
+  if(kind==='event'){item=S.events.find(e=>e.id===id);}
+  else if(kind==='reminder'){item=S.reminders.find(r=>r.id===id);}
+  else if(kind==='dinner'){item=S.dinners.find(d=>d.id===id);}
   if(!item)return;
   // Reminders that are virtual (birthdays/parent days) shouldn't get a context menu
   if(kind==='reminder'&&item._isBirthday)return;
 
   const isReminder=kind==='reminder';
-  const title=isReminder?(item.text||'Reminder'):(item.title||'Event');
+  const isDinner=kind==='dinner';
+  const title=isReminder?(item.text||'Reminder'):isDinner?(item.meal||'Dinner'):(item.title||'Event');
 
   const menu=document.createElement('div');
   menu.id='hb-context-menu';
@@ -11889,7 +11933,7 @@ function hbShowContextMenu(x,y,kind,id){
   // Position the menu — flip if it would overflow
   const vw=window.innerWidth;
   const vh=window.innerHeight;
-  const menuW=210,menuH=isReminder?140:180;
+  const menuW=210,menuH=isDinner?180:isReminder?140:180;
   const left=Math.min(Math.max(8,x),vw-menuW-8);
   const top=Math.min(Math.max(8,y),vh-menuH-8);
   menu.style.left=left+'px';
@@ -11909,6 +11953,21 @@ function hbShowContextMenu(x,y,kind,id){
       </button>
       <div style="height:1px;background:var(--row-border);margin:4px 0"></div>
       <button onclick="hbCtxAction('delete','${id}')" style="width:100%;text-align:left;padding:11px 14px;border:none;background:transparent;color:#FF3B30;font-size:14px;font-weight:600;cursor:pointer;font-family:inherit;border-radius:8px;display:flex;align-items:center;gap:10px">
+        <span style="font-size:16px">🗑️</span><span>Delete</span>
+      </button>`;
+  }else if(kind==='dinner'){
+    // Dinners: Edit / Reuse / Delete — mirrors the available actions on the
+    // Dinners screen but accessible via long-press on any row that shows
+    // the dinner (Today widget, Tonight's Dinner card, Dinners screen).
+    buttons=`
+      <button onclick="hbCtxAction('edit-dinner','${id}')" style="width:100%;text-align:left;padding:11px 14px;border:none;background:transparent;color:var(--text);font-size:14px;font-weight:600;cursor:pointer;font-family:inherit;border-radius:8px;display:flex;align-items:center;gap:10px">
+        <span style="font-size:16px">✏️</span><span>Edit dinner</span>
+      </button>
+      <button onclick="hbCtxAction('reuse-dinner','${id}')" style="width:100%;text-align:left;padding:11px 14px;border:none;background:transparent;color:var(--text);font-size:14px;font-weight:600;cursor:pointer;font-family:inherit;border-radius:8px;display:flex;align-items:center;gap:10px">
+        <span style="font-size:16px">↻</span><span>Reuse for another day</span>
+      </button>
+      <div style="height:1px;background:var(--row-border);margin:4px 0"></div>
+      <button onclick="hbCtxAction('delete-dinner','${id}')" style="width:100%;text-align:left;padding:11px 14px;border:none;background:transparent;color:#FF3B30;font-size:14px;font-weight:600;cursor:pointer;font-family:inherit;border-radius:8px;display:flex;align-items:center;gap:10px">
         <span style="font-size:16px">🗑️</span><span>Delete</span>
       </button>`;
   }else{
@@ -11993,6 +12052,22 @@ window.hbCtxAction=function(action,id){
   }else if(action==='delete-reminder'){
     if(!confirm('Delete this reminder?'))return;
     fdel(['reminders',id]).then(()=>notify('Reminder deleted','🗑️')).catch(e=>notify('Delete failed: '+e.message,'⚠️'));
+  }else if(action==='edit-dinner'){
+    // Open Plan Dinner with the existing row's data prefilled. editingId
+    // signals hAddDinner to overwrite the date row rather than duplicate.
+    const d=S.dinners.find(x=>x.id===id);
+    if(!d)return;
+    go('addDinner',{date:d.date,prefillMeal:d.meal,prefillCook:d.cook||'',prefillNotes:d.notes||'',prefillSourceUrl:d.sourceUrl||'',prefillThermomixUrl:d.thermomixUrl||'',editingId:id});
+  }else if(action==='reuse-dinner'){
+    // Open Plan Dinner with the meal prefilled but no date, so the user
+    // picks a new day to assign the meal to. Preserves the recipe URLs so
+    // they get copied to the new row.
+    const d=S.dinners.find(x=>x.id===id);
+    if(!d)return;
+    go('addDinner',{prefillMeal:d.meal,prefillCook:d.cook||'',prefillNotes:d.notes||'',prefillSourceUrl:d.sourceUrl||'',prefillThermomixUrl:d.thermomixUrl||''});
+  }else if(action==='delete-dinner'){
+    if(!confirm('Delete this dinner?'))return;
+    fdel(['dinners',id]).then(()=>notify('Dinner deleted','🗑️')).catch(e=>notify('Delete failed: '+e.message,'⚠️'));
   }
 };
 
