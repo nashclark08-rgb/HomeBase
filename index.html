@@ -8484,8 +8484,13 @@ function sPersonProfile(){
           return da.localeCompare(db);
         });
         if(personReminders.length===0)return '';
-        return `<div class="sh" style="padding:0 16px;margin-bottom:6px">⏰ ${dayLabel}'s Reminders</div>
-        <div class="card" style="margin-bottom:14px">
+        const remKey='profile_rem_'+person.id;
+        if(!S.openSections)S.openSections={};
+        if(typeof S.openSections[remKey]==='undefined')S.openSections[remKey]=true;
+        const remOpen=!!S.openSections[remKey];
+        const head=`<div onclick="toggleSection('${remKey}')" style="margin:0 16px 0;padding:13px 14px;background:var(--card);border:1px solid var(--row-border);border-radius:12px;font-size:14px;font-weight:700;color:var(--text);cursor:pointer;display:flex;align-items:center;justify-content:space-between"><span>⏰ ${dayLabel}'s Reminders · ${personReminders.length}</span><span style="font-size:14px;color:var(--text-secondary)">${remOpen?'▾':'▸'}</span></div>`;
+        if(!remOpen)return head+'<div style="margin-bottom:10px"></div>';
+        return head+`<div class="card" style="margin:0 16px 14px;border-top-left-radius:0;border-top-right-radius:0;border-top:none">
           ${personReminders.map((r,i)=>{
             // Build "Due X" label for ongoing reminders
             let dueLabel='';
@@ -8515,9 +8520,15 @@ function sPersonProfile(){
       ${(()=>{
         const myMeds=(S.medicines||[]).filter(m=>person.isAdult?m.adultUid===person.id:m.childId===person.id);
         const personKey=person.isAdult?'adult:'+person.id:'child:'+person.id;
+        // Medicines section — wrapped in Settings-style collapsible card. Default OPEN.
+        const medsKey='profile_meds_'+person.id;
+        if(!S.openSections)S.openSections={};
+        if(typeof S.openSections[medsKey]==='undefined')S.openSections[medsKey]=true;
+        const medsOpen=!!S.openSections[medsKey];
         if(myMeds.length===0){
-          return `<div class="sh" style="padding:0 16px;margin-bottom:6px">💊 ${name.split(' ')[0]}'s Medicines</div>
-          <div class="card" style="margin-bottom:14px">
+          const head=`<div onclick="toggleSection('${medsKey}')" style="margin:0 16px 0;padding:13px 14px;background:var(--card);border:1px solid var(--row-border);border-radius:12px;font-size:14px;font-weight:700;color:var(--text);cursor:pointer;display:flex;align-items:center;justify-content:space-between"><span>💊 ${name.split(' ')[0]}'s Medicines</span><span style="font-size:14px;color:var(--text-secondary)">${medsOpen?'▾':'▸'}</span></div>`;
+          if(!medsOpen)return head+'<div style="margin-bottom:10px"></div>';
+          return head+`<div class="card" style="margin:0 16px 14px;border-top-left-radius:0;border-top-right-radius:0;border-top:none">
             <div style="padding:18px 16px;text-align:center;color:var(--text-secondary);font-size:13px;line-height:1.5">No medicines yet.<br/><span style="font-size:12px;opacity:0.8">Add one to track doses and log when given.</span></div>
             <button onclick="openAddMedicineFor('${personKey}')" style="width:100%;padding:13px 16px;border-top:1px solid var(--row-border);background:none;border-left:none;border-right:none;border-bottom:none;color:${color};font-size:14px;font-weight:600;cursor:pointer;font-family:inherit;text-align:center">+ Add Medicine for ${name.split(' ')[0]}</button>
           </div>`;
@@ -8551,8 +8562,9 @@ function sPersonProfile(){
             <span style="color:${color};font-size:18px;opacity:0.6">›</span>
           </div>`;
         };
-        let html=`<div class="sh" style="padding:0 16px;margin-bottom:6px">💊 ${name.split(' ')[0]}'s Medicines${active.length?' ('+active.length+' active)':''}</div>
-        <div class="card" style="margin-bottom:14px">`;
+        const head=`<div onclick="toggleSection('${medsKey}')" style="margin:0 16px 0;padding:13px 14px;background:var(--card);border:1px solid var(--row-border);border-radius:12px;font-size:14px;font-weight:700;color:var(--text);cursor:pointer;display:flex;align-items:center;justify-content:space-between"><span>💊 ${name.split(' ')[0]}'s Medicines${active.length?' · '+active.length+' active':''}</span><span style="font-size:14px;color:var(--text-secondary)">${medsOpen?'▾':'▸'}</span></div>`;
+        if(!medsOpen)return head+'<div style="margin-bottom:10px"></div>';
+        let html=head+`<div class="card" style="margin:0 16px 14px;border-top-left-radius:0;border-top-right-radius:0;border-top:none">`;
         if(active.length){html+=active.map((m,i)=>renderMed(m,i,active,false)).join('');}
         if(ended.length){
           // Collapsible past-medicines archive. Collapsed by default so the
@@ -8622,9 +8634,9 @@ function sPersonProfile(){
         const giftsKey='gifts_'+person.id;
         const giftsOpen=!!(S.openSections&&S.openSections[giftsKey]);
         const countLbl=personGifts.length===1?'1 present':personGifts.length+' presents';
-        const head=`<div class="sh" onclick="toggleSection('${giftsKey}')" style="padding:0 16px;margin-bottom:6px;cursor:pointer;display:flex;align-items:center;justify-content:space-between"><span>🎁 Gift Ideas <span style="font-weight:500;color:var(--text-secondary);text-transform:none;letter-spacing:0">· ${countLbl}</span></span><span style="font-size:13px;color:var(--text-secondary)">${giftsOpen?'▾':'▸'}</span></div>`;
-        if(!giftsOpen)return head;
-        return head+`<div class="card" style="margin-bottom:14px">
+        const head=`<div onclick="toggleSection('${giftsKey}')" style="margin:0 16px 0;padding:13px 14px;background:var(--card);border:1px solid var(--row-border);border-radius:12px;font-size:14px;font-weight:700;color:var(--text);cursor:pointer;display:flex;align-items:center;justify-content:space-between"><span>🎁 Gift Ideas <span style="font-weight:500;color:var(--text-secondary);font-size:13px">· ${countLbl}</span></span><span style="font-size:14px;color:var(--text-secondary)">${giftsOpen?'▾':'▸'}</span></div>`;
+        if(!giftsOpen)return head+'<div style="margin-bottom:10px"></div>';
+        return head+`<div class="card" style="margin:0 16px 14px;border-top-left-radius:0;border-top-right-radius:0;border-top:none">
           ${personGifts.length===0?`<div style="padding:20px;text-align:center;color:var(--text-secondary);font-size:14px">No gift ideas yet</div>`:personGifts.map((g,i,arr)=>`<div class="row" style="border-bottom:${i<arr.length-1?'1px solid var(--row-border)':'none'}">
             <div style="flex:1">
               <div style="font-size:14px;font-weight:600;color:var(--text)">${g.label}</div>
