@@ -9155,8 +9155,19 @@ function sAddMedicine(){
     return '<button onclick="setMedFreq(\''+f+'\')" style="padding:8px 14px;border-radius:9px;background:'+(sel?'var(--navy)':'var(--bg)')+';color:'+(sel?'#fff':'var(--text)')+';border:1px solid '+(sel?'var(--navy)':'var(--border)')+';font-size:12px;font-weight:600;cursor:pointer;font-family:inherit">'+medicineFreqLabel(f)+'</button>';
   }).join('');
 
+  // Initialise the parallel "already given today" tick array. Doses already
+  // administered before the medicine was entered into HomeBase get ticked here
+  // and auto-log on save. Earliest tick becomes firstDoseTime (skipping any
+  // doses scheduled before it on day 1).
+  if(!Array.isArray(S.medAlreadyGiven)||S.medAlreadyGiven.length!==S.medTimes.length){
+    S.medAlreadyGiven=S.medTimes.map(()=>false);
+  }
   const timeInputs=(S.medFreq==='prn')?'<div style="font-size:12px;color:var(--text-secondary);font-style:italic;padding:8px 2px">As-needed medicines have no scheduled times — log each dose as you give it.</div>'
-    :S.medTimes.map((t,i)=>'<div style="display:flex;align-items:center;gap:8px;margin-bottom:6px"><span style="font-size:11px;color:var(--text-secondary);font-weight:600;width:24px">'+(i+1)+'.</span><input type="time" value="'+t+'" onchange="setMedTime('+i+',this.value)" style="padding:8px 12px;border-radius:9px;border:1px solid var(--border);background:var(--bg);color:var(--text);font-family:inherit;font-size:14px"/></div>').join('');
+    :('<div style="font-size:11px;color:var(--text-secondary);margin-bottom:8px;line-height:1.5">Tick any doses that have already been given today — those will be logged automatically when you save.</div>'
+      +S.medTimes.map((t,i)=>{
+        const given=!!S.medAlreadyGiven[i];
+        return '<div style="display:flex;align-items:center;gap:10px;margin-bottom:8px"><span style="font-size:11px;color:var(--text-secondary);font-weight:600;width:18px">'+(i+1)+'.</span><input type="time" value="'+t+'" onchange="setMedTime('+i+',this.value)" style="padding:8px 12px;border-radius:9px;border:1px solid var(--border);background:var(--bg);color:var(--text);font-family:inherit;font-size:14px;flex-shrink:0"/><label style="display:flex;align-items:center;gap:6px;cursor:pointer;flex:1;min-width:0"><input type="checkbox" '+(given?'checked':'')+' onchange="setMedAlreadyGiven('+i+',this.checked)" style="width:16px;height:16px;cursor:pointer;flex-shrink:0;accent-color:#34C759"/><span style="font-size:12px;color:'+(given?'#1B8A3C':'var(--text-secondary)')+';font-weight:'+(given?'700':'500')+';line-height:1.3">'+(given?'✓ Already given':'Already given today')+'</span></label></div>';
+      }).join(''));
 
   const formOptions=['tablet','liquid','inhaler','drops','cream','spray','other'];
   const formPicker=formOptions.map(f=>{
@@ -9259,22 +9270,12 @@ function sAddMedicine(){
         summary='<div style="margin-top:14px;padding:10px 12px;background:var(--navy-soft);border-radius:9px;font-size:12px;color:var(--text);line-height:1.5"><strong>Ends '+fmtMedDateLong(endStr)+'</strong>'+(total>0?' · ~'+total+' dose'+(total===1?'':'s')+' total':'')+'</div>';
       }
 
-      // First-dose-time block (only when "Started later today" is ticked)
-      const defaultFirstDose=(S.medTimes&&S.medTimes[0])||'08:00';
-      const firstDoseBlock=S.medStartedLater?'<div style="margin-top:8px;padding-left:26px"><label style="font-size:11px;font-weight:600;color:var(--text-secondary);margin-bottom:4px;display:block">First dose was at</label><input id="medFirstDose" type="time" value="'+(S.medFirstDoseTime||defaultFirstDose)+'" oninput="S.medFirstDoseTime=this.value" style="padding:9px 12px;border-radius:9px;border:1px solid var(--border);background:var(--bg);color:var(--text);font-size:14px;font-family:inherit"/><div style="font-size:11px;color:var(--text-secondary);margin-top:4px;font-style:italic">Earlier doses today will be skipped (not counted as missed)</div></div>':'';
-
       return '<div class="card" style="margin:12px 16px;padding:16px">'
         +'<div style="font-size:11px;font-weight:700;color:var(--text-secondary);letter-spacing:0.5px;margin-bottom:8px">📅 START + COURSE LENGTH</div>'
         +'<label style="font-size:11px;font-weight:600;color:var(--text-secondary);margin-bottom:4px;display:block">Start date</label>'
         +'<input id="medStart" type="date" value="'+S.medStart+'" oninput="S.medStart=this.value;render()" style="width:100%;padding:11px 14px;border-radius:10px;border:1px solid var(--border);background:var(--bg);color:var(--text);font-size:14px;font-family:inherit;margin-bottom:12px"/>'
 
-        +'<label style="display:flex;align-items:center;gap:8px;cursor:pointer;margin-bottom:0">'
-          +'<input type="checkbox" '+(S.medStartedLater?'checked':'')+' onchange="S.medStartedLater=this.checked;if(this.checked&&!S.medFirstDoseTime)S.medFirstDoseTime=\''+defaultFirstDose+'\';render()" style="width:18px;height:18px;cursor:pointer;flex-shrink:0"/>'
-          +'<span style="font-size:13px;color:var(--text);font-weight:600">Started later today (skip earlier doses)</span>'
-        +'</label>'
-        +firstDoseBlock
-
-        +'<div style="margin-top:14px;font-size:11px;font-weight:700;color:var(--text-secondary);letter-spacing:0.5px;margin-bottom:8px">COURSE LENGTH</div>'
+        +'<div style="font-size:11px;font-weight:700;color:var(--text-secondary);letter-spacing:0.5px;margin-bottom:8px">COURSE LENGTH</div>'
         +'<div style="display:flex;flex-wrap:wrap;gap:6px">'+durPills+'</div>'
         +customInput
         +summary
@@ -12803,8 +12804,13 @@ window.handleMedicinePhotoUpload=async function(input){
   }
 };
 window.setMedForm=function(f){S.medForm=f;render();};
-window.setMedFreq=function(f){S.medFreq=f;S.medTimes=smartMedicineTimes(f);render();};
+window.setMedFreq=function(f){S.medFreq=f;S.medTimes=smartMedicineTimes(f);S.medAlreadyGiven=S.medTimes.map(()=>false);render();};
 window.setMedTime=function(i,v){if(!Array.isArray(S.medTimes))S.medTimes=[];S.medTimes[i]=v;};
+window.setMedAlreadyGiven=function(i,v){
+  if(!Array.isArray(S.medAlreadyGiven))S.medAlreadyGiven=[];
+  S.medAlreadyGiven[i]=!!v;
+  render();
+};
 window.hAddMedicine=async function(){
   const err=document.getElementById('medErr');
   const setErr=m=>{if(err)err.textContent=m;};
@@ -12815,7 +12821,19 @@ window.hAddMedicine=async function(){
   const isOngoing=S.medDuration===null;
   if(!isOngoing&&(typeof S.medDuration!=='number'||S.medDuration<1)){setErr('Pick a course length (or "Ongoing").');return;}
   if(S.medFreq!=='prn'&&(!Array.isArray(S.medTimes)||S.medTimes.length===0||!S.medTimes.every(t=>/^\d{1,2}:\d{2}$/.test(t)))){setErr('All dose times must be set.');return;}
-  const firstDoseTime=S.medStartedLater&&S.medFirstDoseTime?S.medFirstDoseTime:null;
+
+  // Derive firstDoseTime + auto-log entries from the "Already given today" ticks.
+  // The earliest ticked time becomes firstDoseTime (filters earlier scheduled
+  // doses out of the day-1 "due" list). Every ticked time auto-logs a dose
+  // entry on save, attributed to the current user at the moment of save.
+  const ticks=Array.isArray(S.medAlreadyGiven)?S.medAlreadyGiven:[];
+  const tickedTimes=[];
+  if(S.medFreq!=='prn'){
+    for(let i=0;i<S.medTimes.length;i++){
+      if(ticks[i])tickedTimes.push(S.medTimes[i]);
+    }
+  }
+  const firstDoseTime=tickedTimes.length?tickedTimes.slice().sort()[0]:null;
 
   let childId=null,adultUid=null;
   if(S.medFor.startsWith('child:'))childId=S.medFor.slice(6);
@@ -12842,14 +12860,30 @@ window.hAddMedicine=async function(){
       await fupd(['medicines',S.medEditId],payload);
       notify('Medicine updated 💊','✓');
     }else{
-      await fadd(['medicines'],payload);
-      notify('Medicine added 💊','✓');
+      const ref=await fadd(['medicines'],payload);
+      // Auto-log any "already given today" ticked doses against this new medicine
+      const todayDateStr=fd(new Date());
+      const nowIso=new Date().toISOString();
+      for(const t of tickedTimes){
+        try{
+          await fadd(['medicineDoses'],{
+            medicineId:ref.id,
+            scheduledFor:todayDateStr+'T'+t,
+            administeredAt:nowIso,
+            administeredBy:S.user?.uid||'',
+            status:'given',
+            notes:'Auto-logged when medicine was added'
+          });
+        }catch(e){console.error('[hAddMedicine] auto-log failed',e);}
+      }
+      notify(tickedTimes.length?('Medicine added · '+tickedTimes.length+' dose'+(tickedTimes.length===1?'':'s')+' logged 💊'):'Medicine added 💊','✓');
     }
     // Clear form state — delay back() so the save toast registers before the
     // destination screen re-render wipes it (toast lives on #screen which
     // gets innerHTML-cleared on every render). 900ms is enough to be seen.
     S.medEditId=null;S.medFor=null;S.medName='';S.medDosage='';S.medForm='tablet';S.medNotes='';
-    S.medFreq='1x';S.medTimes=smartMedicineTimes('1x');S.medStart=fd(new Date());
+    S.medFreq='1x';S.medTimes=smartMedicineTimes('1x');S.medAlreadyGiven=S.medTimes.map(()=>false);
+    S.medStart=fd(new Date());
     S.medDuration=7;S.medStartedLater=false;S.medFirstDoseTime='';S.medDurCustom=false;
     S.medEnd='';S.medOngoing=false;
     setTimeout(back,900);
@@ -12863,6 +12897,7 @@ window.openEditMedicine=function(id){
   S.medName=m.name||'';S.medDosage=m.dosage||'';S.medForm=m.form||'tablet';
   S.medNotes=m.notes||'';S.medFreq=m.frequency||'1x';
   S.medTimes=Array.isArray(m.times)&&m.times.length?m.times.slice():smartMedicineTimes(m.frequency||'1x');
+  S.medAlreadyGiven=S.medTimes.map(()=>false); // editing existing — ticks irrelevant
   S.medStart=m.startDate||fd(new Date());
   // Load new fields with backward-compat: derive durationDays from endDate if missing.
   if(typeof m.durationDays==='number')S.medDuration=m.durationDays;
