@@ -337,6 +337,7 @@ function handleNotifFromUrl(rawUrl){
   // before routing — otherwise we'd flash the Today tab and immediately
   // get redirected to the sign-in screen.
   const route=()=>{
+    const id=qs.get('id')||'';
     if(notif==='medicine'){
       const scheduledFor=qs.get('for')||'';
       try{setTab('today');}catch(e){}
@@ -354,9 +355,40 @@ function handleNotifFromUrl(rawUrl){
           setTimeout(()=>{try{el.style.animation='';}catch(e){}},1800);
         }
       },350);
+    }else if(notif==='event'){
+      // Tap an event-upcoming push → open the event editor if we can
+      // find it, otherwise drop to the events tab so they can scroll.
+      const ev=(S.events||[]).find(e=>e.id===id);
+      if(ev){try{go('addEvent',{editId:id});}catch(e){try{setTab('events');}catch(e2){}}}
+      else{try{setTab('events');}catch(e){}}
+      try{render();}catch(e){}
+    }else if(notif==='reminder'){
+      // Reminders live on the Today screen — just navigate there. If the
+      // reminder still exists they'll see it; if it's been cleared they
+      // land on Today which is the right context anyway.
+      try{setTab('today');}catch(e){}
+      try{render();}catch(e){}
+    }else if(notif==='playdate'){
+      // Playdates render on the events tab (sub-tab if your build has one)
+      try{setTab('events');}catch(e){}
+      try{if(typeof S.evTab!=='undefined')S.evTab='playdates';}catch(e){}
+      try{render();}catch(e){}
+    }else if(notif==='handoff'){
+      // Handoffs are shown on the Today screen alongside other family
+      // activity. Navigate there; the row will be visible if active.
+      try{setTab('today');}catch(e){}
+      try{render();}catch(e){}
+    }else if(notif==='morning'){
+      // Morning summary push: open Today, which shows the same content.
+      try{setTab('today');}catch(e){}
+      try{render();}catch(e){}
+    }else if(notif==='email_pending'){
+      // Email inbox has a dedicated review screen.
+      try{go('inboxReview');}catch(e){try{setTab('today');}catch(e2){}}
+      try{render();}catch(e){}
     }
-    // Other notif types (event, reminder, handoff) fall through to
-    // whatever screen the app boots into — TODO route those too.
+    // Unknown notif types fall through silently — app boots to whatever
+    // screen state was restored from session.
   };
 
   if(S&&S.user&&S.familyId){
