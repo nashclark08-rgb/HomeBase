@@ -2048,7 +2048,20 @@ function sToday(){
 
       <!-- MEDICINES DUE for the day being viewed (above REMINDERS so administration is glanceable) -->
       ${(()=>{
-        const due=getDueMedicineDoses(viewDateStr);
+        const allDue=getDueMedicineDoses(viewDateStr);
+        // Per medicine: keep only the NEXT upcoming dose (earliest un-administered).
+        // Once that's marked Given, the next render surfaces the next dose.
+        // If every dose for the medicine is administered today, drop the medicine
+        // entirely — no need to show a row of green ticks; the profile log has history.
+        const byMed=new Map();
+        for(const d of allDue){
+          if(d.administered)continue;
+          const existing=byMed.get(d.med.id);
+          if(!existing||(d.time||'').localeCompare(existing.time||'')<0){
+            byMed.set(d.med.id,d);
+          }
+        }
+        const due=Array.from(byMed.values()).sort((a,b)=>(a.time||'').localeCompare(b.time||''));
         if(due.length===0)return '';
         const rows=due.map((d,i)=>{
           const recip=medicineRecipient(d.med);
@@ -12664,10 +12677,12 @@ window.hAddMedicine=async function(){
       await fadd(['medicines'],payload);
       notify('Medicine added 💊','✓');
     }
-    // Clear form state and go back
+    // Clear form state — delay back() so the save toast registers before the
+    // destination screen re-render wipes it (toast lives on #screen which
+    // gets innerHTML-cleared on every render). 900ms is enough to be seen.
     S.medEditId=null;S.medFor=null;S.medName='';S.medDosage='';S.medForm='tablet';S.medNotes='';
     S.medFreq='1x';S.medTimes=smartMedicineTimes('1x');S.medStart=fd(new Date());S.medEnd='';S.medOngoing=false;
-    back();
+    setTimeout(back,900);
   }catch(ex){setErr('Save failed: '+(ex.message||ex));}
 };
 window.openEditMedicine=function(id){
