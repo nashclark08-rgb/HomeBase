@@ -9170,6 +9170,31 @@ function sAddMedicine(){
       +'<h1 style="font-size:20px;font-weight:800;color:var(--text);margin:0;flex:1">'+(S.medEditId?'Edit medicine':'Add medicine')+'</h1>'
     +'</div>'
 
+    // AI photo-intake card — snap medicine box / prescription / doctor note,
+    // AI extracts name+dosage+form+strength+frequency+duration+notes and pre-fills
+    // the form below. User reviews + edits + saves. Skip if editing (the data
+    // is already populated; photo would be confusing).
+    +(S.medEditId?'':(()=>{
+      const busy=!!S.medAiBusy;
+      const conf=S.medAiConfidence;
+      const summary=S.medAiSummary;
+      const confColor=conf==='high'?'#34C759':(conf==='medium'?'#FF9500':'#FF3B30');
+      const confLabel=conf==='high'?'✓ Read with high confidence':(conf==='medium'?'⚠️ Read with medium confidence — double-check the fields':'❌ Low confidence — try a clearer photo');
+      return '<div class="card" style="margin:12px 16px;padding:16px;background:linear-gradient(135deg,#AF52DE0F,#5856D60F);border:1px solid #AF52DE30">'
+        +'<div style="display:flex;align-items:center;gap:8px;margin-bottom:6px">'
+          +'<span style="font-size:9px;font-weight:800;color:#5856D6;letter-spacing:0.6px;background:linear-gradient(135deg,#AF52DE,#5856D6);-webkit-background-clip:text;-webkit-text-fill-color:transparent;background-clip:text">✨ AI</span>'
+          +'<span style="font-size:11px;font-weight:700;color:var(--text-secondary);letter-spacing:0.5px">SAVE TYPING</span>'
+        +'</div>'
+        +'<div style="font-size:14px;font-weight:700;color:var(--text);margin-bottom:4px">Snap the medicine label</div>'
+        +'<div style="font-size:12px;color:var(--text-secondary);line-height:1.5;margin-bottom:12px">Photo of the box, bottle label, or doctor\'s note — AI reads it and fills the form below. You confirm and save.</div>'
+        +(busy
+          ? '<button disabled style="width:100%;padding:12px;border-radius:10px;background:#5856D6;border:none;color:#fff;font-size:13px;font-weight:700;font-family:inherit;opacity:0.7"><span style="display:inline-block;width:14px;height:14px;border:2px solid rgba(255,255,255,0.4);border-top-color:#fff;border-radius:50%;animation:spin 0.7s linear infinite;vertical-align:middle;margin-right:8px"></span>Reading label…</button>'
+          : '<button onclick="document.getElementById(\'medPhotoInput\').click()" style="width:100%;padding:12px;border-radius:10px;background:linear-gradient(135deg,#AF52DE,#5856D6);border:none;color:#fff;font-size:13px;font-weight:700;cursor:pointer;font-family:inherit;box-shadow:0 2px 8px rgba(88,86,214,0.25)">📷 Take a photo</button>')
+        +'<input id="medPhotoInput" type="file" accept="image/*" capture="environment" onchange="handleMedicinePhotoUpload(this)" style="display:none"/>'
+        +(conf&&!busy?'<div style="margin-top:10px;padding:8px 10px;background:'+confColor+'15;border-left:3px solid '+confColor+';border-radius:6px"><div style="font-size:11px;font-weight:700;color:'+confColor+'">'+confLabel+'</div>'+(summary?'<div style="font-size:11px;color:var(--text-secondary);margin-top:3px;line-height:1.4">'+String(summary).replace(/</g,'&lt;')+'</div>':'')+'</div>':'')
+      +'</div>';
+    })())
+
     +'<div class="card" style="margin:12px 16px;padding:16px">'
       +'<div style="font-size:11px;font-weight:700;color:var(--text-secondary);letter-spacing:0.5px;margin-bottom:8px">💊 WHO IS THIS FOR?</div>'
       +'<div style="display:flex;gap:6px;overflow-x:auto;padding-bottom:4px;-webkit-overflow-scrolling:touch">'+personPicker+'</div>'
@@ -12728,6 +12753,54 @@ window.setMedDuration=function(v){
   if(v==='custom'){S.medDurCustom=true;if(typeof S.medDuration!=='number')S.medDuration=7;}
   else{S.medDurCustom=false;S.medDuration=v;}
   render();
+};
+// AI photo intake — uploads the selected image to parseMedicineLabelWithAI
+// Cloud Function, pre-fills the add-medicine form with the extracted fields.
+// Reuses the existing imageFileToBase64 helper (resize → JPEG → base64).
+window.handleMedicinePhotoUpload=async function(input){
+  if(!input||!input.files||!input.files[0])return;
+  const file=input.files[0];
+  input.value=''; // allow re-select of the same file
+  if(typeof httpsCallable==='undefined'||!functions){
+    notify('Cloud functions not loaded — refresh the app','⚠️');return;
+  }
+  S.medAiBusy=true;
+  S.medAiConfidence=null;
+  S.medAiSummary=null;
+  render();
+  try{
+    const img=await imageFileToBase64(file);
+    const callable=httpsCallable(functions,'parseMedicineLabelWithAI');
+    const resp=await callable({images:[{base64:img.base64,mediaType:img.mediaType}],familyId:S.familyId});
+    const data=resp&&resp.data?resp.data:{};
+    // Pre-fill form fields from AI extraction. Only set if AI returned a value
+    // (so partially-readable labels don't blank out things the user already typed).
+    if(data.name)S.medName=data.name;
+    if(data.dosage)S.medDosage=data.dosage;
+    if(data.form)S.medForm=data.form;
+    if(data.notes)S.medNotes=data.notes;
+    if(data.frequency){
+      S.medFreq=data.frequency;
+      S.medTimes=smartMedicineTimes(data.frequency);
+    }
+    if(typeof data.durationDays==='number'&&data.durationDays>0){
+      S.medDuration=data.durationDays;
+      S.medDurCustom=[3,5,7,10,14].indexOf(data.durationDays)===-1;
+    }
+    S.medAiConfidence=data.confidence||'medium';
+    S.medAiSummary=data.summary||'';
+    // PostHog: client-side event so we can correlate UI usage with the server-side count
+    try{if(window.posthog)posthog.capture('ai.medicine_label_used',{confidence:S.medAiConfidence,gotName:!!data.name,gotDuration:!!(data.durationDays&&data.durationDays>0)});}catch(e){}
+    notify(data.name?'✨ Read: '+data.name:'✨ Form pre-filled — review and save','✓');
+  }catch(ex){
+    console.error('[handleMedicinePhotoUpload] failed',ex);
+    S.medAiConfidence='low';
+    S.medAiSummary='AI could not read the label. Fill the form manually below.';
+    notify('Photo could not be read — fill manually','⚠️');
+  }finally{
+    S.medAiBusy=false;
+    render();
+  }
 };
 window.setMedForm=function(f){S.medForm=f;render();};
 window.setMedFreq=function(f){S.medFreq=f;S.medTimes=smartMedicineTimes(f);render();};
