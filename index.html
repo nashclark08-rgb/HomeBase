@@ -2118,7 +2118,6 @@ function sToday(){
               +'</div>'
               +(d.administered?'<div style="font-size:11px;color:#1B8A3C;font-weight:600;margin-top:3px">by '+giverName+'</div>':'')
             +'</div>'
-            +'<button onclick="event.stopPropagation();openEditMedicine(\''+d.med.id+'\')" aria-label="Edit medicine" title="Edit" style="width:30px;height:30px;border-radius:15px;background:var(--bg);border:1px solid var(--border);color:'+tcol+';font-size:13px;cursor:pointer;font-family:inherit;flex-shrink:0;display:flex;align-items:center;justify-content:center;margin-right:6px">✏️</button>'
             +actionBtn
           +'</div>';
         }).join('');
@@ -9165,10 +9164,19 @@ function sAddMedicine(){
   }
   const timeInputs=(S.medFreq==='prn')?'<div style="font-size:12px;color:var(--text-secondary);font-style:italic;padding:8px 2px">As-needed medicines have no scheduled times — log each dose as you give it.</div>'
     :('<div style="font-size:11px;color:var(--text-secondary);margin-bottom:8px;line-height:1.5">Tick any doses that have already been given today — those will be logged automatically when you save.</div>'
-      +S.medTimes.map((t,i)=>{
-        const given=!!S.medAlreadyGiven[i];
-        return '<div style="display:flex;align-items:center;gap:10px;margin-bottom:8px"><span style="font-size:11px;color:var(--text-secondary);font-weight:600;width:18px">'+(i+1)+'.</span><input type="time" value="'+t+'" onchange="setMedTime('+i+',this.value)" style="padding:8px 12px;border-radius:9px;border:1px solid var(--border);background:var(--bg);color:var(--text);font-family:inherit;font-size:14px;flex-shrink:0"/><label style="display:flex;align-items:center;gap:6px;cursor:pointer;flex:1;min-width:0"><input type="checkbox" '+(given?'checked':'')+' onchange="setMedAlreadyGiven('+i+',this.checked)" style="width:16px;height:16px;cursor:pointer;flex-shrink:0;accent-color:#34C759"/><span style="font-size:12px;color:'+(given?'#1B8A3C':'var(--text-secondary)')+';font-weight:'+(given?'700':'500')+';line-height:1.3">'+(given?'✓ Already given':'Already given today')+'</span></label></div>';
-      }).join(''));
+      +(()=>{
+        // Pre-compute the earliest ticked time so we can label it as the
+        // "First dose given" — gives Nash the visual hint that the system
+        // knows where the script "starts" for today.
+        const tickedNow=S.medTimes.filter((_,i)=>S.medAlreadyGiven[i]);
+        const firstTicked=tickedNow.length?tickedNow.slice().sort()[0]:null;
+        return S.medTimes.map((t,i)=>{
+          const given=!!S.medAlreadyGiven[i];
+          const isFirst=given&&t===firstTicked;
+          const lbl=given?(isFirst?'✓ First dose given':'✓ Already given'):'Already given today';
+          return '<div style="display:flex;align-items:center;gap:10px;margin-bottom:8px"><span style="font-size:11px;color:var(--text-secondary);font-weight:600;width:18px">'+(i+1)+'.</span><input type="time" value="'+t+'" onchange="setMedTime('+i+',this.value)" style="padding:8px 12px;border-radius:9px;border:1px solid var(--border);background:var(--bg);color:var(--text);font-family:inherit;font-size:14px;flex-shrink:0"/><label style="display:flex;align-items:center;gap:6px;cursor:pointer;flex:1;min-width:0"><input type="checkbox" '+(given?'checked':'')+' onchange="setMedAlreadyGiven('+i+',this.checked)" style="width:16px;height:16px;cursor:pointer;flex-shrink:0;accent-color:#34C759"/><span style="font-size:12px;color:'+(given?'#1B8A3C':'var(--text-secondary)')+';font-weight:'+(given?'700':'500')+';line-height:1.3">'+lbl+'</span></label></div>';
+        }).join('');
+      })());
 
   const formOptions=['tablet','liquid','inhaler','drops','cream','spray','other'];
   const formPicker=formOptions.map(f=>{
@@ -12857,14 +12865,35 @@ window.hAddMedicine=async function(){
     createdBy:S.user?.uid||''
   };
   try{
+    const todayDateStr=fd(new Date());
+    const nowIso=new Date().toISOString();
     if(S.medEditId){
       await fupd(['medicines',S.medEditId],payload);
-      notify('Medicine updated 💊','✓');
+      // Auto-log ticked doses on EDIT too (Nash's bug: editing to tick a dose
+      // didn't log it, so Today still showed it as due). Dedup against any
+      // existing dose entries for the same medicineId+scheduledFor so the
+      // user can re-edit the same medicine without creating duplicates.
+      let loggedCount=0;
+      for(const t of tickedTimes){
+        const scheduledFor=todayDateStr+'T'+t;
+        const existing=(S.medicineDoses||[]).find(d=>d.medicineId===S.medEditId&&d.scheduledFor===scheduledFor);
+        if(existing)continue;
+        try{
+          await fadd(['medicineDoses'],{
+            medicineId:S.medEditId,
+            scheduledFor,
+            administeredAt:nowIso,
+            administeredBy:S.user?.uid||'',
+            status:'given',
+            notes:'Auto-logged when medicine was edited'
+          });
+          loggedCount++;
+        }catch(e){console.error('[hAddMedicine] edit-auto-log failed',e);}
+      }
+      notify(loggedCount?('Medicine updated · '+loggedCount+' dose'+(loggedCount===1?'':'s')+' logged 💊'):'Medicine updated 💊','✓');
     }else{
       const ref=await fadd(['medicines'],payload);
       // Auto-log any "already given today" ticked doses against this new medicine
-      const todayDateStr=fd(new Date());
-      const nowIso=new Date().toISOString();
       for(const t of tickedTimes){
         try{
           await fadd(['medicineDoses'],{
@@ -12879,6 +12908,10 @@ window.hAddMedicine=async function(){
       }
       notify(tickedTimes.length?('Medicine added · '+tickedTimes.length+' dose'+(tickedTimes.length===1?'':'s')+' logged 💊'):'Medicine added 💊','✓');
     }
+    // Clear the form-dirty flag IMMEDIATELY so the back()→guardLeaveScreen()
+    // path doesn't trip the "You have unsaved changes" browser confirm dialog.
+    // We just saved successfully; whatever's in the inputs is now persisted.
+    S._formTouched=false;
     // Clear form state — delay back() so the save toast registers before the
     // destination screen re-render wipes it (toast lives on #screen which
     // gets innerHTML-cleared on every render). 900ms is enough to be seen.
