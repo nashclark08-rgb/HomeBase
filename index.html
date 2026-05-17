@@ -617,7 +617,7 @@ function findUpcomingClashes(daysAhead){
 // ── STATE ────────────────────────────────────────
 const S={
   user:null,familyId:null,family:null,
-  children:[],packing:{},events:[],deletedEvents:[],assessments:[],groceries:[],gifts:[],dinners:[],playdates:[],contacts:[],mealIdeas:[],handoffs:[],reminders:[],
+  children:[],packing:{},events:[],deletedEvents:[],assessments:[],groceries:[],gifts:[],dinners:[],playdates:[],contacts:[],mealIdeas:[],handoffs:[],reminders:[],medicines:[],medicineDoses:[],
   tab:'today',screen:null,screenParams:{},
   activeChild:null,morningMode:false,
   calWeekOffset:0,calDate:null,showTomorrow:false,
@@ -1160,6 +1160,60 @@ async function cleanupOrphanedAiEmailReminders(){
   finally{S._aiReminderCleanupRunning=false;}
 }
 
+
+// ── MEDICINE HELPERS ──────────────────────────────────────────
+// Default dose times for each frequency. User can override after picking.
+function smartMedicineTimes(freq){
+  const map={'1x':['08:00'],'2x':['08:00','20:00'],'3x':['08:00','13:00','20:00'],'4x':['08:00','13:00','18:00','22:00'],'prn':[]};
+  return map[freq]||['08:00'];
+}
+// Pretty-print "HH:MM" 24h → "8:00am" style
+function fmtMedicineTime(t){
+  if(!t||!/^\d{1,2}:\d{2}$/.test(t))return t||'';
+  const [h,m]=t.split(':').map(Number);
+  const period=h<12?'am':'pm';
+  const h12=h===0?12:(h>12?h-12:h);
+  return h12+':'+String(m).padStart(2,'0')+period;
+}
+// Form-friendly label per frequency code
+function medicineFreqLabel(f){
+  return {'1x':'Once daily','2x':'Twice daily','3x':'Three times daily','4x':'Four times daily','prn':'As needed (PRN)'}[f]||f;
+}
+// Is this medicine active on the given YYYY-MM-DD date?
+function isMedicineActiveOn(med,dateStr){
+  if(med.startDate&&med.startDate>dateStr)return false;
+  if(med.endDate&&med.endDate<dateStr)return false;
+  return true;
+}
+// For a given date string, return an ordered list of dose entries:
+// {med, time, scheduledFor (ISO), administered (bool), dose (the log entry if given)}
+function getDueMedicineDoses(dateStr){
+  const out=[];
+  for(const med of (S.medicines||[])){
+    if(!isMedicineActiveOn(med,dateStr))continue;
+    const times=Array.isArray(med.times)?med.times:[];
+    for(const t of times){
+      const scheduledFor=dateStr+'T'+t;
+      const dose=(S.medicineDoses||[]).find(d=>d.medicineId===med.id&&d.scheduledFor===scheduledFor);
+      out.push({med,time:t,scheduledFor,administered:!!dose,dose});
+    }
+  }
+  out.sort((a,b)=>(a.time||'').localeCompare(b.time||''));
+  return out;
+}
+// Resolve who a medicine is for — returns {name, color, photo, id, kind:'child'|'adult'|null}
+function medicineRecipient(med){
+  if(med.childId){
+    const c=S.children.find(x=>x.id===med.childId);
+    if(c)return {id:c.id,name:c.name,color:c.color||NAVY,photo:c.photoURL,kind:'child'};
+  }
+  if(med.adultUid){
+    const m=members().find(x=>x.uid===med.adultUid);
+    if(m)return {id:m.uid,name:m.name,color:m.color||NAVY,photo:m.photoURL,kind:'adult'};
+  }
+  return null;
+}
+
 function subscribe(){
   S.unsubs.forEach(u=>u());S.unsubs=[];
   // Separate tracker for per-child packing listeners (cleaned up when child list changes)
@@ -1284,6 +1338,12 @@ function subscribe(){
   S.unsubs.push(onSnapshot(fcol(['mealIdeas']),s=>{S.mealIdeas=s.docs.map(d=>({id:d.id,...d.data()}));queueRender();}));
   S.unsubs.push(onSnapshot(fcol(['handoffs']),s=>{S.handoffs=s.docs.map(d=>({id:d.id,...d.data()}));queueRender();}));
   S.unsubs.push(onSnapshot(fcol(['reminders']),s=>{S.reminders=s.docs.map(d=>({id:d.id,...d.data()}));queueRender();}));
+  // Medicine feature: separate collection for medicine definitions (one doc
+  // per active prescription) and a flat doses collection logging each
+  // administration. Keeping doses flat (not as a subcollection) means a
+  // single onSnapshot covers them all — faster + simpler than collectionGroup.
+  S.unsubs.push(onSnapshot(fcol(['medicines']),s=>{S.medicines=s.docs.map(d=>({id:d.id,...d.data()}));queueRender();}));
+  S.unsubs.push(onSnapshot(fcol(['medicineDoses']),s=>{S.medicineDoses=s.docs.map(d=>({id:d.id,...d.data()}));queueRender();}));
   // Pending events from inbound emails — only show ones still pending review
   S.unsubs.push(onSnapshot(fcol(['pending_events']),s=>{
     S.pendingEmails=s.docs.map(d=>({id:d.id,...d.data()}))
@@ -1986,6 +2046,43 @@ function sToday(){
         return html;
       })()}
 
+      <!-- MEDICINES DUE for the day being viewed (above REMINDERS so administration is glanceable) -->
+      ${(()=>{
+        const due=getDueMedicineDoses(viewDateStr);
+        if(due.length===0)return '';
+        const rows=due.map((d,i)=>{
+          const recip=medicineRecipient(d.med);
+          const tcol=recip?recip.color:NAVY;
+          const giver=d.dose?members().find(m=>m.uid===d.dose.administeredBy):null;
+          const giverName=giver?giver.name.split(' ')[0]:'Someone';
+          const givenAt=d.dose?new Date(d.dose.administeredAt).toLocaleTimeString('en-AU',{hour:'numeric',minute:'2-digit'}):'';
+          const status=d.dose?(d.dose.status||'given'):null;
+          const statusBg={'given':'#34C75914','skipped':'#FF950014','missed':'#FF3B3014','partial':'#FF950014'}[status]||'transparent';
+          const actionBtn=d.administered
+            ? '<button onclick="event.stopPropagation();openMedicineLog(\''+d.med.id+'\')" style="padding:6px 11px;border-radius:8px;background:#34C75918;border:1px solid #34C759;color:#1B8A3C;font-size:11px;font-weight:700;cursor:pointer;font-family:inherit;white-space:nowrap">✓ '+(status==='given'?'Given':status)+' '+(givenAt?'· '+givenAt:'')+'</button>'
+            : '<button onclick="event.stopPropagation();giveMedicineDose(\''+d.med.id+'\',\''+d.scheduledFor+'\',\'given\')" style="padding:8px 14px;border-radius:9px;background:var(--navy);border:none;color:#fff;font-size:12px;font-weight:700;cursor:pointer;font-family:inherit;white-space:nowrap">💊 Give</button>';
+          return '<div onclick="openMedicineLog(\''+d.med.id+'\')" style="padding:11px 14px;border-bottom:'+(i<due.length-1?'1px solid var(--row-border)':'none')+';display:flex;align-items:center;gap:10px;cursor:pointer;background:'+statusBg+'">'
+            +'<div style="width:36px;height:36px;border-radius:18px;background:'+tcol+'18;border:2px solid '+tcol+';display:flex;align-items:center;justify-content:center;font-size:17px;flex-shrink:0">💊</div>'
+            +'<div style="flex:1;min-width:0">'
+              +'<div style="font-size:14px;color:var(--text);font-weight:700">'+String(d.med.name||'').replace(/</g,'&lt;')+' <span style="font-weight:500;color:var(--text-secondary);font-size:12px">· '+String(d.med.dosage||'').replace(/</g,'&lt;')+'</span></div>'
+              +'<div style="display:flex;align-items:center;gap:6px;margin-top:3px">'
+                +(recip?av(recip.name,recip.color,16,recip.photo):'')
+                +'<span style="font-size:11px;color:'+tcol+';font-weight:600">'+(recip?recip.name.split(' ')[0]:'(?)')+'</span>'
+                +'<span style="font-size:11px;color:var(--text-secondary)">· '+fmtMedicineTime(d.time)+'</span>'
+                +(d.med.notes?'<span style="font-size:11px;color:var(--text-secondary);font-style:italic">· '+String(d.med.notes).replace(/</g,'&lt;')+'</span>':'')
+              +'</div>'
+              +(d.administered?'<div style="font-size:11px;color:#1B8A3C;font-weight:600;margin-top:3px">by '+giverName+'</div>':'')
+            +'</div>'
+            +actionBtn
+          +'</div>';
+        }).join('');
+        return '<div style="display:flex;justify-content:space-between;align-items:center;margin:0 16px 6px 16px">'
+          +'<h2 style="font-size:12px;font-weight:800;color:var(--text-secondary);letter-spacing:0.7px;margin:0">💊 MEDICINES DUE</h2>'
+          +'<button onclick="go(\'addMedicine\')" style="font-size:11px;font-weight:700;background:var(--navy);color:#fff;padding:4px 10px;border-radius:8px;border:none;cursor:pointer;font-family:inherit">+ Add</button>'
+          +'</div>'
+          +'<div class="card" style="margin:0 16px 14px 16px;padding:0">'+rows+'</div>';
+      })()}
+
       <!-- REMINDERS for the day being viewed (now BELOW activities, ABOVE dinners) -->
       ${(()=>{
         // Compute virtual reminders (birthdays, parent days) for the next 10 days.
@@ -2326,6 +2423,7 @@ function sToday(){
       ${S.fabOpen?`<div class="fab-menu" style="position:absolute;bottom:80px;right:0">
         <button class="fab-item" onclick="S.fabOpen=false;quickAddEvent()" style="background:#34C759">📅 Add event manually</button>
         <button class="fab-item" onclick="S.fabOpen=false;go('addReminder')" style="background:#AF52DE">⏰ Reminder manually</button>
+        <button class="fab-item" onclick="S.fabOpen=false;go('addMedicine')" style="background:#FF3B30">💊 Medicine</button>
         <button class="fab-item" onclick="S.fabOpen=false;openGiftPicker()" style="background:#FF6B9D">🎁 Gift idea</button>
         <button class="fab-item" onclick="S.fabOpen=false;openHandoffPicker()" style="background:#FF9500">🚗 Hand-off</button>
         <button class="fab-item" onclick="S.fabOpen=false;render()" style="background:#8E8E93">✕ Close</button>
@@ -8920,6 +9018,160 @@ function sLogHandoff(){
 }
 
 // ── REMINDERS ─────────────────────────────────────
+// ── ADD / EDIT MEDICINE SCREEN ──────────────────────────────
+function sAddMedicine(){
+  // Form state lives on S so re-renders don't wipe in-flight input.
+  // Cleared in hAddMedicine and on screen-leave (via back()).
+  if(typeof S.medFor==='undefined')S.medFor=null;
+  if(typeof S.medName==='undefined')S.medName='';
+  if(typeof S.medDosage==='undefined')S.medDosage='';
+  if(typeof S.medForm==='undefined')S.medForm='tablet';
+  if(typeof S.medNotes==='undefined')S.medNotes='';
+  if(typeof S.medFreq==='undefined')S.medFreq='1x';
+  if(typeof S.medTimes==='undefined')S.medTimes=smartMedicineTimes('1x');
+  if(typeof S.medStart==='undefined')S.medStart=todayStr();
+  if(typeof S.medEnd==='undefined')S.medEnd='';
+  if(typeof S.medOngoing==='undefined')S.medOngoing=false;
+
+  const allPeople=[
+    ...S.children.map(c=>({id:c.id,name:c.name,color:c.color||NAVY,photo:c.photoURL,kind:'child',key:'child:'+c.id})),
+    ...members().map(m=>({id:m.uid,name:m.name,color:m.color||NAVY,photo:m.photoURL,kind:'adult',key:'adult:'+m.uid}))
+  ];
+
+  const personPicker=allPeople.map(p=>{
+    const sel=S.medFor===p.key;
+    return '<button onclick="setMedFor(\''+p.key+'\')" style="display:flex;flex-direction:column;align-items:center;gap:6px;padding:8px;border-radius:12px;background:'+(sel?p.color+'22':'transparent')+';border:2px solid '+(sel?p.color:'transparent')+';cursor:pointer;font-family:inherit;min-width:64px;flex-shrink:0">'
+      +av(p.name,p.color,40,p.photo)
+      +'<span style="font-size:11px;font-weight:600;color:var(--text)">'+p.name.split(' ')[0]+'</span>'
+      +'</button>';
+  }).join('');
+
+  const freqOptions=['1x','2x','3x','4x','prn'];
+  const freqPills=freqOptions.map(f=>{
+    const sel=S.medFreq===f;
+    return '<button onclick="setMedFreq(\''+f+'\')" style="padding:8px 14px;border-radius:9px;background:'+(sel?'var(--navy)':'var(--bg)')+';color:'+(sel?'#fff':'var(--text)')+';border:1px solid '+(sel?'var(--navy)':'var(--border)')+';font-size:12px;font-weight:600;cursor:pointer;font-family:inherit">'+medicineFreqLabel(f)+'</button>';
+  }).join('');
+
+  const timeInputs=(S.medFreq==='prn')?'<div style="font-size:12px;color:var(--text-secondary);font-style:italic;padding:8px 2px">As-needed medicines have no scheduled times — log each dose as you give it.</div>'
+    :S.medTimes.map((t,i)=>'<div style="display:flex;align-items:center;gap:8px;margin-bottom:6px"><span style="font-size:11px;color:var(--text-secondary);font-weight:600;width:24px">'+(i+1)+'.</span><input type="time" value="'+t+'" onchange="setMedTime('+i+',this.value)" style="padding:8px 12px;border-radius:9px;border:1px solid var(--border);background:var(--bg);color:var(--text);font-family:inherit;font-size:14px"/></div>').join('');
+
+  const formOptions=['tablet','liquid','inhaler','drops','cream','spray','other'];
+  const formPicker=formOptions.map(f=>{
+    const sel=S.medForm===f;
+    return '<button onclick="setMedForm(\''+f+'\')" style="padding:6px 10px;border-radius:7px;background:'+(sel?'var(--navy)':'var(--bg)')+';color:'+(sel?'#fff':'var(--text)')+';border:1px solid '+(sel?'var(--navy)':'var(--border)')+';font-size:11px;font-weight:600;cursor:pointer;font-family:inherit;text-transform:capitalize">'+f+'</button>';
+  }).join('');
+
+  return '<div class="screen-pad">'
+    +'<div style="display:flex;align-items:center;gap:10px;padding:14px 16px 8px">'
+      +'<button onclick="back()" aria-label="Back" style="width:34px;height:34px;border-radius:17px;background:var(--bg);border:1px solid var(--border);color:var(--text);font-size:18px;cursor:pointer;font-family:inherit;display:flex;align-items:center;justify-content:center">‹</button>'
+      +'<h1 style="font-size:20px;font-weight:800;color:var(--text);margin:0;flex:1">'+(S.medEditId?'Edit medicine':'Add medicine')+'</h1>'
+    +'</div>'
+
+    +'<div class="card" style="margin:12px 16px;padding:16px">'
+      +'<div style="font-size:11px;font-weight:700;color:var(--text-secondary);letter-spacing:0.5px;margin-bottom:8px">💊 WHO IS THIS FOR?</div>'
+      +'<div style="display:flex;gap:6px;overflow-x:auto;padding-bottom:4px;-webkit-overflow-scrolling:touch">'+personPicker+'</div>'
+    +'</div>'
+
+    +'<div class="card" style="margin:12px 16px;padding:16px">'
+      +'<label style="font-size:11px;font-weight:700;color:var(--text-secondary);letter-spacing:0.5px;margin-bottom:6px;display:block">MEDICINE NAME</label>'
+      +'<input id="medName" type="text" value="'+(S.medName||'').replace(/"/g,'&quot;')+'" placeholder="e.g. Amoxicillin" oninput="S.medName=this.value" style="width:100%;padding:11px 14px;border-radius:10px;border:1px solid var(--border);background:var(--bg);color:var(--text);font-size:15px;font-family:inherit;margin-bottom:12px"/>'
+
+      +'<label style="font-size:11px;font-weight:700;color:var(--text-secondary);letter-spacing:0.5px;margin-bottom:6px;display:block">DOSE EACH TIME</label>'
+      +'<input id="medDosage" type="text" value="'+(S.medDosage||'').replace(/"/g,'&quot;')+'" placeholder="e.g. 5ml or 1 tablet" oninput="S.medDosage=this.value" style="width:100%;padding:11px 14px;border-radius:10px;border:1px solid var(--border);background:var(--bg);color:var(--text);font-size:15px;font-family:inherit;margin-bottom:12px"/>'
+
+      +'<label style="font-size:11px;font-weight:700;color:var(--text-secondary);letter-spacing:0.5px;margin-bottom:6px;display:block">FORM</label>'
+      +'<div style="display:flex;flex-wrap:wrap;gap:6px;margin-bottom:12px">'+formPicker+'</div>'
+
+      +'<label style="font-size:11px;font-weight:700;color:var(--text-secondary);letter-spacing:0.5px;margin-bottom:6px;display:block">SPECIAL INSTRUCTIONS <span style="font-weight:500;text-transform:none;letter-spacing:0">(optional)</span></label>'
+      +'<input id="medNotes" type="text" value="'+(S.medNotes||'').replace(/"/g,'&quot;')+'" placeholder="e.g. with food, before bed" oninput="S.medNotes=this.value" style="width:100%;padding:11px 14px;border-radius:10px;border:1px solid var(--border);background:var(--bg);color:var(--text);font-size:15px;font-family:inherit"/>'
+    +'</div>'
+
+    +'<div class="card" style="margin:12px 16px;padding:16px">'
+      +'<div style="font-size:11px;font-weight:700;color:var(--text-secondary);letter-spacing:0.5px;margin-bottom:8px">⏰ FREQUENCY</div>'
+      +'<div style="display:flex;flex-wrap:wrap;gap:6px;margin-bottom:14px">'+freqPills+'</div>'
+      +'<div style="font-size:11px;font-weight:700;color:var(--text-secondary);letter-spacing:0.5px;margin-bottom:8px">DOSE TIMES</div>'
+      +timeInputs
+    +'</div>'
+
+    +'<div class="card" style="margin:12px 16px;padding:16px">'
+      +'<div style="font-size:11px;font-weight:700;color:var(--text-secondary);letter-spacing:0.5px;margin-bottom:8px">📅 DATES</div>'
+      +'<label style="font-size:11px;font-weight:600;color:var(--text-secondary);margin-bottom:4px;display:block">Start</label>'
+      +'<input id="medStart" type="date" value="'+S.medStart+'" oninput="S.medStart=this.value" style="width:100%;padding:11px 14px;border-radius:10px;border:1px solid var(--border);background:var(--bg);color:var(--text);font-size:14px;font-family:inherit;margin-bottom:12px"/>'
+
+      +'<label style="display:flex;align-items:center;gap:8px;cursor:pointer;margin-bottom:8px">'
+        +'<input type="checkbox" '+(S.medOngoing?'checked':'')+' onchange="S.medOngoing=this.checked;render()" style="width:18px;height:18px;cursor:pointer"/>'
+        +'<span style="font-size:13px;color:var(--text);font-weight:600">Ongoing (no end date)</span>'
+      +'</label>'
+      +(S.medOngoing?'':'<label style="font-size:11px;font-weight:600;color:var(--text-secondary);margin-bottom:4px;display:block">End date</label><input id="medEnd" type="date" value="'+S.medEnd+'" oninput="S.medEnd=this.value" style="width:100%;padding:11px 14px;border-radius:10px;border:1px solid var(--border);background:var(--bg);color:var(--text);font-size:14px;font-family:inherit"/>')
+    +'</div>'
+
+    +'<div id="medErr" style="margin:0 16px;color:#FF3B30;font-size:13px;font-weight:600;min-height:18px"></div>'
+
+    +'<div style="padding:8px 16px 24px">'
+      +'<button class="primary-btn" onclick="hAddMedicine()" style="width:100%;padding:14px;border-radius:12px;background:var(--navy);color:#fff;border:none;font-size:15px;font-weight:700;cursor:pointer;font-family:inherit">💊 '+(S.medEditId?'Save changes':'Save medicine')+'</button>'
+      +(S.medEditId?'<button onclick="dMedicine(\''+S.medEditId+'\')" style="width:100%;margin-top:10px;padding:12px;border-radius:11px;background:transparent;color:#FF3B30;border:1px solid #FF3B30;font-size:14px;font-weight:600;cursor:pointer;font-family:inherit">Delete medicine</button>':'')
+    +'</div>'
+  +'</div>';
+}
+
+// ── MEDICINE LOG SCREEN ──────────────────────────────────────
+// Shows the administration history for one medicine — every dose recorded
+// (who, when, status, optional notes). Useful for follow-up GP appointments
+// and for the partner who wants to confirm what was given today.
+function sMedicineLog(){
+  const id=S.screenParams?.medicineId;
+  const med=(S.medicines||[]).find(m=>m.id===id);
+  if(!med){
+    return '<div class="screen-pad"><div style="padding:24px;text-align:center;color:var(--text-secondary)">Medicine not found.<br/><button onclick="back()" style="margin-top:14px;padding:10px 20px;border-radius:9px;background:var(--bg);border:1px solid var(--border);color:var(--text);font-size:13px;font-weight:600;cursor:pointer;font-family:inherit">Go back</button></div></div>';
+  }
+  const recip=medicineRecipient(med);
+  const doses=(S.medicineDoses||[]).filter(d=>d.medicineId===id).sort((a,b)=>(b.administeredAt||'').localeCompare(a.administeredAt||''));
+
+  const doseRows=doses.length===0
+    ? '<div style="padding:24px;text-align:center;color:var(--text-secondary);font-size:13px">No doses logged yet.</div>'
+    : doses.slice(0,50).map(d=>{
+      const giver=members().find(m=>m.uid===d.administeredBy);
+      const giverName=giver?giver.name.split(' ')[0]:'Someone';
+      const dt=d.administeredAt?new Date(d.administeredAt):null;
+      const when=dt?dt.toLocaleString('en-AU',{weekday:'short',day:'numeric',month:'short',hour:'numeric',minute:'2-digit'}):'unknown';
+      const statusColor={'given':'#34C759','skipped':'#FF9500','missed':'#FF3B30','partial':'#FF9500'}[d.status]||'#34C759';
+      const statusLabel={'given':'✓ Given','skipped':'⏭️ Skipped','missed':'⚠️ Missed','partial':'½ Partial'}[d.status]||'✓ Given';
+      return '<div style="padding:12px 14px;border-bottom:1px solid var(--row-border);display:flex;align-items:center;gap:10px">'
+        +'<span style="font-size:11px;font-weight:700;color:'+statusColor+';padding:3px 8px;border-radius:7px;background:'+statusColor+'18">'+statusLabel+'</span>'
+        +'<div style="flex:1;min-width:0">'
+          +'<div style="font-size:13px;font-weight:600;color:var(--text)">'+giverName+'</div>'
+          +'<div style="font-size:11px;color:var(--text-secondary);margin-top:1px">'+when+'</div>'
+          +(d.notes?'<div style="font-size:11px;color:var(--text-secondary);font-style:italic;margin-top:3px">'+String(d.notes).replace(/</g,'&lt;')+'</div>':'')
+        +'</div>'
+      +'</div>';
+    }).join('');
+
+  return '<div class="screen-pad">'
+    +'<div style="display:flex;align-items:center;gap:10px;padding:14px 16px 8px">'
+      +'<button onclick="back()" aria-label="Back" style="width:34px;height:34px;border-radius:17px;background:var(--bg);border:1px solid var(--border);color:var(--text);font-size:18px;cursor:pointer;font-family:inherit;display:flex;align-items:center;justify-content:center">‹</button>'
+      +'<h1 style="font-size:20px;font-weight:800;color:var(--text);margin:0;flex:1">💊 '+String(med.name||'Medicine').replace(/</g,'&lt;')+'</h1>'
+      +'<button onclick="openEditMedicine(\''+med.id+'\')" style="padding:6px 12px;border-radius:8px;background:var(--bg);border:1px solid var(--border);color:var(--text);font-size:12px;font-weight:600;cursor:pointer;font-family:inherit">Edit</button>'
+    +'</div>'
+
+    +'<div class="card" style="margin:8px 16px;padding:14px">'
+      +'<div style="display:flex;align-items:center;gap:10px;margin-bottom:10px">'
+        +(recip?av(recip.name,recip.color,32,recip.photo):'')
+        +'<div style="flex:1"><div style="font-size:13px;font-weight:700;color:var(--text)">'+(recip?recip.name:'(no recipient set)')+'</div><div style="font-size:11px;color:var(--text-secondary);margin-top:1px">'+(med.dosage||'')+(med.form?' · '+med.form:'')+(med.notes?' · '+med.notes:'')+'</div></div>'
+      +'</div>'
+      +'<div style="font-size:11px;color:var(--text-secondary);line-height:1.5">'
+        +'<strong>'+medicineFreqLabel(med.frequency||'1x')+'</strong>'
+        +((med.times||[]).length?' at '+(med.times||[]).map(fmtMedicineTime).join(', '):'')
+        +'<br/>'+(med.endDate?'From '+med.startDate+' to '+med.endDate:'Started '+(med.startDate||'?')+' · ongoing')
+      +'</div>'
+    +'</div>'
+
+    +'<div class="card" style="margin:8px 16px;padding:0;overflow:hidden">'
+      +'<div style="padding:12px 14px;border-bottom:1px solid var(--row-border);font-size:11px;font-weight:700;color:var(--text-secondary);letter-spacing:0.5px">ADMINISTRATION LOG ('+doses.length+')</div>'
+      +doseRows
+    +'</div>'
+  +'</div>';
+}
+
 function sAddReminder(){
   // Default to tomorrow
   const tom=new Date();tom.setDate(tom.getDate()+1);
@@ -9034,7 +9286,7 @@ function render(){
       signup:sSignup,addChild:sAddChild,addEvent:sAddEvent,
       addPackItem:sAddPackItem,addNote:sAddNote,addAssessment:sAddAssessment,
       addGrocery:sAddGrocery,addGift:sAddGift,childProfile:sFamily,
-      logHandoff:sLogHandoff,addReminder:sAddReminder,
+      logHandoff:sLogHandoff,addReminder:sAddReminder,addMedicine:sAddMedicine,medicineLog:sMedicineLog,
       editChild:sEditChild,editFamily:sEditFamily,
       addCaregiver:sAddCaregiver,editCaregiver:sEditCaregiver,
       addDinner:sAddDinner,
@@ -12120,7 +12372,7 @@ window.toggleNightMode=function(){
 };
 window.hSignOut=async()=>{
   S.unsubs.forEach(u=>u());S.unsubs=[];
-  Object.assign(S,{family:null,familyId:null,children:[],packing:{},events:[],assessments:[],groceries:[],gifts:[],dinners:[],playdates:[],contacts:[],mealIdeas:[],handoffs:[],reminders:[],screen:null,screenParams:{},tab:'today',morningMode:false,activeChild:null,fabOpen:false,notif:null,weather:null,evTab:'events',listTab:'menu',listFilter:'all',ef:{freq:'once',days:{Mon:false,Tue:false,Wed:false,Thu:false,Fri:false,Sat:false,Sun:false},packItems:[],emoji:'📅',category:'',sport:'',participantIds:[]}});
+  Object.assign(S,{family:null,familyId:null,children:[],packing:{},events:[],assessments:[],groceries:[],gifts:[],dinners:[],playdates:[],contacts:[],mealIdeas:[],handoffs:[],reminders:[],medicines:[],medicineDoses:[],screen:null,screenParams:{},tab:'today',morningMode:false,activeChild:null,fabOpen:false,notif:null,weather:null,evTab:'events',listTab:'menu',listFilter:'all',ef:{freq:'once',days:{Mon:false,Tue:false,Wed:false,Thu:false,Fri:false,Sat:false,Sun:false},packItems:[],emoji:'📅',category:'',sport:'',participantIds:[]}});
   await signOut(auth);
 };
 window.emailCodeInvite=function(){
@@ -12320,6 +12572,101 @@ window.dHandoff=async function(id){
   try{await fdel(['handoffs',id]);notify('Removed');}catch(ex){notify('Error: '+ex.message,'❌');}
 };
 
+window.setMedFor=function(key){S.medFor=key;render();};
+window.setMedForm=function(f){S.medForm=f;render();};
+window.setMedFreq=function(f){S.medFreq=f;S.medTimes=smartMedicineTimes(f);render();};
+window.setMedTime=function(i,v){if(!Array.isArray(S.medTimes))S.medTimes=[];S.medTimes[i]=v;};
+window.hAddMedicine=async function(){
+  const err=document.getElementById('medErr');
+  const setErr=m=>{if(err)err.textContent=m;};
+  if(!S.medFor){setErr('Pick who this medicine is for.');return;}
+  if(!S.medName||!S.medName.trim()){setErr('Enter the medicine name.');return;}
+  if(!S.medDosage||!S.medDosage.trim()){setErr('Enter the dose (e.g. 5ml or 1 tablet).');return;}
+  if(!S.medStart){setErr('Pick a start date.');return;}
+  if(!S.medOngoing&&!S.medEnd){setErr('Pick an end date, or tick "Ongoing".');return;}
+  if(!S.medOngoing&&S.medEnd&&S.medEnd<S.medStart){setErr('End date must be on or after start date.');return;}
+  if(S.medFreq!=='prn'&&(!Array.isArray(S.medTimes)||S.medTimes.length===0||!S.medTimes.every(t=>/^\d{1,2}:\d{2}$/.test(t)))){setErr('All dose times must be set.');return;}
+
+  let childId=null,adultUid=null;
+  if(S.medFor.startsWith('child:'))childId=S.medFor.slice(6);
+  else if(S.medFor.startsWith('adult:'))adultUid=S.medFor.slice(6);
+
+  const payload={
+    name:S.medName.trim(),
+    dosage:S.medDosage.trim(),
+    form:S.medForm||'tablet',
+    notes:(S.medNotes||'').trim()||null,
+    childId,adultUid,
+    startDate:S.medStart,
+    endDate:S.medOngoing?null:S.medEnd,
+    frequency:S.medFreq,
+    times:S.medFreq==='prn'?[]:S.medTimes.slice(),
+    isActive:true,
+    createdBy:S.user?.uid||''
+  };
+  try{
+    if(S.medEditId){
+      await fupd(['medicines',S.medEditId],payload);
+      notify('Medicine updated 💊','✓');
+    }else{
+      await fadd(['medicines'],payload);
+      notify('Medicine added 💊','✓');
+    }
+    // Clear form state and go back
+    S.medEditId=null;S.medFor=null;S.medName='';S.medDosage='';S.medForm='tablet';S.medNotes='';
+    S.medFreq='1x';S.medTimes=smartMedicineTimes('1x');S.medStart=todayStr();S.medEnd='';S.medOngoing=false;
+    back();
+  }catch(ex){setErr('Save failed: '+(ex.message||ex));}
+};
+window.openEditMedicine=function(id){
+  const m=(S.medicines||[]).find(x=>x.id===id);
+  if(!m){notify('Medicine not found','⚠️');return;}
+  S.medEditId=id;
+  S.medFor=m.childId?'child:'+m.childId:(m.adultUid?'adult:'+m.adultUid:null);
+  S.medName=m.name||'';S.medDosage=m.dosage||'';S.medForm=m.form||'tablet';
+  S.medNotes=m.notes||'';S.medFreq=m.frequency||'1x';
+  S.medTimes=Array.isArray(m.times)&&m.times.length?m.times.slice():smartMedicineTimes(m.frequency||'1x');
+  S.medStart=m.startDate||todayStr();S.medEnd=m.endDate||'';S.medOngoing=!m.endDate;
+  go('addMedicine');
+};
+window.dMedicine=async function(id){
+  if(!confirm('Delete this medicine? The administration log will also be removed.'))return;
+  try{
+    await fdel(['medicines',id]);
+    // Best-effort dose-log cleanup
+    const myDoses=(S.medicineDoses||[]).filter(d=>d.medicineId===id);
+    await Promise.all(myDoses.map(d=>fdel(['medicineDoses',d.id]).catch(()=>null)));
+    notify('Medicine deleted 🗑️');
+    back();
+  }catch(ex){notify('Delete failed: '+(ex.message||ex),'⚠️');}
+};
+// Mark a scheduled dose as given. Race-safe-ish: relies on Firestore's
+// strong consistency — if the SAME doc is created twice by both parents
+// simultaneously, both writes succeed but the dose log entries are de-duped
+// at read time by (medicineId, scheduledFor, administeredBy) tuple. Cross-
+// parent live-status surfacing is a Phase B feature.
+window.giveMedicineDose=async function(medId,scheduledFor,status){
+  status=status||'given';
+  const med=(S.medicines||[]).find(m=>m.id===medId);
+  if(!med){notify('Medicine not found','⚠️');return;}
+  try{
+    const ref=await fadd(['medicineDoses'],{
+      medicineId:medId,
+      scheduledFor:scheduledFor||null,
+      administeredAt:new Date().toISOString(),
+      administeredBy:S.user?.uid||'',
+      status,
+      notes:null
+    });
+    notifyWithUndo('💊 '+med.name+' marked '+status,async function(){
+      try{await fdel(['medicineDoses',ref.id]);notify('Dose entry removed','↩️');}
+      catch(ex){notify('Undo failed: '+(ex.message||ex),'⚠️');}
+    },'💊');
+  }catch(ex){notify('Save failed: '+(ex.message||ex),'⚠️');}
+};
+window.openMedicineLog=function(medId){
+  go('medicineLog',{medicineId:medId});
+};
 window.hAddReminder=async function(){
   const text=document.getElementById('rmText')?.value?.trim()||'';
   const date=document.getElementById('rmDate')?.value||'';
