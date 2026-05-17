@@ -2118,6 +2118,7 @@ function sToday(){
               +'</div>'
               +(d.administered?'<div style="font-size:11px;color:#1B8A3C;font-weight:600;margin-top:3px">by '+giverName+'</div>':'')
             +'</div>'
+            +'<button onclick="event.stopPropagation();openEditMedicine(''+d.med.id+'')" aria-label="Edit medicine" title="Edit" style="width:30px;height:30px;border-radius:15px;background:var(--bg);border:1px solid var(--border);color:'+tcol+';font-size:13px;cursor:pointer;font-family:inherit;flex-shrink:0;display:flex;align-items:center;justify-content:center;margin-right:6px">✏️</button>'
             +actionBtn
           +'</div>';
         }).join('');
