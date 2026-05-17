@@ -119,7 +119,7 @@ body{font-family:-apple-system,BlinkMacSystemFont,system-ui,sans-serif;backgroun
 <!-- Sentry browser SDK (loader pattern — tiny ~5KB shim that lazy-loads the
      full SDK on first error and auto-updates to latest version). Placed
      before PostHog so it catches errors in PostHog init too. -->
-<script src="https://js.sentry-cdn.com/53459da65b27b797ff0b28822746c59c.min.js" crossorigin="anonymous"></script>
+<script src="https://js.sentry-cdn.com/53459da65b27b797ff0b28822746c59c.min.js" data-lazy="no" crossorigin="anonymous"></script>
 <script>
   if (window.Sentry && typeof Sentry.onLoad === 'function') {
     Sentry.onLoad(function() {
