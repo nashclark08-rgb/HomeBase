@@ -8658,10 +8658,12 @@ function sPersonProfile(){
         const yr=childYearNum(person);
         if(yr===null||yr<7)return '';
         const childAssess=S.assessments.filter(a=>a.childId===person.id).sort((a,b)=>(a.daysLeft||999)-(b.daysLeft||999));
-        return `<div class="sh" style="padding:0 16px;margin-bottom:6px;display:flex;justify-content:space-between;align-items:center;padding-right:16px">
-          <span>📚 Assessments (${childAssess.length})</span>
-        </div>
-        <div class="card" style="margin-bottom:14px">
+        const assKey='profile_assess_'+person.id;
+        if(!S.openSections)S.openSections={};
+        const assOpen=!!S.openSections[assKey];
+        const head=`<div onclick="toggleSection('${assKey}')" style="margin:0 16px 0;padding:13px 14px;background:var(--card);border:2px solid ${color};border-radius:12px;font-size:14px;font-weight:700;color:var(--text);cursor:pointer;display:flex;align-items:center;justify-content:space-between"><span>📚 Assessments${childAssess.length?' · '+childAssess.length:''}</span><span style="font-size:14px;color:var(--text-secondary)">${assOpen?'▾':'▸'}</span></div>`;
+        if(!assOpen)return head+'<div style="margin-bottom:10px"></div>';
+        return head+`<div class="card" style="margin:0 16px 14px;border:2px solid ${color};border-top:none;border-top-left-radius:0;border-top-right-radius:0">
           ${childAssess.length===0?`<div style="padding:20px;text-align:center;color:var(--text-secondary);font-size:14px">No assessments yet</div>`:childAssess.map((a,i,arr)=>{
             const urg=(a.daysLeft||99)<=7;
             return `<div class="row" style="border-bottom:${i<arr.length-1?'1px solid var(--row-border)':'none'}">
