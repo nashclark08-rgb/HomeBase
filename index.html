@@ -691,6 +691,39 @@ function notify(msg,icon){
   S.nTimer=setTimeout(()=>{S.notif=null;el.remove();renderLastSaved();},6000);
   renderLastSaved();
 }
+// Same look as notify() but appends an "Undo" button that calls onUndo and
+// dismisses the toast. Used for destructive actions (delete reminder, etc.)
+// so an accidental tap can be reversed within ~6 seconds — iOS-standard
+// pattern. If the user lets the toast time out, the action stands.
+function notifyWithUndo(msg,onUndo,icon){
+  icon=icon||'';
+  if(S.nTimer)clearTimeout(S.nTimer);
+  S.notif={msg,icon};
+  if(/\b(saved|added|updated|deleted|removed|created|set|changed|posted|done)\b/i.test(msg)){
+    S.lastSavedAt=Date.now();S.lastSavedMsg=msg;
+  }
+  document.querySelectorAll('.notif').forEach(e=>e.remove());
+  const el=document.createElement('div');el.className='notif';
+  const logoSrc=(document.querySelector('link[rel=apple-touch-icon]')||{}).href||'';
+  const logoHtml=logoSrc
+    ?'<div style="position:relative;width:34px;height:34px;flex-shrink:0"><img src="'+logoSrc+'" style="width:34px;height:34px;border-radius:8px;display:block" alt="HomeBase notification"/>'+(icon?'<div style="position:absolute;top:-4px;right:-4px;width:18px;height:18px;border-radius:9px;background:#fff;display:flex;align-items:center;justify-content:center;font-size:11px;box-shadow:0 1px 3px rgba(0,0,0,0.3)">'+icon+'</div>':'')+'</div>'
+    :'<div style="width:34px;height:34px;border-radius:10px;background:'+NAVY+';display:flex;align-items:center;justify-content:center;font-size:16px;flex-shrink:0">'+(icon||'🏠')+'</div>';
+  const undoBtnId='undo-'+Date.now();
+  el.innerHTML='<div style="display:flex;gap:10px;align-items:center">'+logoHtml+'<div style="flex:1;min-width:0"><div style="font-size:13px;font-weight:700;color:#fff;margin-bottom:2px">HomeBase</div><div style="font-size:13px;color:rgba(255,255,255,0.88);line-height:1.4">'+msg+'</div></div><button id="'+undoBtnId+'" style="background:rgba(255,255,255,0.18);color:#fff;border:none;padding:8px 14px;border-radius:8px;font-size:13px;font-weight:700;cursor:pointer;font-family:inherit;flex-shrink:0">Undo</button></div>';
+  $('screen').appendChild(el);
+  const undoBtn=document.getElementById(undoBtnId);
+  if(undoBtn){
+    undoBtn.onclick=function(ev){
+      ev.stopPropagation();
+      if(S.nTimer){clearTimeout(S.nTimer);S.nTimer=null;}
+      S.notif=null;el.remove();
+      try{if(typeof onUndo==='function')onUndo();}catch(e){console.error('[undo] handler threw',e);}
+    };
+  }
+  el.onclick=function(){if(S.nTimer){clearTimeout(S.nTimer);S.nTimer=null;}S.notif=null;el.remove();};
+  S.nTimer=setTimeout(()=>{S.notif=null;el.remove();renderLastSaved();},6000);
+  renderLastSaved();
+}
 // Show a subtle persistent "Last saved at HH:MM" indicator under the topbar
 function renderLastSaved(){
   const existing=document.getElementById('last-saved-bar');
@@ -2195,7 +2228,7 @@ function sToday(){
                 ${targets.length===0?`<div style="font-size:11px;color:var(--text-secondary);font-weight:600;margin-top:3px">👨‍👩‍👧‍👦 Family-wide</div>`:`<div style="display:flex;align-items:center;gap:4px;margin-top:3px;flex-wrap:wrap">${targets.slice(0,4).map(t=>av(t.name,t.color,18,t.photo)).join('')}<span style="font-size:11px;color:${tcol};font-weight:600;margin-left:2px">${targets.map(t=>t.name.split(' ')[0]).join(', ')}${targets.length>4?' +'+(targets.length-4):''}</span></div>`}
                 ${r.notes?`<div style="font-size:11px;color:var(--text-secondary);font-style:italic;margin-top:2px">${r.notes}</div>`:''}
               </div>
-              ${inBulk?'':`<button onclick="dReminder('${r.id}')" aria-label="Delete reminder" style="color:#FF3B30;font-size:18px;opacity:0.5;border:none;background:none;cursor:pointer">×</button>`}
+              ${inBulk?'':`<span aria-hidden="true" style="color:var(--text-secondary);font-size:14px;opacity:0.35;padding:0 2px" title="Long-press for delete and other actions">⋯</span>`}
             </div>`;
           }).join('')}
         </div>`;
@@ -8345,7 +8378,7 @@ function sPersonProfile(){
               ${dueLabel}
               ${r.notes?`<div style="font-size:11px;color:var(--text-secondary);font-style:italic;margin-top:2px">${r.notes}</div>`:''}
             </div>
-            <button onclick="dReminder('${r.id}')" aria-label="Delete reminder" style="color:#FF3B30;font-size:18px;opacity:0.5;border:none;background:none;cursor:pointer">×</button>
+            <span aria-hidden="true" style="color:var(--text-secondary);font-size:14px;opacity:0.35;padding:0 2px" title="Long-press for delete and other actions">⋯</span>
           </div>`;
           }).join('')}
           <button onclick="go('addReminder')" style="width:100%;padding:13px 16px;border-top:1px solid var(--row-border);background:none;border-left:none;border-right:none;border-bottom:none;color:${color};font-size:14px;font-weight:600;cursor:pointer;font-family:inherit;text-align:center">+ Add Reminder</button>
@@ -12356,7 +12389,25 @@ window.ackClash=async function(pairKey){
   }
 };
 window.dReminder=async function(id){
-  try{await fdel(['reminders',id]);notify('Reminder removed');}catch(ex){notify('Delete failed: '+(ex.message||ex),'⚠️');}
+  // Snapshot the reminder data BEFORE deleting so we can restore on undo.
+  // The undo recreates the doc (with a new id) by re-adding via fadd — same
+  // visible state to the user, slightly different id under the hood.
+  const r=S.reminders.find(x=>x.id===id);
+  if(!r){return;}
+  const snapshot={text:r.text,date:r.date,mode:r.mode,forKeys:r.forKeys,childId:r.childId,adultUid:r.adultUid,notes:r.notes,done:r.done,source:r.source,linkedEventId:r.linkedEventId};
+  try{
+    await fdel(['reminders',id]);
+    notifyWithUndo('Reminder removed', async function(){
+      try{
+        await fadd(['reminders'],snapshot);
+        notify('Reminder restored','✓');
+      }catch(ex){
+        notify('Restore failed: '+(ex.message||ex),'⚠️');
+      }
+    },'🗑️');
+  }catch(ex){
+    notify('Delete failed: '+(ex.message||ex),'⚠️');
+  }
 };
 window.toggleSection=function(key){
   if(!S.openSections)S.openSections={};
