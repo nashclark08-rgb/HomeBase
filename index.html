@@ -1187,11 +1187,17 @@ function isMedicineActiveOn(med,dateStr){
 }
 // For a given date string, return an ordered list of dose entries:
 // {med, time, scheduledFor (ISO), administered (bool), dose (the log entry if given)}
+// On a medicine's start date, if firstDoseTime is set, skip any scheduled
+// times before it — e.g. Hattie starts antibiotics at lunch (1pm); the 8am
+// dose for day 1 is skipped (not missed, just didn't apply yet).
 function getDueMedicineDoses(dateStr){
   const out=[];
   for(const med of (S.medicines||[])){
     if(!isMedicineActiveOn(med,dateStr))continue;
-    const times=Array.isArray(med.times)?med.times:[];
+    let times=Array.isArray(med.times)?med.times.slice():[];
+    if(med.firstDoseTime&&med.startDate===dateStr){
+      times=times.filter(t=>t>=med.firstDoseTime);
+    }
     for(const t of times){
       const scheduledFor=dateStr+'T'+t;
       const dose=(S.medicineDoses||[]).find(d=>d.medicineId===med.id&&d.scheduledFor===scheduledFor);
@@ -1200,6 +1206,32 @@ function getDueMedicineDoses(dateStr){
   }
   out.sort((a,b)=>(a.time||'').localeCompare(b.time||''));
   return out;
+}
+// Compute the end date from startDate + durationDays. Returns YYYY-MM-DD or null.
+// durationDays = N means the medicine runs for N calendar days starting on startDate.
+// e.g. start 2026-05-17 + 7 days → end 2026-05-23 (inclusive).
+function calcMedEndDate(startDate,durationDays){
+  if(!startDate||!durationDays||durationDays<1)return null;
+  const start=new Date(startDate+'T12:00');
+  const end=new Date(start.getTime()+(durationDays-1)*86400000);
+  return fd(end);
+}
+// Total dose count for a course. Accounts for firstDoseTime skipping earlier
+// day-1 doses (so a 3x-daily 7-day course that starts at lunch = 20 doses, not 21).
+function calcMedTotalDoses(times,durationDays,firstDoseTime){
+  if(!times||times.length===0||!durationDays||durationDays<1)return 0;
+  let total=durationDays*times.length;
+  if(firstDoseTime){
+    const skipped=times.filter(t=>t<firstDoseTime).length;
+    total-=skipped;
+  }
+  return total;
+}
+// Human-friendly date label for the "Ends Mon 24 May" line.
+function fmtMedDateLong(dateStr){
+  if(!dateStr)return '';
+  const d=new Date(dateStr+'T12:00');
+  return DAYSH[d.getDay()]+' '+d.getDate()+' '+MONTHS[d.getMonth()];
 }
 // Resolve who a medicine is for — returns {name, color, photo, id, kind:'child'|'adult'|null}
 function medicineRecipient(med){
@@ -8533,6 +8565,7 @@ function sPersonProfile(){
               <div style="font-size:11px;color:var(--text-secondary);margin-top:1px;opacity:0.85">${dateLabel}</div>
               ${lastGivenLabel}
             </div>
+            <button onclick="event.stopPropagation();openEditMedicine('${m.id}')" aria-label="Edit medicine" style="width:30px;height:30px;border-radius:15px;background:var(--bg);border:1px solid var(--border);color:${color};font-size:13px;cursor:pointer;font-family:inherit;flex-shrink:0;display:flex;align-items:center;justify-content:center" title="Edit">✏️</button>
             <span style="color:${color};font-size:18px;opacity:0.6">›</span>
           </div>`;
         };
@@ -8540,8 +8573,13 @@ function sPersonProfile(){
         <div class="card" style="margin-bottom:14px">`;
         if(active.length){html+=active.map((m,i)=>renderMed(m,i,active,false)).join('');}
         if(ended.length){
-          html+=`<div style="padding:9px 14px;border-top:1px solid var(--row-border);font-size:10px;font-weight:700;color:var(--text-secondary);letter-spacing:0.5px;background:var(--bg)">ENDED (${ended.length})</div>`;
-          html+=ended.map((m,i)=>renderMed(m,i,ended,true)).join('');
+          // Collapsible past-medicines archive. Collapsed by default so the
+          // active list stays clean; the header doubles as the toggle button.
+          const pastKey='pastMeds_'+person.id;
+          const pastOpen=!!(S.openSections&&S.openSections[pastKey]);
+          html+=`<div onclick="toggleSection('${pastKey}')" style="padding:11px 14px;border-top:1px solid var(--row-border);font-size:11px;font-weight:700;color:var(--text-secondary);letter-spacing:0.5px;background:var(--bg);cursor:pointer;display:flex;align-items:center;justify-content:space-between">
+            <span>📚 PAST MEDICINES (${ended.length})</span><span style="font-size:13px">${pastOpen?'▾':'▸'}</span></div>`;
+          if(pastOpen)html+=ended.map((m,i)=>renderMed(m,i,ended,true)).join('');
         }
         html+=`<button onclick="openAddMedicineFor('${personKey}')" style="width:100%;padding:13px 16px;border-top:1px solid var(--row-border);background:none;border-left:none;border-right:none;border-bottom:none;color:${color};font-size:14px;font-weight:600;cursor:pointer;font-family:inherit;text-align:center">+ Add Medicine for ${name.split(' ')[0]}</button>
         </div>`;
@@ -9158,17 +9196,65 @@ function sAddMedicine(){
       +timeInputs
     +'</div>'
 
-    +'<div class="card" style="margin:12px 16px;padding:16px">'
-      +'<div style="font-size:11px;font-weight:700;color:var(--text-secondary);letter-spacing:0.5px;margin-bottom:8px">📅 DATES</div>'
-      +'<label style="font-size:11px;font-weight:600;color:var(--text-secondary);margin-bottom:4px;display:block">Start</label>'
-      +'<input id="medStart" type="date" value="'+S.medStart+'" oninput="S.medStart=this.value" style="width:100%;padding:11px 14px;border-radius:10px;border:1px solid var(--border);background:var(--bg);color:var(--text);font-size:14px;font-family:inherit;margin-bottom:12px"/>'
+    +(()=>{
+      // Initialise the new state fields with sensible defaults on first render.
+      if(typeof S.medDuration==='undefined'){
+        // Backward-compat: if editing an old medicine that had medEnd but no
+        // medDuration, compute duration from medStart + medEnd. Otherwise default 7.
+        if(S.medEnd&&S.medStart){
+          const start=new Date(S.medStart+'T12:00');
+          const end=new Date(S.medEnd+'T12:00');
+          S.medDuration=Math.max(1,Math.round((end-start)/86400000)+1);
+        }else{
+          S.medDuration=S.medOngoing?null:7;
+        }
+      }
+      if(typeof S.medStartedLater==='undefined')S.medStartedLater=!!S.medFirstDoseTime;
+      if(typeof S.medFirstDoseTime==='undefined')S.medFirstDoseTime='';
+      if(typeof S.medDurCustom==='undefined')S.medDurCustom=false;
 
-      +'<label style="display:flex;align-items:center;gap:8px;cursor:pointer;margin-bottom:8px">'
-        +'<input type="checkbox" '+(S.medOngoing?'checked':'')+' onchange="S.medOngoing=this.checked;render()" style="width:18px;height:18px;cursor:pointer"/>'
-        +'<span style="font-size:13px;color:var(--text);font-weight:600">Ongoing (no end date)</span>'
-      +'</label>'
-      +(S.medOngoing?'':'<label style="font-size:11px;font-weight:600;color:var(--text-secondary);margin-bottom:4px;display:block">End date</label><input id="medEnd" type="date" value="'+S.medEnd+'" oninput="S.medEnd=this.value" style="width:100%;padding:11px 14px;border-radius:10px;border:1px solid var(--border);background:var(--bg);color:var(--text);font-size:14px;font-family:inherit"/>')
-    +'</div>'
+      const presets=[3,5,7,10,14];
+      const isOngoing=S.medDuration===null;
+      const isPreset=!isOngoing&&presets.indexOf(S.medDuration)!==-1;
+      const isCustom=S.medDurCustom||(!isOngoing&&!isPreset);
+
+      const pillBtn=(label,active,handler)=>'<button onclick="'+handler+'" style="padding:8px 12px;border-radius:9px;background:'+(active?'var(--navy)':'var(--bg)')+';color:'+(active?'#fff':'var(--text)')+';border:1px solid '+(active?'var(--navy)':'var(--border)')+';font-size:12px;font-weight:600;cursor:pointer;font-family:inherit">'+label+'</button>';
+
+      const durPills=presets.map(d=>pillBtn(d+' days',!isCustom&&S.medDuration===d,'setMedDuration('+d+')')).join('')
+        +pillBtn('Ongoing',isOngoing,'setMedDuration(null)')
+        +pillBtn('Custom',isCustom,'setMedDuration(\'custom\')');
+
+      const customInput=isCustom?'<div style="margin-top:10px"><label style="font-size:11px;font-weight:600;color:var(--text-secondary);margin-bottom:4px;display:block">Custom length</label><div style="display:flex;align-items:center;gap:8px"><input id="medDurCustom" type="number" min="1" max="365" value="'+(S.medDuration&&typeof S.medDuration==='number'?S.medDuration:7)+'" oninput="S.medDuration=parseInt(this.value)||1" style="width:90px;padding:9px 12px;border-radius:9px;border:1px solid var(--border);background:var(--bg);color:var(--text);font-size:14px;font-family:inherit"/><span style="font-size:13px;color:var(--text-secondary)">days</span></div></div>':'';
+
+      // Summary line: end date + total doses, only when non-ongoing
+      let summary='';
+      if(!isOngoing&&S.medStart&&typeof S.medDuration==='number'){
+        const endStr=calcMedEndDate(S.medStart,S.medDuration);
+        const total=calcMedTotalDoses(S.medTimes||[],S.medDuration,S.medStartedLater?S.medFirstDoseTime:'');
+        summary='<div style="margin-top:14px;padding:10px 12px;background:var(--navy-soft);border-radius:9px;font-size:12px;color:var(--text);line-height:1.5"><strong>Ends '+fmtMedDateLong(endStr)+'</strong>'+(total>0?' · ~'+total+' dose'+(total===1?'':'s')+' total':'')+'</div>';
+      }
+
+      // First-dose-time block (only when "Started later today" is ticked)
+      const defaultFirstDose=(S.medTimes&&S.medTimes[0])||'08:00';
+      const firstDoseBlock=S.medStartedLater?'<div style="margin-top:8px;padding-left:26px"><label style="font-size:11px;font-weight:600;color:var(--text-secondary);margin-bottom:4px;display:block">First dose was at</label><input id="medFirstDose" type="time" value="'+(S.medFirstDoseTime||defaultFirstDose)+'" oninput="S.medFirstDoseTime=this.value" style="padding:9px 12px;border-radius:9px;border:1px solid var(--border);background:var(--bg);color:var(--text);font-size:14px;font-family:inherit"/><div style="font-size:11px;color:var(--text-secondary);margin-top:4px;font-style:italic">Earlier doses today will be skipped (not counted as missed)</div></div>':'';
+
+      return '<div class="card" style="margin:12px 16px;padding:16px">'
+        +'<div style="font-size:11px;font-weight:700;color:var(--text-secondary);letter-spacing:0.5px;margin-bottom:8px">📅 START + COURSE LENGTH</div>'
+        +'<label style="font-size:11px;font-weight:600;color:var(--text-secondary);margin-bottom:4px;display:block">Start date</label>'
+        +'<input id="medStart" type="date" value="'+S.medStart+'" oninput="S.medStart=this.value;render()" style="width:100%;padding:11px 14px;border-radius:10px;border:1px solid var(--border);background:var(--bg);color:var(--text);font-size:14px;font-family:inherit;margin-bottom:12px"/>'
+
+        +'<label style="display:flex;align-items:center;gap:8px;cursor:pointer;margin-bottom:0">'
+          +'<input type="checkbox" '+(S.medStartedLater?'checked':'')+' onchange="S.medStartedLater=this.checked;if(this.checked&&!S.medFirstDoseTime)S.medFirstDoseTime=\''+defaultFirstDose+'\';render()" style="width:18px;height:18px;cursor:pointer;flex-shrink:0"/>'
+          +'<span style="font-size:13px;color:var(--text);font-weight:600">Started later today (skip earlier doses)</span>'
+        +'</label>'
+        +firstDoseBlock
+
+        +'<div style="margin-top:14px;font-size:11px;font-weight:700;color:var(--text-secondary);letter-spacing:0.5px;margin-bottom:8px">COURSE LENGTH</div>'
+        +'<div style="display:flex;flex-wrap:wrap;gap:6px">'+durPills+'</div>'
+        +customInput
+        +summary
+      +'</div>';
+    })()
 
     +'<div id="medErr" style="margin:0 16px;color:#FF3B30;font-size:13px;font-weight:600;min-height:18px"></div>'
 
@@ -12638,6 +12724,11 @@ window.dHandoff=async function(id){
 };
 
 window.setMedFor=function(key){S.medFor=key;render();};
+window.setMedDuration=function(v){
+  if(v==='custom'){S.medDurCustom=true;if(typeof S.medDuration!=='number')S.medDuration=7;}
+  else{S.medDurCustom=false;S.medDuration=v;}
+  render();
+};
 window.setMedForm=function(f){S.medForm=f;render();};
 window.setMedFreq=function(f){S.medFreq=f;S.medTimes=smartMedicineTimes(f);render();};
 window.setMedTime=function(i,v){if(!Array.isArray(S.medTimes))S.medTimes=[];S.medTimes[i]=v;};
@@ -12648,14 +12739,16 @@ window.hAddMedicine=async function(){
   if(!S.medName||!S.medName.trim()){setErr('Enter the medicine name.');return;}
   if(!S.medDosage||!S.medDosage.trim()){setErr('Enter the dose (e.g. 5ml or 1 tablet).');return;}
   if(!S.medStart){setErr('Pick a start date.');return;}
-  if(!S.medOngoing&&!S.medEnd){setErr('Pick an end date, or tick "Ongoing".');return;}
-  if(!S.medOngoing&&S.medEnd&&S.medEnd<S.medStart){setErr('End date must be on or after start date.');return;}
+  const isOngoing=S.medDuration===null;
+  if(!isOngoing&&(typeof S.medDuration!=='number'||S.medDuration<1)){setErr('Pick a course length (or "Ongoing").');return;}
   if(S.medFreq!=='prn'&&(!Array.isArray(S.medTimes)||S.medTimes.length===0||!S.medTimes.every(t=>/^\d{1,2}:\d{2}$/.test(t)))){setErr('All dose times must be set.');return;}
+  const firstDoseTime=S.medStartedLater&&S.medFirstDoseTime?S.medFirstDoseTime:null;
 
   let childId=null,adultUid=null;
   if(S.medFor.startsWith('child:'))childId=S.medFor.slice(6);
   else if(S.medFor.startsWith('adult:'))adultUid=S.medFor.slice(6);
 
+  const computedEnd=isOngoing?null:calcMedEndDate(S.medStart,S.medDuration);
   const payload={
     name:S.medName.trim(),
     dosage:S.medDosage.trim(),
@@ -12663,7 +12756,9 @@ window.hAddMedicine=async function(){
     notes:(S.medNotes||'').trim()||null,
     childId,adultUid,
     startDate:S.medStart,
-    endDate:S.medOngoing?null:S.medEnd,
+    endDate:computedEnd,
+    durationDays:isOngoing?null:S.medDuration,
+    firstDoseTime,
     frequency:S.medFreq,
     times:S.medFreq==='prn'?[]:S.medTimes.slice(),
     isActive:true,
@@ -12681,7 +12776,9 @@ window.hAddMedicine=async function(){
     // destination screen re-render wipes it (toast lives on #screen which
     // gets innerHTML-cleared on every render). 900ms is enough to be seen.
     S.medEditId=null;S.medFor=null;S.medName='';S.medDosage='';S.medForm='tablet';S.medNotes='';
-    S.medFreq='1x';S.medTimes=smartMedicineTimes('1x');S.medStart=fd(new Date());S.medEnd='';S.medOngoing=false;
+    S.medFreq='1x';S.medTimes=smartMedicineTimes('1x');S.medStart=fd(new Date());
+    S.medDuration=7;S.medStartedLater=false;S.medFirstDoseTime='';S.medDurCustom=false;
+    S.medEnd='';S.medOngoing=false;
     setTimeout(back,900);
   }catch(ex){setErr('Save failed: '+(ex.message||ex));}
 };
@@ -12693,7 +12790,19 @@ window.openEditMedicine=function(id){
   S.medName=m.name||'';S.medDosage=m.dosage||'';S.medForm=m.form||'tablet';
   S.medNotes=m.notes||'';S.medFreq=m.frequency||'1x';
   S.medTimes=Array.isArray(m.times)&&m.times.length?m.times.slice():smartMedicineTimes(m.frequency||'1x');
-  S.medStart=m.startDate||fd(new Date());S.medEnd=m.endDate||'';S.medOngoing=!m.endDate;
+  S.medStart=m.startDate||fd(new Date());
+  // Load new fields with backward-compat: derive durationDays from endDate if missing.
+  if(typeof m.durationDays==='number')S.medDuration=m.durationDays;
+  else if(m.endDate&&m.startDate){
+    const startD=new Date(m.startDate+'T12:00');
+    const endD=new Date(m.endDate+'T12:00');
+    S.medDuration=Math.max(1,Math.round((endD-startD)/86400000)+1);
+  }else{S.medDuration=null;}
+  S.medFirstDoseTime=m.firstDoseTime||'';
+  S.medStartedLater=!!m.firstDoseTime;
+  S.medDurCustom=typeof S.medDuration==='number'&&[3,5,7,10,14].indexOf(S.medDuration)===-1;
+  // Legacy compat (not used by new UI but kept in state to not break anything else)
+  S.medEnd=m.endDate||'';S.medOngoing=!m.endDate;
   go('addMedicine');
 };
 window.dMedicine=async function(id){
