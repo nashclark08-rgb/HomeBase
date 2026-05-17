@@ -9336,13 +9336,14 @@ function sMedicineLog(){
     +'<div style="display:flex;align-items:center;gap:10px;padding:14px 16px 8px">'
       +'<button onclick="back()" aria-label="Back" style="width:34px;height:34px;border-radius:17px;background:var(--bg);border:1px solid var(--border);color:var(--text);font-size:18px;cursor:pointer;font-family:inherit;display:flex;align-items:center;justify-content:center">‹</button>'
       +'<h1 style="font-size:20px;font-weight:800;color:var(--text);margin:0;flex:1">💊 '+String(med.name||'Medicine').replace(/</g,'&lt;')+'</h1>'
-      +'<button onclick="openEditMedicine(\''+med.id+'\')" style="padding:6px 12px;border-radius:8px;background:var(--bg);border:1px solid var(--border);color:var(--text);font-size:12px;font-weight:600;cursor:pointer;font-family:inherit">Edit</button>'
+      +'<button onclick="openEditMedicine(\''+med.id+'\')" style="padding:8px 14px;border-radius:9px;background:var(--navy);border:none;color:#fff;font-size:13px;font-weight:700;cursor:pointer;font-family:inherit">✏️ Edit</button>'
     +'</div>'
 
-    +'<div class="card" style="margin:8px 16px;padding:14px">'
+    +'<div class="card" onclick="openEditMedicine(\''+med.id+'\')" style="margin:8px 16px;padding:14px;cursor:pointer" title="Tap to edit">'
       +'<div style="display:flex;align-items:center;gap:10px;margin-bottom:10px">'
         +(recip?av(recip.name,recip.color,32,recip.photo):'')
         +'<div style="flex:1"><div style="font-size:13px;font-weight:700;color:var(--text)">'+(recip?recip.name:'(no recipient set)')+'</div><div style="font-size:11px;color:var(--text-secondary);margin-top:1px">'+(med.dosage||'')+(med.form?' · '+med.form:'')+(med.notes?' · '+med.notes:'')+'</div></div>'
+        +'<span style="color:var(--text-secondary);font-size:18px;opacity:0.5">›</span>'
       +'</div>'
       +'<div style="font-size:11px;color:var(--text-secondary);line-height:1.5">'
         +'<strong>'+medicineFreqLabel(med.frequency||'1x')+'</strong>'
