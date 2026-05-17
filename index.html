@@ -2412,37 +2412,24 @@ function sToday(){
         // Only show chev/collapsible mechanism when there ARE other days
         // to collapse. Header click is inert otherwise.
         const showCollapse=otherDinners.length>0;
-        return `<div class="card" style="margin-bottom:14px;overflow:hidden">
-        <div ${showCollapse?'onclick="toggleSection(\'dinners\')"':''} style="display:flex;align-items:center;gap:10px;padding:13px 16px;${showCollapse?'cursor:pointer;':''}user-select:none">
-          <span style="font-size:18px">🍲</span>
-          <span style="flex:1;font-size:12px;font-weight:800;color:var(--text-secondary);letter-spacing:0.7px;text-transform:uppercase">This Week's Dinners</span>
-          ${showCollapse?`<span class="collapse-chev ${isOpen?'open':''}" style="font-size:13px;color:var(--text-secondary)">▾</span>`:''}
+        return `<div class="sh" style="margin-bottom:6px;display:flex;align-items:center;justify-content:space-between;padding-right:16px">
+          <span>🍲 This Week's Dinners</span>
+          <button onclick="go('addDinner')" style="font-size:11px;font-weight:700;background:var(--navy);color:#fff;padding:4px 10px;border-radius:8px;border:none;cursor:pointer;font-family:inherit;text-transform:none;letter-spacing:0">+ Add</button>
         </div>
-        ${pinnedRow}
-        ${showCollapse?`<div class="collapsible ${isOpen?'open':''}">
-          <div class="collapsible-inner">
-            <div style="border-top:1px solid var(--row-border)">
-              ${otherDinners.map((d,i,arr)=>dinnerRow(d,i,arr)).join('')}
-              <div style="padding:10px 16px;text-align:center;border-top:1px solid var(--row-border)">
-                <button onclick="event.stopPropagation();setTab('lists');S.listTab='dinners';render()" style="background:none;border:none;color:var(--navy);font-size:13px;font-weight:600;cursor:pointer;font-family:inherit">View all dinners ›</button>
-              </div>
-            </div>
-          </div>
-        </div>`:''}
-      </div>`;
+        <div class="card" style="margin-bottom:14px">
+          ${viewedDayDinner?dinnerRow(viewedDayDinner,0,otherDinners.length?[viewedDayDinner,'placeholder']:[viewedDayDinner]):''}
+          ${otherDinners.map((d,i,arr)=>dinnerRow(d,i,arr)).join('')}
+          ${otherDinners.length||viewedDayDinner?`<button onclick="setTab('lists');S.listTab='dinners';render()" style="width:100%;padding:10px 16px;background:none;border:none;border-top:1px solid var(--row-border);color:var(--navy);font-size:13px;font-weight:600;cursor:pointer;font-family:inherit">View all dinners ›</button>`:''}
+        </div>`;
       })()}
 
-      <!-- SHOPPING LIST (collapsible) — hidden when empty per Nash request -->
-      ${shoppingTodo.length===0?'':`<div class="card" style="margin-bottom:14px;overflow:hidden">
-        <div onclick="toggleSection('shopping')" style="display:flex;align-items:center;gap:10px;padding:13px 16px;cursor:pointer;user-select:none">
-          <span style="font-size:18px">🛒</span>
-          <span style="flex:1;font-size:12px;font-weight:800;color:var(--text-secondary);letter-spacing:0.7px;text-transform:uppercase">Shopping List</span>
-          <span style="font-size:12px;font-weight:600;color:${shoppingTodo.length>0?'var(--text)':'var(--text-secondary)'};background:${shoppingTodo.length>0?'var(--navy-soft)':'var(--bg)'};padding:3px 10px;border-radius:10px">${shoppingTodo.length} ${shoppingTodo.length===1?'item':'items'}</span>
-          <span class="collapse-chev ${S.openSections?.shopping?'open':''}" style="font-size:13px;color:var(--text-secondary)">▾</span>
+      <!-- SHOPPING LIST — header outside card, hidden when empty -->
+      ${shoppingTodo.length===0?'':`<div class="sh" style="margin-bottom:6px;display:flex;align-items:center;justify-content:space-between;padding-right:16px">
+          <span>🛒 Shopping List · ${shoppingTodo.length} ${shoppingTodo.length===1?'item':'items'}</span>
+          <button onclick="setTab('lists');S.listTab='groceries';render()" style="font-size:11px;font-weight:700;background:var(--navy);color:#fff;padding:4px 10px;border-radius:8px;border:none;cursor:pointer;font-family:inherit;text-transform:none;letter-spacing:0">+ Add</button>
         </div>
-        <div class="collapsible ${S.openSections?.shopping?'open':''}">
-          <div class="collapsible-inner">
-            <div style="border-top:1px solid var(--row-border)">
+        <div class="card" style="margin-bottom:14px;overflow:hidden">
+          <div>
               ${shoppingTodo.length===0?`${emptyState('🛒','Shopping list is empty','Add items as you run out — tap + Add or use a frequent item shortcut.','+ Add item',"setTab('lists');S.listTab='groceries';render()",true)}`:
                 shoppingTodo.slice(0,5).map(g=>`<div class="row" style="border-bottom:1px solid var(--row-border)">
                   <div class="cb" onclick="event.stopPropagation();tGroc('${g.id}',true)" style="border-color:#C7C7CC"></div>
@@ -2458,9 +2445,7 @@ function sToday(){
                 <button onclick="event.stopPropagation();setTab('lists');S.listTab='groceries';render()" style="background:none;border:none;color:var(--navy);font-size:13px;font-weight:600;cursor:pointer;font-family:inherit">View full list ›</button>
               </div>
             </div>
-          </div>
-        </div>
-      </div>`}
+        </div>`}
     </div>
 
     <div class="fab">
