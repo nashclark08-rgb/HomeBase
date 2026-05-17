@@ -87,6 +87,9 @@ body{font-family:-apple-system,BlinkMacSystemFont,system-ui,sans-serif;backgroun
 .fab-menu{position:absolute;bottom:66px;right:0;display:flex;flex-direction:column;gap:8px;align-items:flex-end}
 .fab-item{display:flex;align-items:center;gap:10px;padding:11px 18px;background:#1C1C1E;border-radius:24px;border:none;cursor:pointer;font-family:inherit;color:#fff;font-size:15px;font-weight:600;white-space:nowrap;box-shadow:0 4px 16px rgba(0,0,0,0.25)}
 .notif{position:absolute;top:10px;left:12px;right:12px;z-index:999;background:rgba(28,28,30,0.94);border-radius:16px;padding:12px 14px;cursor:pointer;animation:sdown 0.3s ease}
+.is-loading{position:relative;opacity:0.85;pointer-events:none}
+.is-loading::after{content:'';display:inline-block;width:12px;height:12px;margin-left:8px;border:2px solid currentColor;border-right-color:transparent;border-radius:50%;animation:hbSpin 0.7s linear infinite;vertical-align:-2px}
+@keyframes hbSpin{to{transform:rotate(360deg)}}
 @keyframes medFlash{0%{box-shadow:0 0 0 0 rgba(28,58,107,0)}30%{box-shadow:0 0 0 6px rgba(28,58,107,0.35)}100%{box-shadow:0 0 0 0 rgba(28,58,107,0)}}
 .chev::after{content:'';display:inline-block;width:7px;height:7px;border-right:2px solid #C7C7CC;border-top:2px solid #C7C7CC;transform:rotate(45deg);margin-left:4px}
 .photo-wrap{width:88px;height:88px;border-radius:44px;border:3px dashed #C7C7CC;display:flex;flex-direction:column;align-items:center;justify-content:center;cursor:pointer;margin:0 auto;background:#F8F8F8;overflow:hidden}
@@ -776,6 +779,71 @@ function av(name,color,size,url){
 function bk(col){col=col||NAVY;return '<svg width="10" height="17" viewBox="0 0 10 17"><polyline points="9,1 1,8.5 9,16" stroke="'+col+'" stroke-width="2.2" fill="none" stroke-linecap="round" stroke-linejoin="round"/></svg>';}
 function ck(){return '<svg width="14" height="10" viewBox="0 0 14 10"><polyline points="1,5 5,9 13,1" stroke="#fff" stroke-width="2.2" fill="none" stroke-linecap="round" stroke-linejoin="round"/></svg>';}
 function tog(val,fn){return '<button class="toggle" style="background:'+(val?'#34C759':'#E5E5EA')+'" onclick="'+fn+'"><div class="thumb" style="left:'+(val?22:2)+'px"></div></button>';}
+
+// friendlyError(err) — convert a raw error (FirebaseError, fetch error,
+// HttpsError, plain Error or string) into a single user-readable sentence.
+// Used everywhere we previously did `'Save failed: '+(ex.message||ex)` —
+// the new form is `'Save failed: '+friendlyError(ex)`.
+function friendlyError(err){
+  if(!err)return 'Something went wrong.';
+  if(typeof err==='string')return err;
+  const code=String(err.code||'').toLowerCase();
+  let msg=String(err.message||err||'').trim();
+  // Strip the noisy FirebaseError prefix and any (code) suffix that
+  // Firebase tacks on at the end.
+  msg=msg.replace(/^FirebaseError:\s*/i,'').replace(/\s*\(auth\/[^)]+\)\s*$/,'').trim();
+  if(code.indexOf('permission-denied')>-1||/Missing or insufficient permissions/i.test(msg))
+    return 'Your session may have expired — refresh the page and try again.';
+  if(code.indexOf('unauthenticated')>-1||code.indexOf('auth/user-token-expired')>-1)
+    return 'You\'ve been signed out — sign back in and try again.';
+  if(code.indexOf('unavailable')>-1||/network|offline|fetch/i.test(msg))
+    return 'Can\'t reach the server — check your connection and try again.';
+  if(code.indexOf('deadline-exceeded')>-1||/timeout|timed out/i.test(msg))
+    return 'That took too long — please try again.';
+  if(code.indexOf('resource-exhausted')>-1||/quota/i.test(msg))
+    return 'Hit a daily usage limit — try again later.';
+  if(code.indexOf('not-found')>-1)return 'That item no longer exists.';
+  if(code.indexOf('already-exists')>-1)return msg||'That already exists.';
+  if(code.indexOf('failed-precondition')>-1)return msg||'That\'s not allowed right now.';
+  if(code.indexOf('invalid-argument')>-1)return msg||'That input wasn\'t accepted.';
+  if(code.indexOf('cancelled')>-1)return 'Cancelled.';
+  // Default: cleaned-up message, capped to a sane length
+  if(!msg)return 'Something went wrong.';
+  return msg.length>140?msg.slice(0,140)+'…':msg;
+}
+
+// inflight(btn, asyncFn, opts) — disable + spinner-decorate a button
+// while an async operation runs. Restores the original label on success
+// or error. Prevents the 'click Save, nothing visibly happens, double-
+// click' pattern. Pass `opts.loadingText` to override the label.
+//   <button onclick="inflight(this, hSaveMedicine)">Save</button>
+// Returns the result of asyncFn so call-sites can `await inflight(...)`.
+async function inflight(btn,asyncFn,opts){
+  opts=opts||{};
+  // Resolve btn: if it's a string treat as querySelector. If it's an
+  // event-like object with a .currentTarget, use that.
+  if(typeof btn==='string')btn=document.querySelector(btn);
+  if(btn&&btn.currentTarget&&!btn.classList)btn=btn.currentTarget;
+  if(!btn||btn.classList.contains('is-loading')){
+    // Already in flight: silently swallow the second click rather than
+    // double-firing the handler. No-op return.
+    return;
+  }
+  const origHTML=btn.innerHTML;
+  const origDisabled=btn.disabled;
+  const label=opts.loadingText||btn.dataset.loadingText||'Working…';
+  btn.classList.add('is-loading');
+  btn.disabled=true;
+  // Keep just the label text (the ::after CSS pseudo-element draws the spinner)
+  btn.innerHTML=label;
+  try{
+    return await asyncFn();
+  }finally{
+    btn.classList.remove('is-loading');
+    btn.disabled=origDisabled;
+    btn.innerHTML=origHTML;
+  }
+}
 
 function notify(msg,icon){
   icon=icon||'';
@@ -12620,6 +12688,10 @@ window.toggleNightMode=function(){
 };
 window.hSignOut=async()=>{
   S.unsubs.forEach(u=>u());S.unsubs=[];
+  // Also tear down child-packing listeners — they're tracked in a
+  // separate array and would otherwise fire one more snapshot post-
+  // signOut with an invalid token (permission-denied noise in Sentry).
+  if(Array.isArray(S.packingUnsubs)){S.packingUnsubs.forEach(u=>{try{u();}catch(e){}});S.packingUnsubs=[];}
   Object.assign(S,{family:null,familyId:null,children:[],packing:{},events:[],assessments:[],groceries:[],gifts:[],dinners:[],playdates:[],contacts:[],mealIdeas:[],handoffs:[],reminders:[],medicines:[],medicineDoses:[],screen:null,screenParams:{},tab:'today',morningMode:false,activeChild:null,fabOpen:false,notif:null,weather:null,evTab:'events',listTab:'menu',listFilter:'all',ef:{freq:'once',days:{Mon:false,Tue:false,Wed:false,Thu:false,Fri:false,Sat:false,Sun:false},packItems:[],emoji:'📅',category:'',sport:'',participantIds:[]}});
   await signOut(auth);
 };
