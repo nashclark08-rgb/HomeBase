@@ -9081,7 +9081,7 @@ function sAddMedicine(){
   if(typeof S.medNotes==='undefined')S.medNotes='';
   if(typeof S.medFreq==='undefined')S.medFreq='1x';
   if(typeof S.medTimes==='undefined')S.medTimes=smartMedicineTimes('1x');
-  if(typeof S.medStart==='undefined')S.medStart=todayStr();
+  if(typeof S.medStart==='undefined')S.medStart=fd(new Date());
   if(typeof S.medEnd==='undefined')S.medEnd='';
   if(typeof S.medOngoing==='undefined')S.medOngoing=false;
 
@@ -12666,7 +12666,7 @@ window.hAddMedicine=async function(){
     }
     // Clear form state and go back
     S.medEditId=null;S.medFor=null;S.medName='';S.medDosage='';S.medForm='tablet';S.medNotes='';
-    S.medFreq='1x';S.medTimes=smartMedicineTimes('1x');S.medStart=todayStr();S.medEnd='';S.medOngoing=false;
+    S.medFreq='1x';S.medTimes=smartMedicineTimes('1x');S.medStart=fd(new Date());S.medEnd='';S.medOngoing=false;
     back();
   }catch(ex){setErr('Save failed: '+(ex.message||ex));}
 };
@@ -12678,7 +12678,7 @@ window.openEditMedicine=function(id){
   S.medName=m.name||'';S.medDosage=m.dosage||'';S.medForm=m.form||'tablet';
   S.medNotes=m.notes||'';S.medFreq=m.frequency||'1x';
   S.medTimes=Array.isArray(m.times)&&m.times.length?m.times.slice():smartMedicineTimes(m.frequency||'1x');
-  S.medStart=m.startDate||todayStr();S.medEnd=m.endDate||'';S.medOngoing=!m.endDate;
+  S.medStart=m.startDate||fd(new Date());S.medEnd=m.endDate||'';S.medOngoing=!m.endDate;
   go('addMedicine');
 };
 window.dMedicine=async function(id){
@@ -12727,7 +12727,7 @@ window.openAddMedicineFor=function(personKey){
   S.medFor=personKey;
   S.medName='';S.medDosage='';S.medForm='tablet';S.medNotes='';
   S.medFreq='1x';S.medTimes=smartMedicineTimes('1x');
-  S.medStart=todayStr();S.medEnd='';S.medOngoing=false;
+  S.medStart=fd(new Date());S.medEnd='';S.medOngoing=false;
   go('addMedicine');
 };
 window.hAddReminder=async function(){
