@@ -2290,7 +2290,7 @@ function sToday(){
           <span>⏰ Reminders</span>
           <button onclick="go('addReminder')" style="font-size:11px;font-weight:700;background:var(--navy);color:#fff;padding:4px 10px;border-radius:8px;border:none;cursor:pointer;font-family:inherit;text-transform:none;letter-spacing:0">+ Add</button>
         </div>`;
-        if(dueReminders.length===0)return remHeader+`<div class="card" style="margin-bottom:14px;padding:14px;text-align:center;color:var(--text-secondary);font-size:13px">No reminders due.</div>`;
+        if(dueReminders.length===0)return '';
         return remHeader+`
         <div class="card" style="margin-bottom:14px">
           ${dueReminders.map((r,i)=>{
@@ -2415,7 +2415,7 @@ function sToday(){
         return `<div class="card" style="margin-bottom:14px;overflow:hidden">
         <div ${showCollapse?'onclick="toggleSection(\'dinners\')"':''} style="display:flex;align-items:center;gap:10px;padding:13px 16px;${showCollapse?'cursor:pointer;':''}user-select:none">
           <span style="font-size:18px">🍲</span>
-          <span style="flex:1;font-size:14px;font-weight:700;color:var(--text)">This Week's Dinners</span>
+          <span style="flex:1;font-size:12px;font-weight:800;color:var(--text-secondary);letter-spacing:0.7px;text-transform:uppercase">This Week's Dinners</span>
           ${showCollapse?`<span class="collapse-chev ${isOpen?'open':''}" style="font-size:13px;color:var(--text-secondary)">▾</span>`:''}
         </div>
         ${pinnedRow}
@@ -2432,11 +2432,11 @@ function sToday(){
       </div>`;
       })()}
 
-      <!-- SHOPPING LIST (collapsible) -->
-      <div class="card" style="margin-bottom:14px;overflow:hidden">
+      <!-- SHOPPING LIST (collapsible) — hidden when empty per Nash request -->
+      ${shoppingTodo.length===0?'':`<div class="card" style="margin-bottom:14px;overflow:hidden">
         <div onclick="toggleSection('shopping')" style="display:flex;align-items:center;gap:10px;padding:13px 16px;cursor:pointer;user-select:none">
           <span style="font-size:18px">🛒</span>
-          <span style="flex:1;font-size:14px;font-weight:700;color:var(--text)">Shopping List</span>
+          <span style="flex:1;font-size:12px;font-weight:800;color:var(--text-secondary);letter-spacing:0.7px;text-transform:uppercase">Shopping List</span>
           <span style="font-size:12px;font-weight:600;color:${shoppingTodo.length>0?'var(--text)':'var(--text-secondary)'};background:${shoppingTodo.length>0?'var(--navy-soft)':'var(--bg)'};padding:3px 10px;border-radius:10px">${shoppingTodo.length} ${shoppingTodo.length===1?'item':'items'}</span>
           <span class="collapse-chev ${S.openSections?.shopping?'open':''}" style="font-size:13px;color:var(--text-secondary)">▾</span>
         </div>
@@ -2460,7 +2460,7 @@ function sToday(){
             </div>
           </div>
         </div>
-      </div>
+      </div>`}
     </div>
 
     <div class="fab">
