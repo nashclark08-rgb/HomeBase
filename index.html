@@ -782,7 +782,7 @@ function tog(val,fn){return '<button class="toggle" style="background:'+(val?'#3
 
 // friendlyError(err) — convert a raw error (FirebaseError, fetch error,
 // HttpsError, plain Error or string) into a single user-readable sentence.
-// Used everywhere we previously did `'Save failed: '+(ex.message||ex)` —
+// Used everywhere we previously did `'Save failed: '+friendlyError(ex)` —
 // the new form is `'Save failed: '+friendlyError(ex)`.
 function friendlyError(err){
   if(!err)return 'Something went wrong.';
@@ -3674,7 +3674,7 @@ async function downloadEventTemplate(){
     setTimeout(()=>URL.revokeObjectURL(url),2000);
     notify('Template downloaded ✅','📥');
   }catch(ex){
-    notify('Could not generate template: '+(ex.message||ex),'❌');
+    notify('Could not generate template: '+friendlyError(ex),'❌');
   }
 }
 window.downloadEventTemplate=downloadEventTemplate;
@@ -3856,7 +3856,7 @@ window.handleSpreadsheetUpload=async function(input){
     S.spreadsheetPreview=result;
     go('spreadsheetPreview');
   }catch(ex){
-    notify('Couldn\'t read file: '+(ex.message||ex),'❌');
+    notify('Couldn\'t read file: '+friendlyError(ex),'❌');
   }finally{
     if(input)input.value=''; // allow re-upload of same file
   }
@@ -4703,7 +4703,7 @@ window.handleFixturePdfUpload=async function(input){
   }catch(ex){
     console.error('[fixtures] PDF flow failed:',ex);
     fi.busy=false;
-    notify('PDF read failed: '+(ex.message||ex),'❌');
+    notify('PDF read failed: '+friendlyError(ex),'❌');
     render();
   }finally{
     if(input)input.value='';
@@ -4820,7 +4820,7 @@ window.handleFixtureImageUpload=async function(input){
   }catch(ex){
     console.error('[fixtures-image] failed:',ex);
     fi.busy=false;
-    notify('Image read failed: '+(ex.message||ex),'❌');
+    notify('Image read failed: '+friendlyError(ex),'❌');
     render();
   }finally{
     if(input)input.value='';
@@ -5241,7 +5241,7 @@ window.handleTimetablePdfUpload=async function(input){
   }catch(ex){
     console.error('[timetable] PDF flow failed:',ex);
     ti.busy=false;
-    notify('PDF read failed: '+(ex.message||ex),'❌');
+    notify('PDF read failed: '+friendlyError(ex),'❌');
     render();
   }finally{
     if(input)input.value='';
@@ -5298,7 +5298,7 @@ window.handleTimetableImageUpload=async function(input){
   }catch(ex){
     console.error('[timetable-image] failed:',ex);
     ti.busy=false;
-    notify('Image read failed: '+(ex.message||ex),'❌');
+    notify('Image read failed: '+friendlyError(ex),'❌');
     render();
   }finally{
     if(input)input.value='';
@@ -6559,7 +6559,7 @@ window.approvePendingEvent=async function(bundleId,eventIdx){
     notify('Event approved'+(remindersCreated?' + '+remindersCreated+' reminder'+(remindersCreated===1?'':'s'):'')+' 📅','✅');
   }catch(e){
     console.error('Approve failed:',e);
-    notify('Failed: '+(e.message||e),'❌');
+    notify('Failed: '+friendlyError(e),'❌');
   }
 };
 
@@ -6608,7 +6608,7 @@ window.dismissPendingEvent=async function(bundleId,eventIdx){
       await updateDoc(doc(db,'families',S.familyId,'pending_events',bundleId),{events:remaining});
     }
     notify('Event dismissed','🗑️');
-  }catch(e){notify('Failed: '+(e.message||e),'❌');}
+  }catch(e){notify('Failed: '+friendlyError(e),'❌');}
 };
 
 // Approve every event in a bundle
@@ -6655,7 +6655,7 @@ window.dismissBundle=async function(bundleId){
       status:'dismissed',events:[],dismissedAt:new Date()
     });
     notify('Email dismissed','🗑️');
-  }catch(e){notify('Failed: '+(e.message||e),'❌');}
+  }catch(e){notify('Failed: '+friendlyError(e),'❌');}
 };
 
 // === INBOX SETUP SCREEN — show forwarding address + instructions ===
@@ -7076,7 +7076,7 @@ window.saveQuickTraining=async function(){
     S.qt=null;
     back();
   }catch(ex){
-    if(err)err.textContent='Save failed: '+(ex.message||ex);
+    if(err)err.textContent='Save failed: '+friendlyError(ex);
   }
 };
 
@@ -10657,7 +10657,7 @@ window.dEvent=async id=>{
     if(window._pendingUndo&&window._pendingUndo.timer)clearTimeout(window._pendingUndo.timer);
     window._pendingUndo={data:{...ev,id},type:'event',linkedReminderIds:linked.map(r=>r.id)};
     showUndoToast(ev.title+(linked.length?` + ${linked.length} reminder${linked.length===1?'':'s'}`:'')+' deleted','event');
-  }catch(ex){notify('Delete failed: '+(ex.message||ex),'⚠️');}
+  }catch(ex){notify('Delete failed: '+friendlyError(ex),'⚠️');}
 };
 // Restore a soft-deleted event from the Deleted view — also revives reminders
 // that were cascaded-deleted with the event.
@@ -10680,7 +10680,7 @@ window.restoreEvent=async id=>{
       ));
     }catch(e){dwarn('Could not revive linked reminders:',e);}
     notify('Event restored ✅');
-  }catch(ex){notify('Restore failed: '+(ex.message||ex),'⚠️');}
+  }catch(ex){notify('Restore failed: '+friendlyError(ex),'⚠️');}
 };
 // Permanently delete a soft-deleted event (hard delete from Firestore).
 // Also hard-deletes any reminders linked to it.
@@ -10696,7 +10696,7 @@ window.permaDeleteEvent=async id=>{
       await Promise.all(remSnap.docs.map(d=>fdel(['reminders',d.id]).catch(()=>null)));
     }catch(e){dwarn('Could not purge linked reminders:',e);}
     notify('Permanently deleted','🗑️');
-  }catch(ex){notify('Delete failed: '+(ex.message||ex),'⚠️');}
+  }catch(ex){notify('Delete failed: '+friendlyError(ex),'⚠️');}
 };
 
 // === LINKED REMINDER UI ===
@@ -10771,7 +10771,7 @@ window.saveLinkedReminder=async function(eventId){
     const m=document.getElementById('link-rem-overlay');if(m)m.remove();
     notify('Reminder added ⏰');
     openEventModal(eventId);
-  }catch(ex){notify('Save failed: '+(ex.message||ex),'⚠️');}
+  }catch(ex){notify('Save failed: '+friendlyError(ex),'⚠️');}
 };
 
 window.removeLinkedReminder=async function(reminderId){
@@ -10787,7 +10787,7 @@ window.removeLinkedReminder=async function(reminderId){
       // next render() catch up. Trigger a render which the onSnapshot for
       // reminders will queue automatically once Firestore confirms.
     }
-  }catch(ex){notify('Remove failed: '+(ex.message||ex),'⚠️');}
+  }catch(ex){notify('Remove failed: '+friendlyError(ex),'⚠️');}
 };
 // Delete event from the modal — for one-off events, simple confirm + delete.
 // For recurring events (weekly/fortnightly), offer choice: this occurrence only OR whole series.
@@ -10915,7 +10915,7 @@ window.skipOccurrenceFromClash=async function(eventId,dateStr,evTitle,isRecurrin
     }).filter(Boolean);
     const personName=ppl.length>0?ppl.map(p=>p.name.split(' ')[0]).join(' & '):'';
     showInformReminderPrompt(evTitle,personName,dateStr);
-  }catch(ex){notify('Skip failed: '+(ex.message||ex),'⚠️');}
+  }catch(ex){notify('Skip failed: '+friendlyError(ex),'⚠️');}
 };
 
 // === INFORM REMINDER PROMPT ===
@@ -10986,7 +10986,7 @@ window.saveInformReminder=async function(evTitle,personName,clashDateStr){
     });
     document.getElementById('inform-reminder-overlay')?.remove();
     notify('Reminder added ⏰');
-  }catch(ex){notify('Save failed: '+(ex.message||ex),'⚠️');}
+  }catch(ex){notify('Save failed: '+friendlyError(ex),'⚠️');}
 };
 
 // Bottom sheet asking how to delete a recurring event
@@ -11047,7 +11047,7 @@ window.confirmDeleteOccurrence=async function(id){
     await fupd(['events',id],{skipDates});
     document.getElementById('recurring-delete-overlay')?.remove();
     notify('Skipped on '+date,'✅');
-  }catch(ex){notify('Failed: '+(ex.message||ex),'❌');}
+  }catch(ex){notify('Failed: '+friendlyError(ex),'❌');}
 };
 
 // Delete the entire recurring series
@@ -11120,8 +11120,8 @@ window.duplicateEventFromModal=function(id){
   notify('Duplicating event — change anything before saving','📋');
   go('addEvent');
 };
-window.tPack=async(cid,iid,val)=>{try{await fupd(['children',cid,'packing',iid],{checked:val===true||val==='true'});}catch(ex){notify('Save failed: '+(ex.message||ex),'⚠️');}};
-window.dPack=async(cid,iid)=>{try{await fdel(['children',cid,'packing',iid]);}catch(ex){notify('Delete failed: '+(ex.message||ex),'⚠️');}};
+window.tPack=async(cid,iid,val)=>{try{await fupd(['children',cid,'packing',iid],{checked:val===true||val==='true'});}catch(ex){notify('Save failed: '+friendlyError(ex),'⚠️');}};
+window.dPack=async(cid,iid)=>{try{await fdel(['children',cid,'packing',iid]);}catch(ex){notify('Delete failed: '+friendlyError(ex),'⚠️');}};
 window.hAddPackItem=async()=>{
   const label=$('pil')?.value?.trim(),section=$('pis')?.value||'school',err=$('pierr');
   if(!label){if(err)err.textContent='Enter an item name';return;}
@@ -11187,8 +11187,8 @@ window.hAddAssessment=async()=>{
   try{await fadd(['assessments'],{childId,subject:subj,title,due:dueDisplay,daysLeft,notes});back();notify('Assessment added 📚');}
   catch(ex){if(err)err.textContent=ex.message;}
 };
-window.dAssessment=async id=>{try{await fdel(['assessments',id]);notify('Deleted','🗑️');}catch(ex){notify('Delete failed: '+(ex.message||ex),'⚠️');}};
-window.tGroc=async(id,val)=>{try{await fupd(['groceries',id],{checked:val});}catch(ex){notify('Save failed: '+(ex.message||ex),'⚠️');}};
+window.dAssessment=async id=>{try{await fdel(['assessments',id]);notify('Deleted','🗑️');}catch(ex){notify('Delete failed: '+friendlyError(ex),'⚠️');}};
+window.tGroc=async(id,val)=>{try{await fupd(['groceries',id],{checked:val});}catch(ex){notify('Save failed: '+friendlyError(ex),'⚠️');}};
 window.quickAddGroc=async function(){
   const input=document.getElementById('todayGrocInput');
   if(!input)return;
@@ -11213,7 +11213,7 @@ window.dGroc=async id=>{
     if(window._pendingUndo&&window._pendingUndo.timer)clearTimeout(window._pendingUndo.timer);
     window._pendingUndo={data:{...g},type:'grocery'};
     showUndoToast(g.label+' removed','grocery');
-  }catch(ex){notify('Delete failed: '+(ex.message||ex),'⚠️');}
+  }catch(ex){notify('Delete failed: '+friendlyError(ex),'⚠️');}
 };
 function showUndoToast(msg,type){
   const old=document.getElementById('undo-toast');if(old)old.remove();
@@ -11335,10 +11335,10 @@ window.hbBulkMarkDone=async function(){
   else notify('Marked '+ids.length+' done ✅');
   render();
 };
-window.addFreq=async id=>{try{await fupd(['groceries',id],{addedToList:true});notify('Added to list ✅');}catch(ex){notify('Add failed: '+(ex.message||ex),'⚠️');}};
+window.addFreq=async id=>{try{await fupd(['groceries',id],{addedToList:true});notify('Added to list ✅');}catch(ex){notify('Add failed: '+friendlyError(ex),'⚠️');}};
 window.unmarkFreq=async id=>{
   if(!confirm('Remove this from frequent items? It will no longer appear in your quick-add bank.'))return;
-  try{await fupd(['groceries',id],{isFrequent:false});notify('Removed from frequents');}catch(ex){notify('Remove failed: '+(ex.message||ex),'⚠️');}
+  try{await fupd(['groceries',id],{isFrequent:false});notify('Removed from frequents');}catch(ex){notify('Remove failed: '+friendlyError(ex),'⚠️');}
 };
 window.editEvent=function(eventId){
   const ev=S.events.find(e=>e.id===eventId);
@@ -11387,7 +11387,7 @@ window.replicateEvent=function(eventId){
   go('addEvent');
   notify('Event copied — edit and save 📋');
 };
-window.quickAddFreq=async id=>{try{await fupd(['groceries',id],{addedToList:true,checked:false});notify('Added to list ✅');}catch(ex){notify('Add failed: '+(ex.message||ex),'⚠️');}};
+window.quickAddFreq=async id=>{try{await fupd(['groceries',id],{addedToList:true,checked:false});notify('Added to list ✅');}catch(ex){notify('Add failed: '+friendlyError(ex),'⚠️');}};
 window.quickAddPlayDate=function(type){
   go('addPlayDate',{type});
 };
@@ -11416,7 +11416,7 @@ window.hAddGift=async()=>{
   try{await fadd(['gifts'],{recipientId:S.screenParams.id,label,price:price?parseFloat(price):null,occasion,isPrivate:gIsPriv,createdBy:S.user.uid});gIsPriv=false;back();notify('Gift idea saved 🎁');}
   catch(ex){if(err)err.textContent=ex.message;}
 };
-window.dGift=async id=>{try{await fdel(['gifts',id]);}catch(ex){notify('Delete failed: '+(ex.message||ex),'⚠️');}};
+window.dGift=async id=>{try{await fdel(['gifts',id]);}catch(ex){notify('Delete failed: '+friendlyError(ex),'⚠️');}};
 window.hAddDinner=async function(){
   const date=document.getElementById('dn-date')?.value;
   const meal=document.getElementById('dn-meal')?.value?.trim();
@@ -11477,7 +11477,7 @@ window.dDinner=async function(id){
     if(window._pendingUndo&&window._pendingUndo.timer)clearTimeout(window._pendingUndo.timer);
     window._pendingUndo={data:{...d},type:'dinner'};
     showUndoToast(d.meal+' removed','dinner');
-  }catch(ex){notify('Delete failed: '+(ex.message||ex),'⚠️');}
+  }catch(ex){notify('Delete failed: '+friendlyError(ex),'⚠️');}
 };
 
 // ── PLAY DATE HANDLERS ─────────────────────────────────────────────
@@ -11733,7 +11733,7 @@ window.addMealIdea=async function(){
 };
 window.dMealIdea=async function(id){
   if(!confirm('Remove this meal idea?'))return;
-  try{await fdel(['mealIdeas',id]);notify('Removed','🗑️');}catch(ex){notify('Remove failed: '+(ex.message||ex),'⚠️');}
+  try{await fdel(['mealIdeas',id]);notify('Removed','🗑️');}catch(ex){notify('Remove failed: '+friendlyError(ex),'⚠️');}
 };
 window.useMealIdea=function(id){
   const m=(S.mealIdeas||[]).find(x=>x.id===id);
@@ -11778,7 +11778,7 @@ window.hDeleteDinner=async function(id){
     S._formTouched=false; // skip the unsaved-changes prompt on back()
     back();
     showUndoToast((d.meal||'Dinner')+' removed','dinner');
-  }catch(ex){notify('Delete failed: '+(ex.message||ex),'⚠️');}
+  }catch(ex){notify('Delete failed: '+friendlyError(ex),'⚠️');}
 };
 
 // Open a google search for the meal name + "recipe" in a new tab so the user
@@ -12001,7 +12001,7 @@ window.assignRecipeToDate=async function(dateStr){
     S._assignToDay=null;
     // Stay on the suggestions screen so user can assign more
     render();
-  }catch(ex){notify('Save failed: '+(ex.message||ex),'⚠️');}
+  }catch(ex){notify('Save failed: '+friendlyError(ex),'⚠️');}
 };
 
 // Cancel/close the assign-to-day sheet without saving
@@ -12135,7 +12135,7 @@ window.toggleHasThermomix=async function(){
     notify(next?'Thermomix mode on 🌀':'Thermomix mode off','✅');
   }catch(e){
     S.family.hasThermomix=!next;
-    notify('Save failed: '+(e.message||e),'⚠️');
+    notify('Save failed: '+friendlyError(e),'⚠️');
   }
   render();
 };
@@ -12178,7 +12178,7 @@ window.savePastRetention=async function(){
     if(S.family)S.family.pastEventsRetentionDays=v;
     notify('✅ Saved','📜');
     render();
-  }catch(e){notify('Save failed: '+(e.message||e),'⚠️');}
+  }catch(e){notify('Save failed: '+friendlyError(e),'⚠️');}
 };
 
 // === CALENDAR SUBSCRIPTION HANDLERS ===
@@ -12216,7 +12216,7 @@ window.subscribeToCalendar=async function(){
     setTimeout(()=>{notify('📆 Calendar URL ready — confirm in your Calendar app','✅');},500);
   }catch(ex){
     console.error('subscribeToCalendar failed:',ex);
-    notify('Calendar URL failed: '+(ex.message||ex),'❌');
+    notify('Calendar URL failed: '+friendlyError(ex),'❌');
   }
 };
 
@@ -12234,7 +12234,7 @@ window.copyCalendarUrl=async function(){
     }
   }catch(ex){
     console.error('copyCalendarUrl failed:',ex);
-    notify('Failed: '+(ex.message||ex),'❌');
+    notify('Failed: '+friendlyError(ex),'❌');
   }
 };
 // Save the team name for a specific sport (e.g. "Hockey" -> "Norths")
@@ -12249,7 +12249,7 @@ window.updateSportTeam=async function(sport,teamName){
     await updateDoc(doc(db,'families',S.familyId),{sportTeams:next});
     if(S.family)S.family.sportTeams=next;
     notify(trimmed?'Team saved 🏃':'Team cleared','✅');
-  }catch(e){notify('Save failed: '+(e.message||e),'⚠️');}
+  }catch(e){notify('Save failed: '+friendlyError(e),'⚠️');}
 };
 window.addFamilySport=async function(){
   const inp=document.getElementById('set-family-sport-input');
@@ -12270,7 +12270,7 @@ window.addFamilySport=async function(){
     if(inp)inp.value='';
     notify('Added '+sport+' 🏃','✅');
     render();
-  }catch(e){notify('Save failed: '+(e.message||e),'⚠️');}
+  }catch(e){notify('Save failed: '+friendlyError(e),'⚠️');}
 };
 window.removeFamilySport=async function(sport){
   const existing=Array.isArray(S.family?.sports)?S.family.sports:[];
@@ -12281,7 +12281,7 @@ window.removeFamilySport=async function(sport){
     if(S.family)S.family.sports=next;
     notify('Removed '+sport,'🗑');
     render();
-  }catch(e){notify('Save failed: '+(e.message||e),'⚠️');}
+  }catch(e){notify('Save failed: '+friendlyError(e),'⚠️');}
 };
 window.saveLocationSettings=async function(){
   const city=document.getElementById('set-city')?.value?.trim();
@@ -13055,7 +13055,7 @@ window.hAddMedicine=async function(){
     S.medDuration=7;S.medStartedLater=false;S.medFirstDoseTime='';S.medDurCustom=false;
     S.medEnd='';S.medOngoing=false;
     setTimeout(back,900);
-  }catch(ex){setErr('Save failed: '+(ex.message||ex));}
+  }catch(ex){setErr('Save failed: '+friendlyError(ex));}
 };
 window.openEditMedicine=function(id){
   const m=(S.medicines||[]).find(x=>x.id===id);
@@ -13090,7 +13090,7 @@ window.dMedicine=async function(id){
     await Promise.all(myDoses.map(d=>fdel(['medicineDoses',d.id]).catch(()=>null)));
     notify('Medicine deleted 🗑️');
     back();
-  }catch(ex){notify('Delete failed: '+(ex.message||ex),'⚠️');}
+  }catch(ex){notify('Delete failed: '+friendlyError(ex),'⚠️');}
 };
 // Mark a scheduled dose as given. Race-safe-ish: relies on Firestore's
 // strong consistency — if the SAME doc is created twice by both parents
@@ -13112,9 +13112,9 @@ window.giveMedicineDose=async function(medId,scheduledFor,status){
     });
     notifyWithUndo('💊 '+med.name+' marked '+status,async function(){
       try{await fdel(['medicineDoses',ref.id]);notify('Dose entry removed','↩️');}
-      catch(ex){notify('Undo failed: '+(ex.message||ex),'⚠️');}
+      catch(ex){notify('Undo failed: '+friendlyError(ex),'⚠️');}
     },'💊');
-  }catch(ex){notify('Save failed: '+(ex.message||ex),'⚠️');}
+  }catch(ex){notify('Save failed: '+friendlyError(ex),'⚠️');}
 };
 window.openMedicineLog=function(medId){
   go('medicineLog',{medicineId:medId});
@@ -13180,7 +13180,7 @@ function stashRmFormInputs(){
   if(n)S.rmNotes=n.value;
 }
 window.tReminder=async function(id,val){
-  try{await fupd(['reminders',id],{done:val});}catch(ex){notify('Save failed: '+(ex.message||ex),'⚠️');}
+  try{await fupd(['reminders',id],{done:val});}catch(ex){notify('Save failed: '+friendlyError(ex),'⚠️');}
 };
 // Acknowledge a scheduling clash. Stores the pairKey on family.clashDismissals
 // so it disappears for ALL adults in the family (shared truth). Auto-clears once
@@ -13195,7 +13195,7 @@ window.ackClash=async function(pairKey){
     notify('Clash acknowledged ✓','👌');
   }catch(ex){
     console.error('[ackClash] failed',ex);
-    notify('Failed: '+(ex.message||ex),'⚠️');
+    notify('Failed: '+friendlyError(ex),'⚠️');
   }
 };
 window.dReminder=async function(id){
@@ -13212,11 +13212,11 @@ window.dReminder=async function(id){
         await fadd(['reminders'],snapshot);
         notify('Reminder restored','✓');
       }catch(ex){
-        notify('Restore failed: '+(ex.message||ex),'⚠️');
+        notify('Restore failed: '+friendlyError(ex),'⚠️');
       }
     },'🗑️');
   }catch(ex){
-    notify('Delete failed: '+(ex.message||ex),'⚠️');
+    notify('Delete failed: '+friendlyError(ex),'⚠️');
   }
 };
 window.toggleSection=function(key){
@@ -13959,7 +13959,7 @@ window.startVoiceCapture=function(){
     recognition.start();
     window._activeRecognition=recognition;
   }catch(ex){
-    notify('Could not start microphone: '+(ex.message||ex),'❌');
+    notify('Could not start microphone: '+friendlyError(ex),'❌');
   }
 };
 
@@ -14255,7 +14255,7 @@ window.saveAllVoiceIntents=async function(){
     }catch(ex){
       console.error('[voice-save] failed for intent',it,ex);
       failed++;
-      errors.push((it.type||'?')+': '+(ex.message||ex));
+      errors.push((it.type||'?')+': '+friendlyError(ex));
     }
   }
   dlog('[voice-save] done. saved=',saved,'failed=',failed,'errors=',errors);
@@ -14331,7 +14331,7 @@ window.saveVoiceReminder=async function(text,date){
     });
     notify('Reminder saved ⏰','✅');
   }catch(e){
-    notify('Save failed: '+(e.message||e),'❌');
+    notify('Save failed: '+friendlyError(e),'❌');
   }
   closeVoiceQuickAdd();
 };
@@ -14361,7 +14361,7 @@ window.saveVoiceGift=async function(recipientId,idea,isPrivate){
     });
     notify('Gift idea saved 🎁'+(isPrivate?' (private)':''),'✅');
   }catch(e){
-    notify('Save failed: '+(e.message||e),'❌');
+    notify('Save failed: '+friendlyError(e),'❌');
   }
   closeVoiceQuickAdd();
 };
@@ -14460,7 +14460,7 @@ window.openInboxReview=function(){
     else{console.error('[openInboxReview] render is not a function:',typeof render);}
   }catch(e){
     console.error('[openInboxReview] EXCEPTION:',e);
-    alert('Inbox open failed: '+(e.message||e)+'\n\nSee browser console for details.');
+    alert('Inbox open failed: '+friendlyError(e)+'\n\nSee browser console for details.');
   }
 };
 
