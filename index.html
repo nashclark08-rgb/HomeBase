@@ -2121,9 +2121,9 @@ function sToday(){
             +actionBtn
           +'</div>';
         }).join('');
-        return '<div style="display:flex;justify-content:space-between;align-items:center;margin:0 16px 6px 16px">'
-          +'<h2 style="font-size:12px;font-weight:800;color:var(--text-secondary);letter-spacing:0.7px;margin:0">💊 MEDICINES DUE</h2>'
-          +'<button onclick="go(\'addMedicine\')" style="font-size:11px;font-weight:700;background:var(--navy);color:#fff;padding:4px 10px;border-radius:8px;border:none;cursor:pointer;font-family:inherit">+ Add</button>'
+        return '<div class="sh" style="margin-bottom:6px;display:flex;align-items:center;justify-content:space-between;padding-right:16px">'
+          +'<span>💊 Medicines Due</span>'
+          +'<button onclick="go(\'addMedicine\')" style="font-size:11px;font-weight:700;background:var(--navy);color:#fff;padding:4px 10px;border-radius:8px;border:none;cursor:pointer;font-family:inherit;text-transform:none;letter-spacing:0">+ Add</button>'
           +'</div>'
           +'<div class="card" style="margin:0 16px 14px 16px;padding:0">'+rows+'</div>';
       })()}
@@ -2412,14 +2412,16 @@ function sToday(){
         // Only show chev/collapsible mechanism when there ARE other days
         // to collapse. Header click is inert otherwise.
         const showCollapse=otherDinners.length>0;
+        // Show ONLY tonight's dinner per Nash request — drop the otherDinners list.
+        // If no dinner planned for tonight, hide the entire section (header included).
+        if(!viewedDayDinner)return '';
         return `<div class="sh" style="margin-bottom:6px;display:flex;align-items:center;justify-content:space-between;padding-right:16px">
-          <span>🍲 This Week's Dinners</span>
+          <span>🍲 Tonight's Dinner</span>
           <button onclick="go('addDinner')" style="font-size:11px;font-weight:700;background:var(--navy);color:#fff;padding:4px 10px;border-radius:8px;border:none;cursor:pointer;font-family:inherit;text-transform:none;letter-spacing:0">+ Add</button>
         </div>
         <div class="card" style="margin-bottom:14px">
-          ${viewedDayDinner?dinnerRow(viewedDayDinner,0,otherDinners.length?[viewedDayDinner,'placeholder']:[viewedDayDinner]):''}
-          ${otherDinners.map((d,i,arr)=>dinnerRow(d,i,arr)).join('')}
-          ${otherDinners.length||viewedDayDinner?`<button onclick="setTab('lists');S.listTab='dinners';render()" style="width:100%;padding:10px 16px;background:none;border:none;border-top:1px solid var(--row-border);color:var(--navy);font-size:13px;font-weight:600;cursor:pointer;font-family:inherit">View all dinners ›</button>`:''}
+          ${dinnerRow(viewedDayDinner,0,[viewedDayDinner])}
+          <button onclick="setTab('lists');S.listTab='dinners';render()" style="width:100%;padding:10px 16px;background:none;border:none;border-top:1px solid var(--row-border);color:var(--navy);font-size:13px;font-weight:600;cursor:pointer;font-family:inherit">View week ›</button>
         </div>`;
       })()}
 
@@ -2430,12 +2432,7 @@ function sToday(){
         </div>
         <div class="card" style="margin-bottom:14px;overflow:hidden">
           <div>
-              ${shoppingTodo.length===0?`${emptyState('🛒','Shopping list is empty','Add items as you run out — tap + Add or use a frequent item shortcut.','+ Add item',"setTab('lists');S.listTab='groceries';render()",true)}`:
-                shoppingTodo.slice(0,5).map(g=>`<div class="row" style="border-bottom:1px solid var(--row-border)">
-                  <div class="cb" onclick="event.stopPropagation();tGroc('${g.id}',true)" style="border-color:#C7C7CC"></div>
-                  <span style="flex:1;font-size:15px">${g.label}${g.quantity>1?' ×'+g.quantity:''}</span>
-                </div>`).join('')}
-              ${shoppingTodo.length>5?`<div class="row" style="justify-content:center;color:var(--text-secondary);font-size:13px;border-bottom:1px solid var(--row-border)">+${shoppingTodo.length-5} more items</div>`:''}
+              <!-- Item rows removed per Nash request — Today shows count + quick-add + view link only. -->
               <!-- Inline quick-add row -->
               <div style="display:flex;align-items:center;gap:8px;padding:10px 12px" onclick="event.stopPropagation()">
                 <input id="todayGrocInput" type="text" placeholder="Add an item..." onkeydown="if(event.key==='Enter')quickAddGroc()" onclick="event.stopPropagation()" style="flex:1;border:none;background:transparent;font-size:15px;font-family:inherit;color:var(--text);outline:none;padding:4px 0"/>
@@ -8622,8 +8619,12 @@ function sPersonProfile(){
       ${(()=>{
         const uid=S.user?.uid;
         const personGifts=(S.gifts||[]).filter(g=>g.recipientId===person.id&&(!g.isPrivate||g.createdBy===uid));
-        return `<div class="sh" style="padding:0 16px;margin-bottom:6px">🎁 Gift Ideas (${personGifts.length})</div>
-        <div class="card" style="margin-bottom:14px">
+        const giftsKey='gifts_'+person.id;
+        const giftsOpen=!!(S.openSections&&S.openSections[giftsKey]);
+        const countLbl=personGifts.length===1?'1 present':personGifts.length+' presents';
+        const head=`<div class="sh" onclick="toggleSection('${giftsKey}')" style="padding:0 16px;margin-bottom:6px;cursor:pointer;display:flex;align-items:center;justify-content:space-between"><span>🎁 Gift Ideas <span style="font-weight:500;color:var(--text-secondary);text-transform:none;letter-spacing:0">· ${countLbl}</span></span><span style="font-size:13px;color:var(--text-secondary)">${giftsOpen?'▾':'▸'}</span></div>`;
+        if(!giftsOpen)return head;
+        return head+`<div class="card" style="margin-bottom:14px">
           ${personGifts.length===0?`<div style="padding:20px;text-align:center;color:var(--text-secondary);font-size:14px">No gift ideas yet</div>`:personGifts.map((g,i,arr)=>`<div class="row" style="border-bottom:${i<arr.length-1?'1px solid var(--row-border)':'none'}">
             <div style="flex:1">
               <div style="font-size:14px;font-weight:600;color:var(--text)">${g.label}</div>
