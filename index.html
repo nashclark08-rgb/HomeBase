@@ -980,70 +980,20 @@ async function joinFamily(code){
     await setDoc(doc(db,'users',S.user.uid),{familyId:fid,name:S.user.displayName});
     return fid;
   }
-  // Personal codes (HB-A-* / HB-C-*) — use the invitations collection (single-doc lookup, no enumeration)
+  // Personal codes (HB-A-* / HB-C-*) — delegated to joinFamilyByPersonalCode
+  // Cloud Function. The Function uses admin SDK so it can move placeholder
+  // member data onto the joining user's real auth uid without the chicken-
+  // and-egg of 'you must be a family member to update the family doc'.
+  // All validation, placeholder swap, and invitation-marking is server-side.
   if(c.startsWith('HB-A-')||c.startsWith('HB-C-')){
-    let inviteSnap;
     try{
-      inviteSnap=await getDoc(doc(db,'invitations',c));
+      const joinCall=httpsCallable(functions,'joinFamilyByPersonalCode');
+      const res=await joinCall({code:c});
+      return res.data.familyId;
     }catch(ex){
-      throw new Error('Could not look up invite code. Check your connection and try again.');
+      // Cloud Function HttpsError messages are already user-friendly.
+      throw new Error(ex.message||'Could not apply invite code. Please try again.');
     }
-    if(!inviteSnap.exists()){
-      throw new Error('Invite code not recognised. Ask the person who invited you to generate a fresh code from the family page.');
-    }
-    const inv=inviteSnap.data();
-    const fid=inv.familyId;
-    if(!fid)throw new Error('Invite code is invalid (missing family link). Please ask for a new one.');
-
-    if(inv.kind==='adult'){
-      // Move placeholder data onto the real Firebase Auth uid
-      const{deleteField}=await import('https://www.gstatic.com/firebasejs/10.7.1/firebase-firestore.js');
-      const placeholderUid=inv.targetId;
-      // Read the family doc to get the placeholder member info (read scope: family I'm joining → readable since I'm now joining)
-      let placeholder={};
-      try{
-        const famSnap=await getDoc(doc(db,'families',fid));
-        if(famSnap.exists()){
-          const famData=famSnap.data();
-          placeholder=(famData.members||{})[placeholderUid]||{};
-        }
-      }catch(ex){
-        // If we can't read the family (rules), continue with minimal info
-      }
-      const updates={};
-      updates['members.'+S.user.uid]={
-        name:S.user.displayName||placeholder.name||'Member',
-        role:placeholder.role||'Member',
-        relationship:placeholder.relationship||'',
-        color:placeholder.color||COLORS[Math.floor(Math.random()*COLORS.length)],
-        photoURL:placeholder.photoURL||'',
-        email:placeholder.email||'',
-        phone:placeholder.phone||'',
-        personalCode:c
-      };
-      // If the placeholder was a temporary one (uid != real auth uid), remove it
-      if(placeholderUid&&placeholderUid!==S.user.uid){
-        updates['members.'+placeholderUid]=deleteField();
-      }
-      await updateDoc(doc(db,'families',fid),updates);
-      await setDoc(doc(db,'users',S.user.uid),{familyId:fid,name:S.user.displayName||placeholder.name||'Member'});
-      // Mark invitation as used (best effort — don't block on failure)
-      try{await updateDoc(doc(db,'invitations',c),{used:true,usedBy:S.user.uid,usedAt:new Date()});}catch(e){}
-      return fid;
-    }
-    if(inv.kind==='child'){
-      const childId=inv.targetId;
-      await updateDoc(doc(db,'families',fid),{['members.'+S.user.uid]:{
-        name:S.user.displayName||'Member',
-        role:'Member',
-        color:COLORS[Math.floor(Math.random()*COLORS.length)],
-        linkedChildId:childId
-      }});
-      await setDoc(doc(db,'users',S.user.uid),{familyId:fid,name:S.user.displayName,linkedChildId:childId});
-      try{await updateDoc(doc(db,'invitations',c),{used:true,usedBy:S.user.uid,usedAt:new Date()});}catch(e){}
-      return fid;
-    }
-    throw new Error('Invite code is invalid (unknown type). Please ask for a new one.');
   }
   throw new Error('Family not found. Codes look like HB-XXXXXX (family) or HB-A-XXXXX / HB-C-XXXXX (personal).');
 }
