@@ -87,6 +87,7 @@ body{font-family:-apple-system,BlinkMacSystemFont,system-ui,sans-serif;backgroun
 .fab-menu{position:absolute;bottom:66px;right:0;display:flex;flex-direction:column;gap:8px;align-items:flex-end}
 .fab-item{display:flex;align-items:center;gap:10px;padding:11px 18px;background:#1C1C1E;border-radius:24px;border:none;cursor:pointer;font-family:inherit;color:#fff;font-size:15px;font-weight:600;white-space:nowrap;box-shadow:0 4px 16px rgba(0,0,0,0.25)}
 .notif{position:absolute;top:10px;left:12px;right:12px;z-index:999;background:rgba(28,28,30,0.94);border-radius:16px;padding:12px 14px;cursor:pointer;animation:sdown 0.3s ease}
+@keyframes medFlash{0%{box-shadow:0 0 0 0 rgba(28,58,107,0)}30%{box-shadow:0 0 0 6px rgba(28,58,107,0.35)}100%{box-shadow:0 0 0 0 rgba(28,58,107,0)}}
 .chev::after{content:'';display:inline-block;width:7px;height:7px;border-right:2px solid #C7C7CC;border-top:2px solid #C7C7CC;transform:rotate(45deg);margin-left:4px}
 .photo-wrap{width:88px;height:88px;border-radius:44px;border:3px dashed #C7C7CC;display:flex;flex-direction:column;align-items:center;justify-content:center;cursor:pointer;margin:0 auto;background:#F8F8F8;overflow:hidden}
 .freq-btn{flex:1;padding:10px 6px;border-radius:10px;border:2px solid #E5E5EA;background:#fff;color:#8E8E93;font-size:13px;font-weight:600;cursor:pointer;font-family:inherit;transition:all 0.15s}
@@ -316,15 +317,81 @@ async function initMessaging(){
     return true;
   }catch(ex){console.error('[HomeBase] FCM init failed',ex);return false;}
 }
-// Listen for "open this URL" messages from the service worker (when user taps a notification)
+// Notification-tap routing. The service worker (firebase-messaging-sw.js)
+// posts a NOTIFICATION_CLICK message with the URL when the user taps a
+// notification while the app is already running. When the app is opened
+// fresh from a notification tap, that same URL becomes location.href on
+// boot — so we run the same handler in both cases.
+function handleNotifFromUrl(rawUrl){
+  if(!rawUrl)return;
+  let qs;
+  try{qs=new URL(rawUrl,location.origin).searchParams;}catch(e){return;}
+  const notif=qs.get('notif');
+  if(!notif)return;
+  dlog('[HomeBase] Routing from notification:',notif,Object.fromEntries(qs.entries()));
+
+  // Wait until the app has booted (user signed in + family data loaded)
+  // before routing — otherwise we'd flash the Today tab and immediately
+  // get redirected to the sign-in screen.
+  const route=()=>{
+    if(notif==='medicine'){
+      const scheduledFor=qs.get('for')||'';
+      try{setTab('today');}catch(e){}
+      try{render();}catch(e){}
+      // Wait for the next render tick, then scroll to and flash the row
+      setTimeout(()=>{
+        if(!scheduledFor)return;
+        let sel;
+        try{sel='[data-med-scheduled="'+CSS.escape(scheduledFor)+'"]';}
+        catch(e){sel='[data-med-scheduled="'+scheduledFor.replace(/"/g,'')+'"]';}
+        const el=document.querySelector(sel);
+        if(el){
+          el.scrollIntoView({behavior:'smooth',block:'center'});
+          el.style.animation='medFlash 1.6s ease';
+          setTimeout(()=>{try{el.style.animation='';}catch(e){}},1800);
+        }
+      },350);
+    }
+    // Other notif types (event, reminder, handoff) fall through to
+    // whatever screen the app boots into — TODO route those too.
+  };
+
+  if(S&&S.user&&S.familyId){
+    route();
+  }else{
+    const start=Date.now();
+    const wait=setInterval(()=>{
+      if(S&&S.user&&S.familyId){clearInterval(wait);route();}
+      else if(Date.now()-start>15000)clearInterval(wait);
+    },200);
+  }
+
+  // Clean the ?notif=... params off the address bar so a hard-refresh
+  // doesn't re-trigger the routing. Only safe to do on the live URL
+  // (i.e. when rawUrl matches location.href), not on SW-message URLs.
+  if(rawUrl===location.href){
+    try{
+      const u=new URL(location.href);
+      u.searchParams.delete('notif');
+      u.searchParams.delete('for');
+      u.searchParams.delete('id');
+      history.replaceState({},'',u.pathname+(u.searchParams.toString()?'?'+u.searchParams:'')+u.hash);
+    }catch(e){}
+  }
+}
+
+// Service-worker message path: app is already running, user taps a notif,
+// SW focuses the existing window and posts the URL it would have opened.
 if('serviceWorker' in navigator){
   navigator.serviceWorker.addEventListener('message',(event)=>{
     if(event.data?.type==='NOTIFICATION_CLICK'&&event.data?.url){
-      // Could route to a specific screen here based on URL
-      dlog('[HomeBase] Notification tapped:',event.data.url);
+      handleNotifFromUrl(event.data.url);
     }
   });
 }
+// Cold-boot path: app was closed, SW called clients.openWindow(targetUrl),
+// browser opened us with ?notif=... already in the address bar.
+window.addEventListener('load',()=>{handleNotifFromUrl(location.href);});
 
 const NAVY='#1C3A6B';
 // === APP URL ===
@@ -2107,7 +2174,7 @@ function sToday(){
           const actionBtn=d.administered
             ? '<button onclick="event.stopPropagation();openMedicineLog(\''+d.med.id+'\')" style="padding:6px 11px;border-radius:8px;background:#34C75918;border:1px solid #34C759;color:#1B8A3C;font-size:11px;font-weight:700;cursor:pointer;font-family:inherit;white-space:nowrap">✓ '+(status==='given'?'Given':status)+' '+(givenAt?'· '+givenAt:'')+'</button>'
             : '<button onclick="event.stopPropagation();giveMedicineDose(\''+d.med.id+'\',\''+d.scheduledFor+'\',\'given\')" style="padding:8px 14px;border-radius:9px;background:var(--navy);border:none;color:#fff;font-size:12px;font-weight:700;cursor:pointer;font-family:inherit;white-space:nowrap">💊 Give</button>';
-          return '<div onclick="openMedicineLog(\''+d.med.id+'\')" style="padding:11px 14px;border-bottom:'+(i<due.length-1?'1px solid var(--row-border)':'none')+';display:flex;align-items:center;gap:10px;cursor:pointer;background:'+statusBg+'">'
+          return '<div data-med-scheduled="'+d.scheduledFor+'" onclick="openMedicineLog(\''+d.med.id+'\')" style="padding:11px 14px;border-bottom:'+(i<due.length-1?'1px solid var(--row-border)':'none')+';display:flex;align-items:center;gap:10px;cursor:pointer;background:'+statusBg+'">'
             +'<div style="width:36px;height:36px;border-radius:18px;background:'+tcol+'18;border:2px solid '+tcol+';display:flex;align-items:center;justify-content:center;font-size:17px;flex-shrink:0">💊</div>'
             +'<div style="flex:1;min-width:0">'
               +'<div style="font-size:14px;color:var(--text);font-weight:700">'+String(d.med.name||'').replace(/</g,'&lt;')+' <span style="font-weight:500;color:var(--text-secondary);font-size:12px">· '+String(d.med.dosage||'').replace(/</g,'&lt;')+'</span></div>'
