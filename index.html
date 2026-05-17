@@ -1549,12 +1549,12 @@ function sLogin(){
       <input class="input" id="le" type="email" placeholder="Email address" autocomplete="email"/>
       <input class="input" id="lp" type="password" placeholder="Password" autocomplete="current-password"/>
       <div id="lerr" class="err"></div>
-      <button class="primary-btn" onclick="hLogin()">Sign In</button>
-      <button class="btn" onclick="hForgotPassword()" style="color:#1C3A6B;font-size:14px;font-weight:500;padding:6px;text-align:center">Forgot password?</button>
+      <button class="primary-btn" onclick="inflight(this, hLogin)">Sign In</button>
+      <button class="btn" onclick="inflight(this, hForgotPassword)" style="color:#1C3A6B;font-size:14px;font-weight:500;padding:6px;text-align:center">Forgot password?</button>
       <button class="btn" onclick="go(\'signup\')" style="color:#1C3A6B;font-size:15px;font-weight:600;padding:8px;text-align:center">Create Account</button>
       ${!S.pendingInvite?`<div style="text-align:center;font-size:12px;color:#8E8E93;line-height:1.5;margin-top:-4px">Got a personal invite code? Tap <strong style="color:#1C3A6B">Create Account</strong> above — you'll be able to enter it on the next screen.</div>`:''}
       <div style="display:flex;align-items:center;gap:10px"><div style="flex:1;height:1px;background:#E5E5EA"></div><span style="font-size:13px;color:#8E8E93">or</span><div style="flex:1;height:1px;background:#E5E5EA"></div></div>
-      <button class="secondary-btn" onclick="hGoogle()" style="display:flex;align-items:center;justify-content:center;gap:10px">
+      <button class="secondary-btn" onclick="inflight(this, hGoogle)" style="display:flex;align-items:center;justify-content:center;gap:10px">
         <svg width="18" height="18" viewBox="0 0 48 48"><path fill="#EA4335" d="M24 9.5c3.54 0 6.71 1.22 9.21 3.6l6.85-6.85C35.9 2.38 30.47 0 24 0 14.62 0 6.51 5.38 2.56 13.22l7.98 6.19C12.43 13.72 17.74 9.5 24 9.5z"/><path fill="#4285F4" d="M46.98 24.55c0-1.57-.15-3.09-.38-4.55H24v9.02h12.94c-.58 2.96-2.26 5.48-4.78 7.18l7.73 6c4.51-4.18 7.09-10.36 7.09-17.65z"/><path fill="#FBBC05" d="M10.53 28.59c-.48-1.45-.76-2.99-.76-4.59s.27-3.14.76-4.59l-7.98-6.19C.92 16.46 0 20.12 0 24c0 3.88.92 7.54 2.56 10.78l7.97-6.19z"/><path fill="#34A853" d="M24 48c6.48 0 11.93-2.13 15.89-5.81l-7.73-6c-2.18 1.48-4.97 2.31-8.16 2.31-6.26 0-11.57-4.22-13.47-9.91l-7.98 6.19C6.51 42.62 14.62 48 24 48z"/></svg>
         Continue with Google
       </button>
@@ -1582,7 +1582,7 @@ function sSignup(){
         </div>
 
         <div id="serr" class="err"></div>
-        <button class="primary-btn" onclick="hSignup()">Create Account</button>
+        <button class="primary-btn" onclick="inflight(this, hSignup)">Create Account</button>
       </div>
     </div>
   </div>`;
@@ -1604,7 +1604,7 @@ function sFamilySetup(){
         <div style="font-size:14px;color:#8E8E93;margin-bottom:14px">Start fresh and invite others to join</div>
         <input class="input" id="fn" type="text" placeholder="Family name (e.g. The Clarks)" style="margin-bottom:10px"/>
         <div id="ferr" class="err" style="margin-bottom:8px"></div>
-        <button class="primary-btn" onclick="hCreateFamily()">Create Family</button>
+        <button class="primary-btn" onclick="inflight(this, hCreateFamily)">Create Family</button>
       </div>
       <div style="text-align:center;color:#8E8E93;font-size:14px">— or —</div>
       <div style="background:#fff;border-radius:16px;padding:20px;box-shadow:0 1px 4px rgba(0,0,0,0.08);${S.pendingInvite?'border:2px solid #1C3A6B':''}">
@@ -1612,7 +1612,7 @@ function sFamilySetup(){
         <div style="font-size:14px;color:#8E8E93;margin-bottom:14px;line-height:1.45">${S.pendingInvite?'Code already filled in — just tap below.':'Enter the personal invite code your partner or family admin sent you'}</div>
         <input class="input" id="fc" type="text" placeholder="Invite code (e.g. HB-A-XXXXX)" value="${S.pendingInvite||''}" style="margin-bottom:10px;font-family:monospace;text-transform:uppercase"/>
         <div id="jerr" class="err" style="margin-bottom:8px"></div>
-        <button class="green-btn" onclick="hJoinFamily()">Join with Code</button>
+        <button class="green-btn" onclick="inflight(this, hJoinFamily)">Join with Code</button>
       </div>
     </div>
   </div>`;
@@ -1647,7 +1647,7 @@ function sAddChild(){
         <div id="ccolor-grid">${renderColourGrid('col',COLORS[0],"pickColor('HEX')")}</div>
         <input type="hidden" id="ccolor" value="${COLORS[0]}"/>
         <div id="cerr" class="err"></div>
-        <button class="primary-btn" onclick="hAddChild()">Add Child</button>
+        <button class="primary-btn" onclick="inflight(this, hAddChild)">Add Child</button>
         <button class="secondary-btn" onclick="setTab('today')">Skip for now</button>
       </div>
     </div>
@@ -1797,7 +1797,7 @@ function sEditFamily(){
         <div id="ef-color-grid">${renderColourGrid('efc',m.color||NAVY,"pickColorTo('ef-color','ef-color-grid','efc','HEX')")}</div>
         <input type="hidden" id="ef-color" value="${m.color||NAVY}"/>
         <div id="eferr" class="err"></div>
-        <button class="primary-btn" onclick="hSaveEditFamily()">Save Changes</button>
+        <button class="primary-btn" onclick="inflight(this, hSaveEditFamily)">Save Changes</button>
       </div>
     </div>
   </div>`;
@@ -1857,8 +1857,8 @@ function sAddCaregiver(){
         </div>
         <div id="acerr" class="err"></div>
         <div style="display:flex;gap:8px">
-          <button class="primary-btn" onclick="hAddCaregiver()" style="flex:1">Save</button>
-          <button onclick="hAddCaregiverWithEmail()" style="flex:1;padding:15px;border-radius:12px;background:#34C759;color:#fff;border:none;font-size:15px;font-weight:600;cursor:pointer;font-family:inherit">📧 Save & Email</button>
+          <button class="primary-btn" onclick="inflight(this, hAddCaregiver)" style="flex:1">Save</button>
+          <button onclick="inflight(this, hAddCaregiverWithEmail)" style="flex:1;padding:15px;border-radius:12px;background:#34C759;color:#fff;border:none;font-size:15px;font-weight:600;cursor:pointer;font-family:inherit">📧 Save & Email</button>
         </div>
       </div>
     </div>
@@ -2829,7 +2829,7 @@ function sAddEvent(){
 
         <input class="input" id="enotes" type="text" placeholder="Notes (optional)" value="${(ef.notes||'').replace(/"/g,'&quot;')}"/>
         <div id="everr" class="err"></div>
-        <button class="primary-btn" onclick="hSaveEvent()" style="margin-bottom:24px">${ef._editId?'Save Changes':'Save Event'}</button>
+        <button class="primary-btn" onclick="inflight(this, hSaveEvent)" style="margin-bottom:24px">${ef._editId?'Save Changes':'Save Event'}</button>
       </div>
     </div>
   </div>`;
@@ -7970,7 +7970,7 @@ function sAddDinner(){
         <div style="font-size:11px;color:var(--text-secondary);margin-top:-6px;padding-left:4px">Paste a URL to the recipe. A 🔗 button will appear on this meal so the cook can open it on the night.</div>
         ${prefillThermomixUrl?`<input class="input" id="dn-tmx-url" type="url" placeholder="🌀 Thermomix recipe link" value="${prefillThermomixUrl.replace(/"/g,'&quot;')}"/>`:''}
         <div id="dnerr" class="err"></div>
-        <button class="primary-btn" onclick="hAddDinner()">Save Dinner</button>
+        <button class="primary-btn" onclick="inflight(this, hAddDinner)">Save Dinner</button>
         ${editingId?`<button onclick="if(confirm('Delete this dinner?'))hDeleteDinner('${editingId}')" style="width:100%;margin-top:8px;padding:13px;border-radius:11px;background:#FF3B3010;border:1px solid #FF3B3055;color:#FF3B30;font-size:14px;font-weight:600;cursor:pointer;font-family:inherit">🗑️ Delete this dinner</button>`:''}
       </div>
     </div>
@@ -8466,9 +8466,9 @@ function sSettings(){
   // === DANGER ZONE ===
   const dangerBody=
     '<div class="card" style="margin-bottom:0">'
-    +'<button class="btn" onclick="hSignOut()" style="width:100%;padding:13px 14px;color:var(--text);font-size:13px;font-weight:600;text-align:left;border-bottom:1px solid var(--row-border)">🔓 Sign out</button>'
-    +'<button class="btn" onclick="hLeaveFamily()" style="width:100%;padding:13px 14px;color:#FF9500;font-size:13px;font-weight:600;text-align:left;border-bottom:1px solid var(--row-border)">🚪 Leave this family</button>'
-    +'<button class="btn" onclick="hDeleteFamily()" style="width:100%;padding:13px 14px;color:#FF3B30;font-size:13px;font-weight:600;text-align:left">🗑 Delete family permanently</button>'
+    +'<button class="btn" onclick="inflight(this, hSignOut)" style="width:100%;padding:13px 14px;color:var(--text);font-size:13px;font-weight:600;text-align:left;border-bottom:1px solid var(--row-border)">🔓 Sign out</button>'
+    +'<button class="btn" onclick="inflight(this, hLeaveFamily)" style="width:100%;padding:13px 14px;color:#FF9500;font-size:13px;font-weight:600;text-align:left;border-bottom:1px solid var(--row-border)">🚪 Leave this family</button>'
+    +'<button class="btn" onclick="inflight(this, hDeleteFamily)" style="width:100%;padding:13px 14px;color:#FF3B30;font-size:13px;font-weight:600;text-align:left">🗑 Delete family permanently</button>'
     +'</div>';
 
   return '<style>'
@@ -9008,7 +9008,7 @@ function sAddPackItem(){
         <option value="afterschool">⚽ After-school item</option>
       </select>
       <div id="pierr" class="err"></div>
-      <button class="primary-btn" onclick="hAddPackItem()">Add Item</button>
+      <button class="primary-btn" onclick="inflight(this, hAddPackItem)">Add Item</button>
     </div>
   </div>`;
 }
@@ -9027,7 +9027,7 @@ function sAddNote(){
       </select>
       <textarea class="input" id="ntext" placeholder="Write your note..." rows="5" style="resize:none;line-height:1.5"></textarea>
       <div id="nerr" class="err"></div>
-      <button class="primary-btn" onclick="hAddNote()">Save Note</button>
+      <button class="primary-btn" onclick="inflight(this, hAddNote)">Save Note</button>
     </div>
   </div>`;
 }
@@ -9076,7 +9076,7 @@ function sAddAssessment(){
         <input class="input" id="adue" type="date"/>
         <textarea class="input" id="anotes" placeholder="Notes (optional)" rows="3" style="resize:none;line-height:1.4"></textarea>
         <div id="aerr" class="err"></div>
-        <button class="primary-btn" onclick="hAddAssessment()">Add Assessment</button>
+        <button class="primary-btn" onclick="inflight(this, hAddAssessment)">Add Assessment</button>
       </div>
     </div>
   </div>`;
@@ -9106,7 +9106,7 @@ function sAddGrocery(){
         </div>
       </div>
       <div id="gerr" class="err"></div>
-      <button class="primary-btn" onclick="hAddGrocery()">Add to List</button>
+      <button class="primary-btn" onclick="inflight(this, hAddGrocery)">Add to List</button>
 
       <!-- Frequent items quick-add -->
       ${freqItems.length>0?`
@@ -9149,7 +9149,7 @@ function sAddGift(){
         </div>
       </div>
       <div id="gferr" class="err"></div>
-      <button class="primary-btn" onclick="hAddGift()">Save Gift Idea</button>
+      <button class="primary-btn" onclick="inflight(this, hAddGift)">Save Gift Idea</button>
     </div>
   </div>`;
 }
@@ -9423,7 +9423,7 @@ function sAddMedicine(){
     +'<div id="medErr" style="margin:0 16px;color:#FF3B30;font-size:13px;font-weight:600;min-height:18px"></div>'
 
     +'<div style="padding:8px 16px 24px">'
-      +'<button class="primary-btn" onclick="hAddMedicine()" style="width:100%;padding:14px;border-radius:12px;background:var(--navy);color:#fff;border:none;font-size:15px;font-weight:700;cursor:pointer;font-family:inherit">💊 '+(S.medEditId?'Save changes':'Save medicine')+'</button>'
+      +'<button class="primary-btn" onclick="inflight(this, hAddMedicine)" style="width:100%;padding:14px;border-radius:12px;background:var(--navy);color:#fff;border:none;font-size:15px;font-weight:700;cursor:pointer;font-family:inherit">💊 '+(S.medEditId?'Save changes':'Save medicine')+'</button>'
       +(S.medEditId?'<button onclick="dMedicine(\''+S.medEditId+'\')" style="width:100%;margin-top:10px;padding:12px;border-radius:11px;background:transparent;color:#FF3B30;border:1px solid #FF3B30;font-size:14px;font-weight:600;cursor:pointer;font-family:inherit">Delete medicine</button>':'')
     +'</div>'
   +'</div>';
@@ -9555,7 +9555,7 @@ function sAddReminder(){
       </div>
 
       <div id="rmErr" class="err"></div>
-      <button class="primary-btn" onclick="hAddReminder()">${S.rmEditId?'💾 Save changes':'⏰ Save Reminder'}</button>
+      <button class="primary-btn" onclick="inflight(this, hAddReminder)">${S.rmEditId?'💾 Save changes':'⏰ Save Reminder'}</button>
 
       <div style="font-size:12px;color:var(--text-secondary);line-height:1.5;margin-top:6px;text-align:center">Reminders disappear once you tick the box, or after midnight on the chosen date — whichever comes first.</div>
     </div>
@@ -9994,7 +9994,7 @@ window.hLogin=async()=>{
   const e=$('le')?.value?.trim(),p=$('lp')?.value,err=$('lerr');
   if(!e||!p){if(err)err.textContent='Please fill in all fields';return;}
   // Show loading state
-  const btn=document.querySelector('button[onclick="hLogin()"]');
+  const btn=document.querySelector('button[onclick="inflight(this, hLogin)"]');
   if(btn){btn.textContent='Signing in...';btn.disabled=true;}
   try{await signInWithEmailAndPassword(auth,e,p);}
   catch(ex){
@@ -10034,7 +10034,7 @@ window.hSignup=async()=>{
   const n=$('sn')?.value?.trim(),e=$('se')?.value?.trim(),p=$('sp')?.value,err=$('serr');
   if(!n||!e||!p){if(err)err.textContent='Please fill in all fields';return;}
   if(p.length<6){if(err)err.textContent='Password must be at least 6 characters';return;}
-  const btn=document.querySelector('button[onclick="hSignup()"]');
+  const btn=document.querySelector('button[onclick="inflight(this, hSignup)"]');
   if(btn){btn.textContent='Creating account...';btn.disabled=true;}
   try{
     const c=await createUserWithEmailAndPassword(auth,e,p);
