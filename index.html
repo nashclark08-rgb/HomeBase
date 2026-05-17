@@ -138,37 +138,80 @@ body{font-family:-apple-system,BlinkMacSystemFont,system-ui,sans-serif;backgroun
     });
   }
 </script>
-<!-- console.error → Sentry forwarder. Many Firebase library errors
-     (Firestore permission-denied, FCM token failures, network blips) are
-     logged via console.error rather than thrown — without this they'd never
-     reach Sentry. Wrapped in try/catch so analytics can never break the
-     console itself. Errors arriving before the Sentry SDK loads are dropped
-     (the original console.error still fires, so they appear in DevTools). -->
+<!-- console.error → Sentry forwarder (robust). Buffers events that arrive
+     before the Sentry SDK has finished loading and flushes them on onLoad,
+     so Firebase init errors (which fire very early) are no longer dropped.
+     Wraps plain-string console.error calls in synthetic Error objects so
+     Sentry always receives an exception (better grouping than captureMessage). -->
 <script>
 (function(){
   var orig = console.error;
+  var buffer = [];
+  var BUFFER_CAP = 50;
+  var sentryReady = false;
+
+  function forwardToSentry(args, wasBuffered) {
+    if (!window.Sentry || !Sentry.captureException) return;
+    var errArg = null;
+    for (var i = 0; i < args.length; i++) {
+      if (args[i] instanceof Error) { errArg = args[i]; break; }
+    }
+    var tags = { source: 'console.error' };
+    if (wasBuffered) tags.buffered = true;
+    if (errArg) {
+      Sentry.captureException(errArg, { tags: tags });
+    } else {
+      var msg = args.map(function(a){
+        if (a instanceof Error) return a.message;
+        if (typeof a === 'object') { try { return JSON.stringify(a).slice(0, 500); } catch(e) { return String(a); } }
+        return String(a);
+      }).join(' ');
+      // Wrap plain strings in synthetic Error for proper captureException
+      // semantics (consistent grouping, stack trace at the wrapper site).
+      var syn = new Error(msg);
+      syn.name = 'ConsoleError';
+      tags.synthetic = true;
+      Sentry.captureException(syn, { tags: tags });
+    }
+  }
+
   console.error = function() {
     try { orig.apply(console, arguments); } catch (e) {}
+    var args = Array.prototype.slice.call(arguments);
     try {
-      if (window.Sentry && Sentry.captureException) {
-        var args = Array.prototype.slice.call(arguments);
-        var errArg = null;
-        for (var i = 0; i < args.length; i++) {
-          if (args[i] instanceof Error) { errArg = args[i]; break; }
-        }
-        if (errArg) {
-          Sentry.captureException(errArg, { tags: { source: 'console.error' } });
-        } else {
-          var msg = args.map(function(a){
-            if (a instanceof Error) return a.message;
-            if (typeof a === 'object') { try { return JSON.stringify(a).slice(0, 500); } catch(e) { return String(a); } }
-            return String(a);
-          }).join(' ');
-          Sentry.captureMessage(msg, 'error');
-        }
+      if (sentryReady) {
+        forwardToSentry(args, false);
+      } else if (buffer.length < BUFFER_CAP) {
+        buffer.push(args);
       }
     } catch (e) { /* never break console */ }
   };
+
+  function flushBuffer() {
+    sentryReady = true;
+    while (buffer.length > 0) {
+      try { forwardToSentry(buffer.shift(), true); } catch (e) {}
+    }
+  }
+
+  // Preferred path: Sentry.onLoad fires after the full SDK loads.
+  // Fallback: if the loader itself is blocked (CSP, ad-blocker, network)
+  // poll for ~5s before giving up and clearing the buffer.
+  if (window.Sentry && typeof Sentry.onLoad === 'function') {
+    Sentry.onLoad(flushBuffer);
+  } else {
+    var attempts = 0;
+    var poll = setInterval(function() {
+      attempts++;
+      if (window.Sentry && typeof Sentry.onLoad === 'function') {
+        clearInterval(poll);
+        Sentry.onLoad(flushBuffer);
+      } else if (attempts > 50) {
+        clearInterval(poll);
+        buffer.length = 0;
+      }
+    }, 100);
+  }
 })();
 </script>
 <!-- PostHog analytics — only sees events we explicitly capture(). No autocapture,
