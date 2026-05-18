@@ -876,6 +876,9 @@ async function inflight(btn,asyncFn,opts){
     btn.innerHTML=origHTML;
   }
 }
+// Expose to global scope so inline onclick="inflight(...)" handlers can find it
+// (module-scope declarations don't attach to window automatically).
+window.inflight=inflight;
 
 function notify(msg,icon){
   icon=icon||'';
