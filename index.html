@@ -7109,7 +7109,8 @@ window.saveQuickTraining=async function(){
     });
     notify(sport+' Training saved 🏃','✅');
     S.qt=null;
-    back();
+    S._formTouched=false;
+    setTimeout(back,900);
   }catch(ex){
     if(err)err.textContent='Save failed: '+friendlyError(ex);
   }
@@ -10158,7 +10159,10 @@ window.hAddChild=async()=>{
       }
     }
     await fadd(['children'],{name,dob,year,school,dietary,color,photoURL});
-    S.activeChild=null;back();notify(name+' added! 🎉');
+    notify(name+' added! 🎉');
+    S.activeChild=null;
+    S._formTouched=false;
+    setTimeout(back,900);
   }catch(ex){if(err)err.textContent=ex.message;}
 };
 window.pickColor=c=>{const inp=$('ccolor');if(inp)inp.value=c;const grid=$('ccolor-grid');if(grid)grid.innerHTML=renderColourGrid('col',c,"pickColor('HEX')");};
@@ -10200,7 +10204,9 @@ window.hSaveEditChild=async function(childId){
       }
     }
     await fupd(['children',childId],{name,dob,year,school,dietary,color,photoURL});
-    back();notify(name+' updated! ✅');
+    notify(name+' updated! ✅');
+    S._formTouched=false;
+    setTimeout(back,900);
   }catch(ex){if(err)err.textContent=ex.message;}
 };
 window.hDeleteChild=async function(childId){
@@ -10256,7 +10262,9 @@ window.hAddCaregiver=async function(){
     await updateDoc(doc(db,'families',S.familyId),{
       ['members.'+placeholderId]:{name,role,relationship:rel,color,email:email||'',dob,celebrateMothersDay,celebrateFathersDay,pending:true}
     });
-    back();notify(name+' added! ✅ Share family code to invite them','👥');
+    notify(name+' added! ✅ Share family code to invite them','👥');
+    S._formTouched=false;
+    setTimeout(back,900);
   }catch(ex){if(err)err.textContent=ex.message;}
 };
 window.hSaveCaregiver=async function(uid){
@@ -10337,7 +10345,9 @@ window.hSaveEditFamily=async function(){
     if(S.user.displayName!==name){
       try{await updateProfile(auth.currentUser,{displayName:name});S.user.displayName=name;}catch(e){}
     }
-    back();notify('Profile updated! ✅');
+    notify('Profile updated! ✅');
+    S._formTouched=false;
+    setTimeout(back,900);
   }catch(ex){if(err)err.textContent=ex.message;}
 };
 
@@ -10632,7 +10642,9 @@ window.hSaveEvent=async()=>{
       }
     }
     S.ef={freq:'once',days:{Mon:false,Tue:false,Wed:false,Thu:false,Fri:false,Sat:false,Sun:false},packItems:[],emoji:'📅',category:'',sport:'',participantIds:[]};
-    back();notify(isEdit?'Event updated! ✏️':'Event saved! 📅');
+    notify(isEdit?'Event updated! ✏️':'Event saved! 📅');
+    S._formTouched=false;
+    setTimeout(back,900);
   }catch(ex){if(err)err.textContent=ex.message;}
 };
 window.quickAddEvent=async function(){
@@ -11160,13 +11172,13 @@ window.dPack=async(cid,iid)=>{try{await fdel(['children',cid,'packing',iid]);}ca
 window.hAddPackItem=async()=>{
   const label=$('pil')?.value?.trim(),section=$('pis')?.value||'school',err=$('pierr');
   if(!label){if(err)err.textContent='Enter an item name';return;}
-  try{await fadd(['children',S.screenParams.childId,'packing'],{label,checked:false,pinned:false,section});back();notify('Item added ✅');}
+  try{await fadd(['children',S.screenParams.childId,'packing'],{label,checked:false,pinned:false,section});notify('Item added ✅');S._formTouched=false;setTimeout(back,900);}
   catch(ex){if(err)err.textContent=ex.message;}
 };
 window.hAddNote=async()=>{
   const text=$('ntext')?.value?.trim(),childId=$('nchild')?.value,err=$('nerr');
   if(!text){if(err)err.textContent='Write a note first';return;}
-  try{await fadd(['notes'],{text,childId});back();notify('Note saved 📝');}catch(ex){if(err)err.textContent=ex.message;}
+  try{await fadd(['notes'],{text,childId});notify('Note saved 📝');S._formTouched=false;setTimeout(back,900);}catch(ex){if(err)err.textContent=ex.message;}
 };
 window.runOCR=async function(input){
   if(!input||!input.files||!input.files[0])return;
@@ -11219,7 +11231,7 @@ window.hAddAssessment=async()=>{
   if(!title||!due){if(err)err.textContent='Enter title and due date';return;}
   const daysLeft=Math.ceil((new Date(due+'T12:00')-today)/86400000);
   const dueDisplay=new Date(due+'T12:00').toLocaleDateString('en-AU',{day:'numeric',month:'short'});
-  try{await fadd(['assessments'],{childId,subject:subj,title,due:dueDisplay,daysLeft,notes});back();notify('Assessment added 📚');}
+  try{await fadd(['assessments'],{childId,subject:subj,title,due:dueDisplay,daysLeft,notes});notify('Assessment added 📚');S._formTouched=false;setTimeout(back,900);}
   catch(ex){if(err)err.textContent=ex.message;}
 };
 window.dAssessment=async id=>{try{await fdel(['assessments',id]);notify('Deleted','🗑️');}catch(ex){notify('Delete failed: '+friendlyError(ex),'⚠️');}};
@@ -11448,7 +11460,7 @@ window.hAddGrocery=async()=>{
 window.hAddGift=async()=>{
   const label=$('gfl')?.value?.trim(),price=$('gfp')?.value,occasion=$('gfocc')?.value,err=$('gferr');
   if(!label){if(err)err.textContent='Enter a gift idea';return;}
-  try{await fadd(['gifts'],{recipientId:S.screenParams.id,label,price:price?parseFloat(price):null,occasion,isPrivate:gIsPriv,createdBy:S.user.uid});gIsPriv=false;back();notify('Gift idea saved 🎁');}
+  try{await fadd(['gifts'],{recipientId:S.screenParams.id,label,price:price?parseFloat(price):null,occasion,isPrivate:gIsPriv,createdBy:S.user.uid});gIsPriv=false;notify('Gift idea saved 🎁');S._formTouched=false;setTimeout(back,900);}
   catch(ex){if(err)err.textContent=ex.message;}
 };
 window.dGift=async id=>{try{await fdel(['gifts',id]);}catch(ex){notify('Delete failed: '+friendlyError(ex),'⚠️');}};
@@ -13196,7 +13208,8 @@ window.hAddReminder=async function(){
     S.rmFor=[];
     S.rmMode='ondate';
     S.rmText=''; S.rmDate=''; S.rmNotes='';
-    back();
+    S._formTouched=false;
+    setTimeout(back,900);
   }catch(ex){if(err)err.textContent='Error: '+ex.message;}
 };
 window.setRmMode=function(m){
