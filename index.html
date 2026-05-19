@@ -2256,9 +2256,22 @@ function sToday(){
         // Once that's marked Given, the next render surfaces the next dose.
         // If every dose for the medicine is administered today, drop the medicine
         // entirely — no need to show a row of green ticks; the profile log has history.
+        //
+        // SAFETY (Nash 19 May): on TODAY, hide a dose row until 30 min before its
+        // scheduled time. Without this, rapid Give-button taps cycled through all
+        // future slots and silently logged phantom doses — meaning later prompts
+        // never appeared and meds could be missed. The button can't be tapped if
+        // the row doesn't exist. Window-guard for other dates is a no-op (planning
+        // view still shows everything).
+        const DUE_WINDOW_MS = 30 * 60 * 1000;
+        const nowMs = Date.now();
         const byMed=new Map();
         for(const d of allDue){
           if(d.administered)continue;
+          if(isViewToday){
+            const schedMs = new Date(d.scheduledFor).getTime();
+            if (!isNaN(schedMs) && schedMs - nowMs > DUE_WINDOW_MS) continue;
+          }
           const existing=byMed.get(d.med.id);
           if(!existing||(d.time||'').localeCompare(existing.time||'')<0){
             byMed.set(d.med.id,d);
@@ -13148,6 +13161,18 @@ window.giveMedicineDose=async function(medId,scheduledFor,status){
   status=status||'given';
   const med=(S.medicines||[]).find(m=>m.id===medId);
   if(!med){notify('Medicine not found','⚠️');return;}
+  // Belt-and-braces (Nash 19 May): refuse early logging unless explicitly confirmed.
+  // The dashboard already hides the Give button until 30 min before the scheduled
+  // time, but a stale page or out-of-band call could still reach this function.
+  // Reaching here with scheduledFor more than 30 min in the future is almost
+  // always an accidental tap, not a deliberate early dose.
+  if(scheduledFor){
+    const schedMs=new Date(scheduledFor).getTime();
+    if(!isNaN(schedMs)&&schedMs-Date.now()>30*60*1000){
+      const friendly=new Date(scheduledFor).toLocaleString('en-AU',{weekday:'short',hour:'numeric',minute:'2-digit'});
+      if(!confirm(`${med.name} isn't scheduled until ${friendly}. Give it now anyway?`))return;
+    }
+  }
   try{
     const ref=await fadd(['medicineDoses'],{
       medicineId:medId,
