@@ -2205,16 +2205,20 @@ function sToday(){
           const ec=S.children.find(c=>c.id===ev.childId);
           const adultMember=ev.adultUid?members().find(x=>x.uid===ev.adultUid):null;
           const col=ec?.color||adultMember?.color||NAVY;
+          // One-off events accepted from email get a lighter shade of their
+          // allocated colour as a visual point of difference.
+          const isEmailOneOff=ev.source==='email';
+          const dotCol=isEmailOneOff?lightenHex(col,0.55):col;
           const ownerName=ec?ec.name:adultMember?adultMember.name:'Family';
           const isMyDropoff=ev.dropoff&&(ev.dropoff===myName||ev.dropoff===myFirstName);
           const isMyPickup=ev.pickup&&(ev.pickup===myName||ev.pickup===myFirstName);
           const isMine=isMyDropoff||isMyPickup;
           return `<div class="row" onclick="openEventModal('${ev.id}')" data-longpress="event:${ev.id}" style="border-bottom:${i<arr.length-1?'1px solid var(--row-border)':'none'};${isMine?'background:#FFF8E5':''};cursor:pointer">
             <div style="width:48px;text-align:right;font-size:12px;font-weight:600;color:var(--text-secondary);flex-shrink:0">${ev.time||`<span style="font-size:11px">All day</span>`}</div>
-            <div style="width:32px;height:32px;border-radius:16px;background:${col}18;border:2px solid ${col};display:flex;align-items:center;justify-content:center;font-size:14px;flex-shrink:0">${ev.emoji||'📅'}</div>
+            <div style="width:32px;height:32px;border-radius:16px;background:${dotCol}18;border:2px solid ${dotCol};display:flex;align-items:center;justify-content:center;font-size:14px;flex-shrink:0">${ev.emoji||'📅'}</div>
             <div style="flex:1;min-width:0">
               <div style="font-size:14px;font-weight:600;color:var(--text);overflow:hidden;text-overflow:ellipsis;white-space:nowrap">${ev.title}${isMine?' <span style="font-size:9px;font-weight:700;padding:1px 6px;border-radius:7px;background:#FF9500;color:#fff;vertical-align:1px">YOU</span>':''}</div>
-              <div style="font-size:12px;color:${col};font-weight:600;overflow:hidden;text-overflow:ellipsis;white-space:nowrap">${ownerName}</div>
+              <div style="font-size:12px;color:${dotCol};font-weight:600;overflow:hidden;text-overflow:ellipsis;white-space:nowrap">${ownerName}</div>
             </div>
             <div style="color:var(--text-secondary);font-size:18px;flex-shrink:0;font-weight:300;padding-right:2px">›</div>
           </div>`;
@@ -3250,6 +3254,17 @@ const EV_CATEGORIES=[
   {id:'past',emoji:'📜',label:'Past',color:'#6E6E73'},
   {id:'deleted',emoji:'🗑',label:'Deleted',color:'#FF3B30'}
 ];
+// Blend a #rrggbb colour toward white by amt (0..1). Used to give one-off
+// email-sourced events a lighter shade of their owner's allocated colour.
+function lightenHex(hex,amt){
+  const h=String(hex||'').replace('#','');
+  if(h.length!==6)return hex;
+  const r=parseInt(h.slice(0,2),16),g=parseInt(h.slice(2,4),16),b=parseInt(h.slice(4,6),16);
+  if([r,g,b].some(isNaN))return hex;
+  const mix=c=>Math.round(c+(255-c)*amt);
+  const to2=c=>c.toString(16).padStart(2,'0');
+  return '#'+to2(mix(r))+to2(mix(g))+to2(mix(b));
+}
 const SPORT_EMOJI={'water polo':'🤽','swimming':'🏊','soccer':'⚽','football':'⚽','basketball':'🏀','hockey':'🏑','field hockey':'🏑','ice hockey':'🏒','netball':'🏐','volleyball':'🏐','tennis':'🎾','golf':'⛳','rugby':'🏉','afl':'🏉','cricket':'🏏','baseball':'⚾','athletics':'🏃','cross country':'🏃','running':'🏃','cycling':'🚴','gymnastics':'🤸','dance':'💃','ballet':'🩰','karate':'🥋','taekwondo':'🥋','boxing':'🥊','surfing':'🏄','sailing':'⛵','rowing':'🚣','diving':'🤿','skating':'⛸','skiing':'⛷','snowboarding':'🏂','climbing':'🧗','equestrian':'🐎','horse riding':'🐎','triathlon':'🏃','squash':'🎾','badminton':'🏸','table tennis':'🏓','ping pong':'🏓','fencing':'🤺','wrestling':'🤼','lacrosse':'🥍','archery':'🏹','bowling':'🎳','pole vault':'🤸'};
 function sportEmoji(sport){
   if(!sport)return '⚽';
@@ -6548,7 +6563,10 @@ window.approvePendingEvent=async function(bundleId,eventIdx){
   const ev=bundle.events[eventIdx];
   if(!ev)return;
   try{
-    const evCat=ev.category||'school';
+    // Email events are school activities — always file under School regardless
+    // of the AI's category guess. source:'email' marks them as one-offs so the
+    // UI can show them in a lighter shade.
+    const evCat='school';
     const catMeta=EV_CATEGORIES.find(c=>c.id===evCat)||{emoji:'📅'};
     const timeStr=ev.endTime?(ev.time||'')+' – '+ev.endTime:(ev.time||'');
     // Create the event and capture its id so we can link reminders to it.
@@ -6567,6 +6585,7 @@ window.approvePendingEvent=async function(bundleId,eventIdx){
       dropoff:'',pickup:'',
       packItems:[],
       notes:ev.notes||'',
+      source:'email',
       createdAt:new Date()
     });
 
@@ -6624,7 +6643,7 @@ window.editPendingEvent=function(bundleId,eventIdx){
     freq:'once',
     days:{Mon:false,Tue:false,Wed:false,Thu:false,Fri:false,Sat:false,Sun:false},
     packItems:[],
-    category:ev.category||'school',
+    category:'school', // email events are school activities
     participantIds:[],
     location:ev.location||'',
     time:ev.time||'',
@@ -6667,7 +6686,8 @@ window.approveAllInBundle=async function(bundleId){
   let success=0,failed=0;
   for(const ev of bundle.events){
     try{
-      const evCat=ev.category||'school';
+      // Email events are school activities — always file under School (see approvePendingEvent).
+      const evCat='school';
       const catMeta=EV_CATEGORIES.find(c=>c.id===evCat)||{emoji:'📅'};
       const timeStr=ev.endTime?(ev.time||'')+' – '+ev.endTime:(ev.time||'');
       await fadd(['events'],{
@@ -6680,7 +6700,8 @@ window.approveAllInBundle=async function(bundleId){
         time:timeStr,category:evCat,sport:'',
         location:ev.location||'',
         dropoff:'',pickup:'',packItems:[],
-        notes:ev.notes||''
+        notes:ev.notes||'',
+        source:'email'
       });
       success++;
     }catch(e){failed++;}
