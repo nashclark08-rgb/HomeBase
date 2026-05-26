@@ -8767,7 +8767,7 @@ function sPersonProfile(){
       </div>
 
       <!-- Activities — Settings-style collapsible -->
-      ${(()=>{const evKey='profile_events_'+person.id;if(!S.openSections)S.openSections={};const evOpen=!!S.openSections[evKey];return `<div onclick="toggleSection('${evKey}')" style="margin:0 16px 0;padding:13px 14px;background:var(--card);border-radius:12px;box-shadow:var(--shadow-md);font-size:14px;font-weight:700;color:var(--text);cursor:pointer;display:flex;align-items:center;justify-content:space-between"><span>📅 ${dayLabel}'s Events${dayEvents.length?' · '+dayEvents.length:''}</span><span style="font-size:14px;color:var(--text-secondary)">${evOpen?'▾':'▸'}</span></div>${evOpen?'<div class="card" style="margin:0 16px 14px;border-top-left-radius:0;border-top-right-radius:0">':'<div style="margin-bottom:10px"></div><div style="display:none">'}`;})()}
+      ${(()=>{const evKey='profile_events_'+person.id;if(!S.openSections)S.openSections={};const evOpen=!!S.openSections[evKey];return `<div onclick="toggleSection('${evKey}')" style="margin:0 16px 0;padding:13px 14px;background:var(--card);border:1px solid var(--row-border);border-radius:12px;font-size:14px;font-weight:700;color:var(--text);cursor:pointer;display:flex;align-items:center;justify-content:space-between"><span>📅 ${dayLabel}'s Events${dayEvents.length?' · '+dayEvents.length:''}</span><span style="font-size:14px;color:var(--text-secondary)">${evOpen?'▾':'▸'}</span></div>${evOpen?'<div style="margin:0 16px 14px;background:var(--card);border:1px solid var(--row-border);border-top:none;border-radius:0 0 12px 12px;overflow:hidden">':'<div style="margin-bottom:10px"></div><div style="display:none">'}`;})()}
         ${dayEvents.length===0?`<div style="padding:20px;text-align:center;color:var(--text-secondary);font-size:14px">No events ${dayLabel.toLowerCase()}</div>`:''}
         ${dayEvents.map((ev,i)=>`<div class="row" style="border-bottom:${i<dayEvents.length-1?'1px solid var(--row-border)':'none'}">
           <div style="width:44px;text-align:right;font-size:12px;font-weight:600;color:var(--text-secondary);flex-shrink:0">${ev.time||`<span style="font-size:10px">All day</span>`}</div>
@@ -8806,9 +8806,9 @@ function sPersonProfile(){
         const remKey='profile_rem_'+person.id;
         if(!S.openSections)S.openSections={};
         const remOpen=!!S.openSections[remKey];
-        const head=`<div onclick="toggleSection('${remKey}')" style="margin:0 16px 0;padding:13px 14px;background:var(--card);border-radius:12px;box-shadow:var(--shadow-md);font-size:14px;font-weight:700;color:var(--text);cursor:pointer;display:flex;align-items:center;justify-content:space-between"><span>⏰ ${dayLabel}'s Reminders · ${personReminders.length}</span><span style="font-size:14px;color:var(--text-secondary)">${remOpen?'▾':'▸'}</span></div>`;
+        const head=`<div onclick="toggleSection('${remKey}')" style="margin:0 16px 0;padding:13px 14px;background:var(--card);border:1px solid var(--row-border);border-radius:12px;font-size:14px;font-weight:700;color:var(--text);cursor:pointer;display:flex;align-items:center;justify-content:space-between"><span>⏰ ${dayLabel}'s Reminders · ${personReminders.length}</span><span style="font-size:14px;color:var(--text-secondary)">${remOpen?'▾':'▸'}</span></div>`;
         if(!remOpen)return head+'<div style="margin-bottom:10px"></div>';
-        return head+`<div class="card" style="margin:0 16px 14px;border-top-left-radius:0;border-top-right-radius:0">
+        return head+`<div style="margin:0 16px 14px;background:var(--card);border:1px solid var(--row-border);border-top:none;border-radius:0 0 12px 12px;overflow:hidden">
           ${personReminders.map((r,i)=>{
             // Build "Due X" label for ongoing reminders
             let dueLabel='';
@@ -8843,9 +8843,9 @@ function sPersonProfile(){
         if(!S.openSections)S.openSections={};
         const medsOpen=!!S.openSections[medsKey];
         if(myMeds.length===0){
-          const head=`<div onclick="toggleSection('${medsKey}')" style="margin:0 16px 0;padding:13px 14px;background:var(--card);border-radius:12px;box-shadow:var(--shadow-md);font-size:14px;font-weight:700;color:var(--text);cursor:pointer;display:flex;align-items:center;justify-content:space-between"><span>💊 ${name.split(' ')[0]}'s Medicines</span><span style="font-size:14px;color:var(--text-secondary)">${medsOpen?'▾':'▸'}</span></div>`;
+          const head=`<div onclick="toggleSection('${medsKey}')" style="margin:0 16px 0;padding:13px 14px;background:var(--card);border:1px solid var(--row-border);border-radius:12px;font-size:14px;font-weight:700;color:var(--text);cursor:pointer;display:flex;align-items:center;justify-content:space-between"><span>💊 ${name.split(' ')[0]}'s Medicines</span><span style="font-size:14px;color:var(--text-secondary)">${medsOpen?'▾':'▸'}</span></div>`;
           if(!medsOpen)return head+'<div style="margin-bottom:10px"></div>';
-          return head+`<div class="card" style="margin:0 16px 14px;border-top-left-radius:0;border-top-right-radius:0">
+          return head+`<div style="margin:0 16px 14px;background:var(--card);border:1px solid var(--row-border);border-top:none;border-radius:0 0 12px 12px;overflow:hidden">
             <div style="padding:18px 16px;text-align:center;color:var(--text-secondary);font-size:13px;line-height:1.5">No medicines yet.<br/><span style="font-size:12px;opacity:0.8">Add one to track doses and log when given.</span></div>
             <button onclick="openAddMedicineFor('${personKey}')" style="width:100%;padding:13px 16px;border-top:1px solid var(--row-border);background:none;border-left:none;border-right:none;border-bottom:none;color:${color};font-size:14px;font-weight:600;cursor:pointer;font-family:inherit;text-align:center">+ Add Medicine for ${name.split(' ')[0]}</button>
           </div>`;
@@ -8879,9 +8879,9 @@ function sPersonProfile(){
             <span style="color:${color};font-size:18px;opacity:0.6">›</span>
           </div>`;
         };
-        const head=`<div onclick="toggleSection('${medsKey}')" style="margin:0 16px 0;padding:13px 14px;background:var(--card);border-radius:12px;box-shadow:var(--shadow-md);font-size:14px;font-weight:700;color:var(--text);cursor:pointer;display:flex;align-items:center;justify-content:space-between"><span>💊 ${name.split(' ')[0]}'s Medicines${active.length?' · '+active.length+' active':''}</span><span style="font-size:14px;color:var(--text-secondary)">${medsOpen?'▾':'▸'}</span></div>`;
+        const head=`<div onclick="toggleSection('${medsKey}')" style="margin:0 16px 0;padding:13px 14px;background:var(--card);border:1px solid var(--row-border);border-radius:12px;font-size:14px;font-weight:700;color:var(--text);cursor:pointer;display:flex;align-items:center;justify-content:space-between"><span>💊 ${name.split(' ')[0]}'s Medicines${active.length?' · '+active.length+' active':''}</span><span style="font-size:14px;color:var(--text-secondary)">${medsOpen?'▾':'▸'}</span></div>`;
         if(!medsOpen)return head+'<div style="margin-bottom:10px"></div>';
-        let html=head+`<div class="card" style="margin:0 16px 14px;border-top-left-radius:0;border-top-right-radius:0">`;
+        let html=head+`<div style="margin:0 16px 14px;background:var(--card);border:1px solid var(--row-border);border-top:none;border-radius:0 0 12px 12px;overflow:hidden">`;
         if(active.length){html+=active.map((m,i)=>renderMed(m,i,active,false)).join('');}
         if(ended.length){
           // Collapsible past-medicines archive. Collapsed by default so the
@@ -8899,7 +8899,7 @@ function sPersonProfile(){
 
       ${person.isAdult?`
       <!-- Today's Logistics — Settings-style collapsible -->
-      ${(()=>{const lgKey='profile_logistics_'+person.id;if(!S.openSections)S.openSections={};const lgOpen=!!S.openSections[lgKey];return `<div onclick="toggleSection('${lgKey}')" style="margin:0 16px 0;padding:13px 14px;background:var(--card);border-radius:12px;box-shadow:var(--shadow-md);font-size:14px;font-weight:700;color:var(--text);cursor:pointer;display:flex;align-items:center;justify-content:space-between"><span>🚗 ${dayLabel}'s Logistics${dayLogistics.length?' · '+dayLogistics.length:''}</span><span style="font-size:14px;color:var(--text-secondary)">${lgOpen?'▾':'▸'}</span></div>${lgOpen?'<div class="card" style="margin:0 16px 14px;border-top-left-radius:0;border-top-right-radius:0">':'<div style="margin-bottom:10px"></div><div style="display:none">'}`;})()}
+      ${(()=>{const lgKey='profile_logistics_'+person.id;if(!S.openSections)S.openSections={};const lgOpen=!!S.openSections[lgKey];return `<div onclick="toggleSection('${lgKey}')" style="margin:0 16px 0;padding:13px 14px;background:var(--card);border:1px solid var(--row-border);border-radius:12px;font-size:14px;font-weight:700;color:var(--text);cursor:pointer;display:flex;align-items:center;justify-content:space-between"><span>🚗 ${dayLabel}'s Logistics${dayLogistics.length?' · '+dayLogistics.length:''}</span><span style="font-size:14px;color:var(--text-secondary)">${lgOpen?'▾':'▸'}</span></div>${lgOpen?'<div style="margin:0 16px 14px;background:var(--card);border:1px solid var(--row-border);border-top:none;border-radius:0 0 12px 12px;overflow:hidden">':'<div style="margin-bottom:10px"></div><div style="display:none">'}`;})()}
         ${dayLogistics.length===0?`<div style="padding:20px;text-align:center;color:var(--text-secondary);font-size:14px">No drop-offs or pick-ups ${dayLabel.toLowerCase()}</div>`:''}
         ${dayLogistics.map((ev,i)=>{
           const firstName=name.split(' ')[0];
@@ -8931,7 +8931,7 @@ function sPersonProfile(){
 
       ${!person.isAdult&&!S.screenParams?.fromFamily?`
       <!-- Packing list (children only, NOT shown when reached from Family page) -->
-      ${(()=>{const pkKey='profile_packing_'+person.id;if(!S.openSections)S.openSections={};const pkOpen=!!S.openSections[pkKey];return `<div onclick="toggleSection('${pkKey}')" style="margin:0 16px 0;padding:13px 14px;background:var(--card);border-radius:12px;box-shadow:var(--shadow-md);font-size:14px;font-weight:700;color:var(--text);cursor:pointer;display:flex;align-items:center;justify-content:space-between"><span>🎒 ${dayLabel}'s Packing · ${pk.filter(p=>p.checked).length}/${pk.length}</span><span style="font-size:14px;color:var(--text-secondary)">${pkOpen?'▾':'▸'}</span></div>${pkOpen?'<div class="card" style="margin:0 16px 14px;border-top-left-radius:0;border-top-right-radius:0">':'<div style="margin-bottom:10px"></div><div style="display:none">'}`;})()}
+      ${(()=>{const pkKey='profile_packing_'+person.id;if(!S.openSections)S.openSections={};const pkOpen=!!S.openSections[pkKey];return `<div onclick="toggleSection('${pkKey}')" style="margin:0 16px 0;padding:13px 14px;background:var(--card);border:1px solid var(--row-border);border-radius:12px;font-size:14px;font-weight:700;color:var(--text);cursor:pointer;display:flex;align-items:center;justify-content:space-between"><span>🎒 ${dayLabel}'s Packing · ${pk.filter(p=>p.checked).length}/${pk.length}</span><span style="font-size:14px;color:var(--text-secondary)">${pkOpen?'▾':'▸'}</span></div>${pkOpen?'<div style="margin:0 16px 14px;background:var(--card);border:1px solid var(--row-border);border-top:none;border-radius:0 0 12px 12px;overflow:hidden">':'<div style="margin-bottom:10px"></div><div style="display:none">'}`;})()}
         ${pk.length===0?`<div style="padding:20px;text-align:center;color:var(--text-secondary);font-size:14px;line-height:1.5">Nothing to pack ${dayLabel.toLowerCase()} 🎉<br><span style="font-size:12px">Pack items appear here based on ${name.split(' ')[0]}'s events for this day</span></div>`:''}
         ${pk.map((item,i)=>`<div class="row" style="border-bottom:${i<pk.length-1?'1px solid var(--row-border)':'none'}">
           <div class="cb ${item.checked?'on':''}" style="${item.checked?'background:'+color+';border:none':'border-color:'+color}" onclick="tPack('${person.id}','${item.id}',${!item.checked})">${item.checked?ck():''}</div>
@@ -8949,9 +8949,9 @@ function sPersonProfile(){
         const giftsKey='gifts_'+person.id;
         const giftsOpen=!!(S.openSections&&S.openSections[giftsKey]);
         const countLbl=personGifts.length===1?'1 present':personGifts.length+' presents';
-        const head=`<div onclick="toggleSection('${giftsKey}')" style="margin:0 16px 0;padding:13px 14px;background:var(--card);border-radius:12px;box-shadow:var(--shadow-md);font-size:14px;font-weight:700;color:var(--text);cursor:pointer;display:flex;align-items:center;justify-content:space-between"><span>🎁 Gift Ideas <span style="font-weight:500;color:var(--text-secondary);font-size:13px">· ${countLbl}</span></span><span style="font-size:14px;color:var(--text-secondary)">${giftsOpen?'▾':'▸'}</span></div>`;
+        const head=`<div onclick="toggleSection('${giftsKey}')" style="margin:0 16px 0;padding:13px 14px;background:var(--card);border:1px solid var(--row-border);border-radius:12px;font-size:14px;font-weight:700;color:var(--text);cursor:pointer;display:flex;align-items:center;justify-content:space-between"><span>🎁 Gift Ideas <span style="font-weight:500;color:var(--text-secondary);font-size:13px">· ${countLbl}</span></span><span style="font-size:14px;color:var(--text-secondary)">${giftsOpen?'▾':'▸'}</span></div>`;
         if(!giftsOpen)return head+'<div style="margin-bottom:10px"></div>';
-        return head+`<div class="card" style="margin:0 16px 14px;border-top-left-radius:0;border-top-right-radius:0">
+        return head+`<div style="margin:0 16px 14px;background:var(--card);border:1px solid var(--row-border);border-top:none;border-radius:0 0 12px 12px;overflow:hidden">
           ${personGifts.length===0?`<div style="padding:20px;text-align:center;color:var(--text-secondary);font-size:14px">No gift ideas yet</div>`:personGifts.map((g,i,arr)=>`<div class="row" style="border-bottom:${i<arr.length-1?'1px solid var(--row-border)':'none'}">
             <div style="flex:1">
               <div style="font-size:14px;font-weight:600;color:var(--text)">${g.label}</div>
@@ -8973,9 +8973,9 @@ function sPersonProfile(){
         const assKey='profile_assess_'+person.id;
         if(!S.openSections)S.openSections={};
         const assOpen=!!S.openSections[assKey];
-        const head=`<div onclick="toggleSection('${assKey}')" style="margin:0 16px 0;padding:13px 14px;background:var(--card);border-radius:12px;box-shadow:var(--shadow-md);font-size:14px;font-weight:700;color:var(--text);cursor:pointer;display:flex;align-items:center;justify-content:space-between"><span>📋 Assessments${childAssess.length?' · '+childAssess.length:''}</span><span style="font-size:14px;color:var(--text-secondary)">${assOpen?'▾':'▸'}</span></div>`;
+        const head=`<div onclick="toggleSection('${assKey}')" style="margin:0 16px 0;padding:13px 14px;background:var(--card);border:1px solid var(--row-border);border-radius:12px;font-size:14px;font-weight:700;color:var(--text);cursor:pointer;display:flex;align-items:center;justify-content:space-between"><span>📋 Assessments${childAssess.length?' · '+childAssess.length:''}</span><span style="font-size:14px;color:var(--text-secondary)">${assOpen?'▾':'▸'}</span></div>`;
         if(!assOpen)return head+'<div style="margin-bottom:10px"></div>';
-        return head+`<div class="card" style="margin:0 16px 14px;border-top-left-radius:0;border-top-right-radius:0">
+        return head+`<div style="margin:0 16px 14px;background:var(--card);border:1px solid var(--row-border);border-top:none;border-radius:0 0 12px 12px;overflow:hidden">
           ${childAssess.length===0?`<div style="padding:20px;text-align:center;color:var(--text-secondary);font-size:14px">No assessments yet</div>`:childAssess.map((a,i,arr)=>{
             const dl=assessmentDaysLeft(a);
             const urg=dl!=null&&dl<=7;
@@ -8997,7 +8997,7 @@ function sPersonProfile(){
 
       ${person.isAdult&&S.screenParams?.fromFamily?`
       <!-- Contact (adult only, from Family page) -->
-      ${(()=>{const prKey='profile_details_'+person.id;if(!S.openSections)S.openSections={};const prOpen=!!S.openSections[prKey];return `<div onclick="toggleSection('${prKey}')" style="margin:0 16px 0;padding:13px 14px;background:var(--card);border-radius:12px;box-shadow:var(--shadow-md);font-size:14px;font-weight:700;color:var(--text);cursor:pointer;display:flex;align-items:center;justify-content:space-between"><span>👤 Profile</span><span style="font-size:14px;color:var(--text-secondary)">${prOpen?'▾':'▸'}</span></div>${prOpen?'<div class="card" style="margin:0 16px 14px;border-top-left-radius:0;border-top-right-radius:0">':'<div style="margin-bottom:10px"></div><div style="display:none">'}`;})()}
+      ${(()=>{const prKey='profile_details_'+person.id;if(!S.openSections)S.openSections={};const prOpen=!!S.openSections[prKey];return `<div onclick="toggleSection('${prKey}')" style="margin:0 16px 0;padding:13px 14px;background:var(--card);border:1px solid var(--row-border);border-radius:12px;font-size:14px;font-weight:700;color:var(--text);cursor:pointer;display:flex;align-items:center;justify-content:space-between"><span>👤 Profile</span><span style="font-size:14px;color:var(--text-secondary)">${prOpen?'▾':'▸'}</span></div>${prOpen?'<div style="margin:0 16px 14px;background:var(--card);border:1px solid var(--row-border);border-top:none;border-radius:0 0 12px 12px;overflow:hidden">':'<div style="margin-bottom:10px"></div><div style="display:none">'}`;})()}
         <div class="row"><span style="flex:1;color:var(--text-secondary);font-size:14px">Role</span><span style="color:var(--text);font-weight:600">${person.role||'Member'}</span></div>
         ${person.relationship?`<div class="row"><span style="flex:1;color:var(--text-secondary);font-size:14px">Relationship</span><span style="color:var(--text);font-weight:600">${person.relationship}</span></div>`:''}
         ${person.email?`<div class="row"><span style="flex:1;color:var(--text-secondary);font-size:14px">Email</span><span style="color:var(--text);font-weight:600;font-size:13px">${person.email}</span></div>`:''}
@@ -9009,7 +9009,7 @@ function sPersonProfile(){
         const m=person.isAdult?members().find(x=>x.uid===person.id):null;
         const code=person.isAdult?(m?.personalCode||''):(person.personalCode||'');
         const escName=name.replace(/'/g,"\\\\'");
-        const invKey='profile_invite_'+person.id;if(!S.openSections)S.openSections={};const invOpen=!!S.openSections[invKey];return `<div onclick="toggleSection('${invKey}')" style="margin:0 16px 0;padding:13px 14px;background:var(--card);border-radius:12px;box-shadow:var(--shadow-md);font-size:14px;font-weight:700;color:var(--text);cursor:pointer;display:flex;align-items:center;justify-content:space-between"><span>🔑 Personal Invite</span><span style="font-size:14px;color:var(--text-secondary)">${invOpen?'▾':'▸'}</span></div>${invOpen?`<div style="margin:0 16px 14px;background:var(--card);border-top-left-radius:0;border-top-right-radius:0;border-radius:0 0 12px 12px;padding:14px;color:var(--text)">`:'<div style="margin-bottom:10px"></div><div style="display:none">'}
+        const invKey='profile_invite_'+person.id;if(!S.openSections)S.openSections={};const invOpen=!!S.openSections[invKey];return `<div onclick="toggleSection('${invKey}')" style="margin:0 16px 0;padding:13px 14px;background:var(--card);border:1px solid var(--row-border);border-radius:12px;font-size:14px;font-weight:700;color:var(--text);cursor:pointer;display:flex;align-items:center;justify-content:space-between"><span>🔑 Personal Invite</span><span style="font-size:14px;color:var(--text-secondary)">${invOpen?'▾':'▸'}</span></div>${invOpen?`<div style="margin:0 16px 14px;background:var(--card);border:1px solid var(--row-border);border-top:none;border-radius:0 0 12px 12px;padding:14px;color:var(--text)">`:'<div style="margin-bottom:10px"></div><div style="display:none">'}
           ${code?`
             <div style="font-size:11px;font-weight:700;color:var(--text-secondary);letter-spacing:0.5px;margin-bottom:6px">FOR ${name.toUpperCase()} ONLY</div>
             <div style="font-size:13px;color:var(--text);line-height:1.5;margin-bottom:14px">When ${name.split(' ')[0]} taps the link below, they'll be guided through sign-up and their account will link directly to this profile.</div>
