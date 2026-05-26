@@ -1184,20 +1184,13 @@ async function createFamily(name){
 }
 async function joinFamily(code){
   const c=code.trim().toUpperCase();
-  // First try family invite code (HB-XXXXXX format) — uses an indexed where() query, works fine
-  let q=query(collection(db,'families'),where('inviteCode','==',c));
-  let s=await getDocs(q);
-  if(!s.empty){
-    const fid=s.docs[0].id;
-    await updateDoc(doc(db,'families',fid),{['members.'+S.user.uid]:{name:S.user.displayName,role:'Member',color:COLORS[Math.floor(Math.random()*COLORS.length)]}});
-    await setDoc(doc(db,'users',S.user.uid),{familyId:fid,name:S.user.displayName});
-    return fid;
-  }
-  // Personal codes (HB-A-* / HB-C-*) — delegated to joinFamilyByPersonalCode
-  // Cloud Function. The Function uses admin SDK so it can move placeholder
-  // member data onto the joining user's real auth uid without the chicken-
-  // and-egg of 'you must be a family member to update the family doc'.
-  // All validation, placeholder swap, and invitation-marking is server-side.
+  // Personal codes (HB-A-* / HB-C-*) — delegate to joinFamilyByPersonalCode
+  // Cloud Function FIRST, before any client-side Firestore query. The Function
+  // uses admin SDK so it can move placeholder member data onto the joining
+  // user's real auth uid, write users/{uid}, and mark the invitation used —
+  // none of which the joining user has rules permission for yet. Running the
+  // family-code query below first would throw "Missing or insufficient
+  // permissions" for a brand-new user who isn't a member of any family.
   if(c.startsWith('HB-A-')||c.startsWith('HB-C-')){
     try{
       const joinCall=httpsCallable(functions,'joinFamilyByPersonalCode');
@@ -1207,6 +1200,15 @@ async function joinFamily(code){
       // Cloud Function HttpsError messages are already user-friendly.
       throw new Error(ex.message||'Could not apply invite code. Please try again.');
     }
+  }
+  // Family invite code (HB-XXXXXX format) — uses an indexed where() query.
+  let q=query(collection(db,'families'),where('inviteCode','==',c));
+  let s=await getDocs(q);
+  if(!s.empty){
+    const fid=s.docs[0].id;
+    await updateDoc(doc(db,'families',fid),{['members.'+S.user.uid]:{name:S.user.displayName,role:'Member',color:COLORS[Math.floor(Math.random()*COLORS.length)]}});
+    await setDoc(doc(db,'users',S.user.uid),{familyId:fid,name:S.user.displayName});
+    return fid;
   }
   throw new Error('Family not found. Codes look like HB-XXXXXX (family) or HB-A-XXXXX / HB-C-XXXXX (personal).');
 }
@@ -11281,7 +11283,53 @@ window.hAddAssessment=async()=>{
   if(!title||!due){if(err)err.textContent='Enter title and due date';return;}
   const daysLeft=Math.ceil((new Date(due+'T12:00')-today)/86400000);
   const dueDisplay=new Date(due+'T12:00').toLocaleDateString('en-AU',{day:'numeric',month:'short'});
-  try{await fadd(['assessments'],{childId,subject:subj,title,due:dueDisplay,dueISO:due,daysLeft,notes});notify('Assessment added 📚');S._formTouched=false;setTimeout(back,900);}
+  try{
+    const aRef=await fadd(['assessments'],{childId,subject:subj,title,due:dueDisplay,dueISO:due,daysLeft,notes});
+    // Mirror as a school-category event so it appears alongside other school
+    // activities. source:'assessment' lets event renderers brighten it; the
+    // linkedAssessmentId lets dAssessment cascade-delete it.
+    try{
+      await fadd(['events'],{
+        title:'📚 '+(subj?subj+': ':'')+title,
+        emoji:'📚',
+        participantIds:childId?[childId]:[],childId:childId||'',adultUid:'',
+        freq:'once',
+        date:due,endDate:'',startDate:'',
+        days:{Mon:false,Tue:false,Wed:false,Thu:false,Fri:false,Sat:false,Sun:false},
+        time:'',
+        category:'school',
+        sport:'',
+        location:'',
+        dropoff:'',pickup:'',
+        packItems:[],
+        notes:notes||'',
+        source:'assessment',
+        linkedAssessmentId:aRef.id
+      });
+    }catch(e){dwarn('Failed to create assessment event',e);}
+    // Reminder 7 days before due, clamped to today if already inside the window.
+    try{
+      const dueDate=new Date(due+'T12:00');
+      const remDate=new Date(dueDate);remDate.setDate(remDate.getDate()-7);
+      const todayMid=new Date();todayMid.setHours(0,0,0,0);
+      if(remDate<todayMid)remDate.setTime(todayMid.getTime());
+      await fadd(['reminders'],{
+        text:'📚 Assessment due '+dueDisplay+': '+(subj?subj+' · ':'')+title,
+        date:fd(remDate),
+        mode:'ondate',
+        forKeys:[],
+        childId:childId||null,
+        adultUid:null,
+        notes:'Auto-created with assessment',
+        done:false,
+        createdBy:S.user?.uid||'',
+        linkedAssessmentId:aRef.id
+      });
+    }catch(e){dwarn('Failed to create assessment reminder',e);}
+    notify('Assessment added 📚');
+    S._formTouched=false;
+    setTimeout(back,900);
+  }
   catch(ex){if(err)err.textContent=ex.message;}
 };
 window.dAssessment=async id=>{try{await fdel(['assessments',id]);notify('Deleted','🗑️');}catch(ex){notify('Delete failed: '+friendlyError(ex),'⚠️');}};
