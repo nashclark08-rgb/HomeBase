@@ -2530,7 +2530,7 @@ function sToday(){
               _title:title,
               date:viewDateStr, // sort at the current view's slot
               id:'assess-'+a.id,
-              text:'📝 '+(childName?childName+' · ':'')+(subj?subj+' — ':'')+title,
+              text:'📋 '+(childName?childName+' · ':'')+(subj?subj+' — ':'')+title,
               tcol:col,
               forKeys:child?['child:'+child.id]:[]
             });
@@ -2580,7 +2580,7 @@ function sToday(){
                 const childPhoto=r._childPhoto||'';
                 const subj=r._subject||'';
                 const title=r._title||'Assessment';
-                const fullText='📝 '+(subj?subj+' — ':'')+title;
+                const fullText='📋 '+(subj?subj+' — ':'')+title;
                 const subtitle=childFirst?(childFirst+'’s assessment'):'Assessment';
                 return `<div class="row" onclick="setTab('lists');S.listTab='assessments';render()" style="border-bottom:${i<dueReminders.length-1?'1px solid var(--row-border)':'none'};cursor:pointer">
                   ${av(childName,r.tcol,36,childPhoto)}
@@ -8247,7 +8247,7 @@ function sAssessments(){
     <div style="flex:1;display:flex;flex-direction:column">
       <div style="background:#fff;padding:14px 16px;display:flex;align-items:center;border-bottom:1px solid #F2F2F7;position:sticky;top:0;z-index:10">
         <button class="back-btn" onclick="S.listTab='menu';render()">${bk()} Back</button>
-        <div style="flex:1;text-align:center;font-size:17px;font-weight:600">📝 Assessments</div>
+        <div style="flex:1;text-align:center;font-size:17px;font-weight:600">📋 Assessments</div>
         <div style="width:44px"></div>
       </div>
       <div style="background:#fff;padding:8px 16px 12px;display:flex;gap:8px;flex-wrap:wrap;border-bottom:1px solid #F2F2F7;background:#fff;position:sticky;top:57px;z-index:9">
@@ -8970,7 +8970,7 @@ function sPersonProfile(){
         const assKey='profile_assess_'+person.id;
         if(!S.openSections)S.openSections={};
         const assOpen=!!S.openSections[assKey];
-        const head=`<div onclick="toggleSection('${assKey}')" style="margin:0 16px 0;padding:13px 14px;background:var(--card);border-radius:12px;box-shadow:var(--shadow-md);font-size:14px;font-weight:700;color:var(--text);cursor:pointer;display:flex;align-items:center;justify-content:space-between"><span>📝 Assessments${childAssess.length?' · '+childAssess.length:''}</span><span style="font-size:14px;color:var(--text-secondary)">${assOpen?'▾':'▸'}</span></div>`;
+        const head=`<div onclick="toggleSection('${assKey}')" style="margin:0 16px 0;padding:13px 14px;background:var(--card);border-radius:12px;box-shadow:var(--shadow-md);font-size:14px;font-weight:700;color:var(--text);cursor:pointer;display:flex;align-items:center;justify-content:space-between"><span>📋 Assessments${childAssess.length?' · '+childAssess.length:''}</span><span style="font-size:14px;color:var(--text-secondary)">${assOpen?'▾':'▸'}</span></div>`;
         if(!assOpen)return head+'<div style="margin-bottom:10px"></div>';
         return head+`<div class="card" style="margin:0 16px 14px;border-top-left-radius:0;border-top-right-radius:0">
           ${childAssess.length===0?`<div style="padding:20px;text-align:center;color:var(--text-secondary);font-size:14px">No assessments yet</div>`:childAssess.map((a,i,arr)=>{
@@ -11503,8 +11503,8 @@ async function backfillAssessmentLinks(){
       const evSnap=await getDocs(query(fcol(['events']),where('linkedAssessmentId','==',a.id)));
       if(evSnap.empty){
         await fadd(['events'],{
-          title:'📝 '+(a.subject?a.subject+': ':'')+(a.title||'Assessment'),
-          emoji:'📝',
+          title:'📋 '+(a.subject?a.subject+': ':'')+(a.title||'Assessment'),
+          emoji:'📋',
           participantIds:a.childId?[a.childId]:[],childId:a.childId||'',adultUid:'',
           freq:'once',
           date:a.dueISO,endDate:'',startDate:'',
@@ -11550,8 +11550,8 @@ window.hAddAssessment=async()=>{
     // linkedAssessmentId lets dAssessment cascade-delete it.
     try{
       await fadd(['events'],{
-        title:'📝 '+(subj?subj+': ':'')+title,
-        emoji:'📝',
+        title:'📋 '+(subj?subj+': ':'')+title,
+        emoji:'📋',
         participantIds:childId?[childId]:[],childId:childId||'',adultUid:'',
         freq:'once',
         date:due,endDate:'',startDate:'',
