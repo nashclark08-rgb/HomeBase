@@ -1545,7 +1545,19 @@ function subscribe(){
     window._evNotifResched=setTimeout(()=>{if(typeof scheduleEventNotifs==='function')scheduleEventNotifs();},1500);
     queueRender();
   }));
-  S.unsubs.push(onSnapshot(fcol(['assessments']),s=>{S.assessments=s.docs.map(d=>({id:d.id,...d.data()}));queueRender();}));
+  S.unsubs.push(onSnapshot(fcol(['assessments']),s=>{
+    S.assessments=s.docs.map(d=>({id:d.id,...d.data()}));
+    queueRender();
+    // One-time backfill: for assessments that pre-date the event/reminder
+    // wiring (Push 32), create the linked school event + 7-day reminder so
+    // they surface on the home dashboard and Reminders. Idempotent — queries
+    // by linkedAssessmentId first and only creates what's missing. Gated by
+    // a session flag so it doesn't churn on every snapshot update.
+    if(!S._assessBackfillScheduled){
+      S._assessBackfillScheduled=true;
+      setTimeout(()=>{backfillAssessmentLinks().catch(e=>dwarn('Assessment backfill failed',e));},2500);
+    }
+  }));
   S.unsubs.push(onSnapshot(fcol(['groceries']),s=>{S.groceries=s.docs.map(d=>({id:d.id,...d.data()}));queueRender();}));
   S.unsubs.push(onSnapshot(fcol(['gifts']),s=>{S.gifts=s.docs.map(d=>({id:d.id,...d.data()}));queueRender();}));
   S.unsubs.push(onSnapshot(fcol(['dinners']),s=>{S.dinners=s.docs.map(d=>({id:d.id,...d.data()}));queueRender();}));
@@ -11293,10 +11305,22 @@ window.runAssessmentParser=async function(input){
         return;
       }
       payload={docxText:text,familyId:S.familyId||null};
+    }else if(isPdf){
+      // Anthropic's document-block PDF support returns 400 on Haiku 4.5 here,
+      // so mirror the pattern that already works for fixtures/timetable: extract
+      // text client-side via pdf.js, then send as text. For scanned/image-only
+      // PDFs there's no text to extract — we tell the user to take a photo.
+      if(status)status.innerHTML='⏳ Reading PDF...';
+      const pdfText=await extractRawTextFromPDF(file);
+      if(!pdfText||pdfText.trim().length<50){
+        if(status)status.innerHTML='❌ This PDF looks like a scan (no extractable text). Take a photo of the pages instead.';
+        return;
+      }
+      payload={docxText:pdfText.slice(0,30000),familyId:S.familyId||null};
     }else{
-      if(status)status.innerHTML='⏳ Uploading '+(isPdf?'PDF':'photo')+' for AI to read...';
+      if(status)status.innerHTML='⏳ Uploading photo for AI to read...';
       const b64=await fileToBase64(file);
-      payload={files:[{base64:b64,mediaType:isPdf?'application/pdf':(mime||'image/jpeg')}],familyId:S.familyId||null};
+      payload={files:[{base64:b64,mediaType:mime||'image/jpeg'}],familyId:S.familyId||null};
     }
     if(status)status.innerHTML='🤖 Reading with Claude — this usually takes 5-15 seconds...';
     const call=httpsCallable(functions,'parseAssessmentWithAI');
@@ -11318,6 +11342,56 @@ window.runAssessmentParser=async function(input){
     if(input)input.value=''; // allow re-upload of same file
   }
 };
+// One-time backfill for assessments that pre-date the event/reminder wiring
+// (added in Push 32). For each assessment that has a usable dueISO but no
+// existing linked event or reminder in this family, create them now so the
+// item shows on the home dashboard on the due date and triggers a 7-day-out
+// reminder. Idempotent: queries by linkedAssessmentId before creating.
+async function backfillAssessmentLinks(){
+  if(!S.familyId||!Array.isArray(S.assessments)||S.assessments.length===0)return;
+  let evCreated=0,remCreated=0;
+  for(const a of S.assessments){
+    if(!a||!a.id||!a.dueISO)continue; // can't backfill without an ISO date
+    try{
+      const evSnap=await getDocs(query(fcol(['events']),where('linkedAssessmentId','==',a.id)));
+      if(evSnap.empty){
+        await fadd(['events'],{
+          title:'📚 '+(a.subject?a.subject+': ':'')+(a.title||'Assessment'),
+          emoji:'📚',
+          participantIds:a.childId?[a.childId]:[],childId:a.childId||'',adultUid:'',
+          freq:'once',
+          date:a.dueISO,endDate:'',startDate:'',
+          days:{Mon:false,Tue:false,Wed:false,Thu:false,Fri:false,Sat:false,Sun:false},
+          time:'',category:'school',sport:'',location:'',
+          dropoff:'',pickup:'',packItems:[],notes:a.notes||'',
+          source:'assessment',linkedAssessmentId:a.id
+        });
+        evCreated++;
+      }
+    }catch(e){dwarn('backfill: event check/create failed for assessment',a.id,e);}
+    try{
+      const remSnap=await getDocs(query(fcol(['reminders']),where('linkedAssessmentId','==',a.id)));
+      if(remSnap.empty){
+        const dueDate=new Date(a.dueISO+'T12:00');
+        const remDate=new Date(dueDate);remDate.setDate(remDate.getDate()-7);
+        const todayMid=new Date();todayMid.setHours(0,0,0,0);
+        if(remDate<todayMid)remDate.setTime(todayMid.getTime());
+        await fadd(['reminders'],{
+          text:'📚 Assessment due '+(a.due||a.dueISO)+': '+(a.subject?a.subject+' · ':'')+(a.title||''),
+          date:fd(remDate),mode:'ondate',forKeys:[],
+          childId:a.childId||null,adultUid:null,
+          notes:'Auto-created (backfill)',done:false,
+          createdBy:S.user?.uid||'',linkedAssessmentId:a.id
+        });
+        remCreated++;
+      }
+    }catch(e){dwarn('backfill: reminder check/create failed for assessment',a.id,e);}
+  }
+  if(evCreated>0||remCreated>0){
+    dlog('Assessment backfill done — events:',evCreated,'reminders:',remCreated);
+    if(typeof notify==='function')notify('Linked '+evCreated+' assessment event'+(evCreated===1?'':'s')+(remCreated?(' + '+remCreated+' reminder'+(remCreated===1?'':'s')):'')+' 📚');
+  }
+}
 // Live-recompute days until an assessment's due date. Stored `daysLeft` is
 // frozen at creation time; prefer `dueISO` so the countdown is accurate every
 // render. Returns null when no usable date is present.
