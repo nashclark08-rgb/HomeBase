@@ -2210,16 +2210,24 @@ function sToday(){
           // One-off events accepted from email get a lighter shade of their
           // allocated colour as a visual point of difference.
           const isEmailOneOff=ev.source==='email';
+          const isAssessment=ev.source==='assessment';
           const dotCol=isEmailOneOff?lightenHex(col,0.55):col;
+          // Assessment-linked events use the child's colour at full strength
+          // with a heavier dot fill, thicker border, and coloured title — so
+          // they pop vs both regular school events (subtle) and AI-imported
+          // ones (pastel).
+          const dotBg=isAssessment?dotCol+'40':dotCol+'18';
+          const dotBorderW=isAssessment?'3px':'2px';
+          const titleCol=isAssessment?dotCol:'var(--text)';
           const ownerName=ec?ec.name:adultMember?adultMember.name:'Family';
           const isMyDropoff=ev.dropoff&&(ev.dropoff===myName||ev.dropoff===myFirstName);
           const isMyPickup=ev.pickup&&(ev.pickup===myName||ev.pickup===myFirstName);
           const isMine=isMyDropoff||isMyPickup;
           return `<div class="row" onclick="openEventModal('${ev.id}')" data-longpress="event:${ev.id}" style="border-bottom:${i<arr.length-1?'1px solid var(--row-border)':'none'};${isMine?'background:#FFF8E5':''};cursor:pointer">
             <div style="width:48px;text-align:right;font-size:12px;font-weight:600;color:var(--text-secondary);flex-shrink:0">${ev.time||`<span style="font-size:11px">All day</span>`}</div>
-            <div style="width:32px;height:32px;border-radius:16px;background:${dotCol}18;border:2px solid ${dotCol};display:flex;align-items:center;justify-content:center;font-size:14px;flex-shrink:0">${ev.emoji||'📅'}</div>
+            <div style="width:32px;height:32px;border-radius:16px;background:${dotBg};border:${dotBorderW} solid ${dotCol};display:flex;align-items:center;justify-content:center;font-size:14px;flex-shrink:0">${ev.emoji||'📅'}</div>
             <div style="flex:1;min-width:0">
-              <div style="font-size:14px;font-weight:600;color:var(--text);overflow:hidden;text-overflow:ellipsis;white-space:nowrap">${ev.title}${isMine?' <span style="font-size:9px;font-weight:700;padding:1px 6px;border-radius:7px;background:#FF9500;color:#fff;vertical-align:1px">YOU</span>':''}</div>
+              <div style="font-size:14px;font-weight:${isAssessment?'700':'600'};color:${titleCol};overflow:hidden;text-overflow:ellipsis;white-space:nowrap">${ev.title}${isMine?' <span style="font-size:9px;font-weight:700;padding:1px 6px;border-radius:7px;background:#FF9500;color:#fff;vertical-align:1px">YOU</span>':''}</div>
               <div style="font-size:12px;color:${dotCol};font-weight:600;overflow:hidden;text-overflow:ellipsis;white-space:nowrap">${ownerName}</div>
             </div>
             <div style="color:var(--text-secondary);font-size:18px;flex-shrink:0;font-weight:300;padding-right:2px">›</div>
@@ -3322,10 +3330,14 @@ function sEvents(){
     const personLabel=people.length===0?'Family':people.map(p=>p.name.split(' ')[0]).join(', ');
     const isOnce=!ev.freq||ev.freq==='once';
     const whenLabel=isOnce?formatDateShort(ev.date):formatDays(ev);
+    const isAssessment=ev.source==='assessment';
+    const dotBg=isAssessment?col+'40':col+'18';
+    const dotBorderW=isAssessment?'3px':'2px';
+    const titleCol=isAssessment?col:'var(--text)';
     return `<div class="row" onclick="openEventModal('${ev.id}')" data-longpress="event:${ev.id}" style="border-bottom:${i<total-1?'1px solid var(--row-border)':'none'};cursor:pointer">
-      <div style="width:32px;height:32px;border-radius:16px;background:${col}18;border:2px solid ${col};display:flex;align-items:center;justify-content:center;font-size:14px;flex-shrink:0">${ev.emoji||'📅'}</div>
+      <div style="width:32px;height:32px;border-radius:16px;background:${dotBg};border:${dotBorderW} solid ${col};display:flex;align-items:center;justify-content:center;font-size:14px;flex-shrink:0">${ev.emoji||'📅'}</div>
       <div style="flex:1;min-width:0">
-        <div style="font-size:14px;font-weight:600;color:var(--text);overflow:hidden;text-overflow:ellipsis;white-space:nowrap">${ev.title||'Event'}</div>
+        <div style="font-size:14px;font-weight:${isAssessment?'700':'600'};color:${titleCol};overflow:hidden;text-overflow:ellipsis;white-space:nowrap">${ev.title||'Event'}</div>
         <div style="font-size:12px;color:var(--text-secondary);overflow:hidden;text-overflow:ellipsis;white-space:nowrap">${whenLabel}${ev.time?' · '+ev.time:''} · ${personLabel}</div>
       </div>
       <div style="color:var(--text-secondary);font-size:18px;flex-shrink:0;font-weight:300">›</div>
@@ -11332,7 +11344,23 @@ window.hAddAssessment=async()=>{
   }
   catch(ex){if(err)err.textContent=ex.message;}
 };
-window.dAssessment=async id=>{try{await fdel(['assessments',id]);notify('Deleted','🗑️');}catch(ex){notify('Delete failed: '+friendlyError(ex),'⚠️');}};
+window.dAssessment=async id=>{
+  try{
+    await fdel(['assessments',id]);
+    // Cascade: hard-delete the school event + reminder that hAddAssessment
+    // created with linkedAssessmentId. Best-effort; failures are logged but
+    // don't block the user-visible deletion.
+    try{
+      const evSnap=await getDocs(query(fcol(['events']),where('linkedAssessmentId','==',id)));
+      await Promise.all(evSnap.docs.map(d=>fdel(['events',d.id]).catch(()=>null)));
+    }catch(e){dwarn('Could not purge linked assessment event:',e);}
+    try{
+      const remSnap=await getDocs(query(fcol(['reminders']),where('linkedAssessmentId','==',id)));
+      await Promise.all(remSnap.docs.map(d=>fdel(['reminders',d.id]).catch(()=>null)));
+    }catch(e){dwarn('Could not purge linked assessment reminder:',e);}
+    notify('Deleted','🗑️');
+  }catch(ex){notify('Delete failed: '+friendlyError(ex),'⚠️');}
+};
 window.tGroc=async(id,val)=>{try{await fupd(['groceries',id],{checked:val});}catch(ex){notify('Save failed: '+friendlyError(ex),'⚠️');}};
 window.quickAddGroc=async function(){
   const input=document.getElementById('todayGrocInput');
