@@ -2051,7 +2051,7 @@ function sToday(){
   // the Dinners screen handles those).
   const upcomingDinners=S.dinners?S.dinners.filter(d=>d.date>=todayStr).sort((a,b)=>(a.date||'').localeCompare(b.date||'')):[];
   // Urgent assessments
-  const urgentAssess=S.assessments.filter(a=>(a.daysLeft||99)<=7).sort((a,b)=>(a.daysLeft||99)-(b.daysLeft||99));
+  const urgentAssess=S.assessments.map(a=>({a,dl:assessmentDaysLeft(a)})).filter(o=>o.dl!=null&&o.dl<=7).sort((x,y)=>x.dl-y.dl);
 
   return `
     <div style="background:#fff;padding:14px 16px;border-bottom:1px solid #F0F0F0;position:sticky;top:0;z-index:10">
@@ -7269,7 +7269,7 @@ window.quickAddTypedEvent=function(cat){
 
 function sAssessmentsInEvents(tabBar){
   const f=S.listFilter==='all'?S.assessments:S.assessments.filter(a=>a.childId===S.listFilter);
-  const sorted=[...f].sort((a,b)=>(a.daysLeft||999)-(b.daysLeft||999));
+  const sorted=[...f].sort((a,b)=>{const da=assessmentDaysLeft(a),db=assessmentDaysLeft(b);return (da==null?999:da)-(db==null?999:db);});
   return `
     <div style="background:var(--card);padding:14px 16px 0;border-bottom:1px solid var(--row-border);position:sticky;top:0;z-index:10">
       <div style="font-size:26px;font-weight:800;color:var(--text)">Events</div>
@@ -7280,11 +7280,11 @@ function sAssessmentsInEvents(tabBar){
     </div>
     <div style="padding:14px 0 100px">
       ${sorted.length===0?'<div style="text-align:center;padding:40px;color:var(--text-secondary);font-size:15px">No assessments yet 🎉</div>':''}
-      ${sorted.map(a=>{const ec=S.children.find(c=>c.id===a.childId);const urg=(a.daysLeft||99)<=7;return `<div style="width:calc(100% - 32px);margin:0 16px 10px;background:var(--card);border-radius:14px;padding:14px 16px;box-shadow:var(--shadow-md);border-left:4px solid ${urg?'#FF3B30':'#34C759'}">
+      ${sorted.map(a=>{const ec=S.children.find(c=>c.id===a.childId);const dl=assessmentDaysLeft(a);const urg=dl!=null&&dl<=7;const badge=dl==null?'':(dl<0?Math.abs(dl)+'d ago':dl===0?'Today':dl+'d');return `<div style="width:calc(100% - 32px);margin:0 16px 10px;background:var(--card);border-radius:14px;padding:14px 16px;box-shadow:var(--shadow-md);border-left:4px solid ${urg?'#FF3B30':'#34C759'}">
         <div style="display:flex;align-items:flex-start;gap:10px">
           ${ec?av(ec.name,ec.color||NAVY,36,ec.photoURL):''}
           <div style="flex:1"><div style="font-size:16px;font-weight:700">${a.title}</div><div style="font-size:13px;color:var(--text-secondary)">${a.subject||''} · Due ${a.due||''}</div>${a.notes?`<div style="font-size:12px;color:var(--text-secondary);margin-top:4px;font-style:italic">${a.notes.substring(0,140)}${a.notes.length>140?'...':''}</div>`:''}</div>
-          ${a.daysLeft!==undefined?`<div style="font-size:12px;font-weight:700;color:${urg?'#FF3B30':'#34C759'};background:${urg?'#FFF0EE':'#EAFAF0'};padding:4px 10px;border-radius:20px;white-space:nowrap">${a.daysLeft}d</div>`:''}
+          ${badge?`<div style="font-size:12px;font-weight:700;color:${urg?'#FF3B30':'#34C759'};background:${urg?'#FFF0EE':'#EAFAF0'};padding:4px 10px;border-radius:20px;white-space:nowrap">${badge}</div>`:''}
           <button onclick="dAssessment('${a.id}')" style="color:#FF3B30;font-size:20px;opacity:0.5;border:none;background:none;cursor:pointer">×</button>
         </div>
       </div>`;}).join('')}
@@ -7842,7 +7842,7 @@ function sAddPlayDate(){
         <div id="pd-ocr-card" style="display:${(data.type||presetType)==='birthday'?'block':'none'};background:linear-gradient(135deg,var(--navy),#2E5FBF);border-radius:14px;padding:16px;color:#fff">
           <div style="font-size:14px;font-weight:700;margin-bottom:4px">📸 Quick Capture</div>
           <div style="font-size:12px;opacity:0.85;margin-bottom:10px">Snap an invite — we'll fill what we can. Review and tweak the rest.</div>
-          <input type="file" id="pd-ocr-input" accept="image/*" capture="environment" style="display:none" onchange="runPlayDateOCR(this)"/>
+          <input type="file" id="pd-ocr-input" accept="image/*" style="display:none" onchange="runPlayDateOCR(this)"/>
           <button onclick="document.getElementById('pd-ocr-input').click()" style="width:100%;padding:11px;border-radius:10px;background:rgba(255,255,255,0.22);border:none;color:#fff;font-size:14px;font-weight:600;cursor:pointer;font-family:inherit">📷 Take Photo or Upload</button>
           <div id="pd-ocr-status" style="font-size:12px;margin-top:8px;opacity:0.9;min-height:16px"></div>
         </div>
@@ -8051,7 +8051,7 @@ function sLists(){
   if(S.listTab==='groceries')return sGroceries();
   if(S.listTab==='dinners')return sDinners();
   if(S.listTab==='assessments')return sAssessments();
-  const urg=S.assessments.filter(a=>(a.daysLeft||99)<=7).length;
+  const urg=S.assessments.filter(a=>{const dl=assessmentDaysLeft(a);return dl!=null&&dl<=7;}).length;
   return `
     <div style="background:#fff;padding:14px 16px;border-bottom:1px solid #F2F2F7;position:sticky;top:0;z-index:10">
       <div style="font-size:26px;font-weight:800;color:#1C1C1E">Kitchen</div>
@@ -8131,7 +8131,7 @@ function sGroceries(){
 
 function sAssessments(){
   const f=S.listFilter==='all'?S.assessments:S.assessments.filter(a=>a.childId===S.listFilter);
-  const sorted=[...f].sort((a,b)=>(a.daysLeft||999)-(b.daysLeft||999));
+  const sorted=[...f].sort((a,b)=>{const da=assessmentDaysLeft(a),db=assessmentDaysLeft(b);return (da==null?999:da)-(db==null?999:db);});
   return `
     <div style="flex:1;display:flex;flex-direction:column">
       <div style="background:#fff;padding:14px 16px;display:flex;align-items:center;border-bottom:1px solid #F2F2F7;position:sticky;top:0;z-index:10">
@@ -8144,11 +8144,11 @@ function sAssessments(){
       </div>
       <div class="scroll-view" style="padding:12px 0">
         ${sorted.length===0?'<div style="text-align:center;padding:40px;color:#8E8E93;font-size:15px">No assessments yet 🎉</div>':''}
-        ${sorted.map(a=>{const ec=S.children.find(c=>c.id===a.childId);const urg=(a.daysLeft||99)<=7;return `<div style="width:calc(100% - 32px);margin:0 16px 10px;background:#fff;border-radius:16px;padding:14px 16px;box-shadow:0 1px 6px rgba(0,0,0,0.08);border-left:4px solid ${urg?'#FF3B30':'#34C759'}">
+        ${sorted.map(a=>{const ec=S.children.find(c=>c.id===a.childId);const dl=assessmentDaysLeft(a);const urg=dl!=null&&dl<=7;const badge=dl==null?'':(dl<0?Math.abs(dl)+'d ago':dl===0?'Today':dl+'d left');return `<div style="width:calc(100% - 32px);margin:0 16px 10px;background:#fff;border-radius:16px;padding:14px 16px;box-shadow:0 1px 6px rgba(0,0,0,0.08);border-left:4px solid ${urg?'#FF3B30':'#34C759'}">
           <div style="display:flex;align-items:flex-start;gap:10px">
             ${ec?av(ec.name,ec.color||NAVY,36,ec.photoURL):''}
             <div style="flex:1"><div style="font-size:16px;font-weight:700">${a.title}</div><div style="font-size:13px;color:#8E8E93">${a.subject||''} · Due ${a.due||''}</div></div>
-            ${a.daysLeft!==undefined?`<div style="font-size:12px;font-weight:700;color:${urg?'#FF3B30':'#34C759'};background:${urg?'#FFF0EE':'#EAFAF0'};padding:4px 10px;border-radius:20px;white-space:nowrap">${a.daysLeft}d left</div>`:''}
+            ${badge?`<div style="font-size:12px;font-weight:700;color:${urg?'#FF3B30':'#34C759'};background:${urg?'#FFF0EE':'#EAFAF0'};padding:4px 10px;border-radius:20px;white-space:nowrap">${badge}</div>`:''}
             <button onclick="dAssessment('${a.id}')" style="color:#FF3B30;font-size:20px;opacity:0.5;border:none;background:none;cursor:pointer;margin-left:4px">×</button>
           </div>
         </div>`;}).join('')}
@@ -8855,7 +8855,7 @@ function sPersonProfile(){
       ${(()=>{
         const yr=childYearNum(person);
         if(yr===null||yr<7)return '';
-        const childAssess=S.assessments.filter(a=>a.childId===person.id).sort((a,b)=>(a.daysLeft||999)-(b.daysLeft||999));
+        const childAssess=S.assessments.filter(a=>a.childId===person.id).sort((a,b)=>{const da=assessmentDaysLeft(a),db=assessmentDaysLeft(b);return (da==null?999:da)-(db==null?999:db);});
         const assKey='profile_assess_'+person.id;
         if(!S.openSections)S.openSections={};
         const assOpen=!!S.openSections[assKey];
@@ -8863,14 +8863,16 @@ function sPersonProfile(){
         if(!assOpen)return head+'<div style="margin-bottom:10px"></div>';
         return head+`<div class="card" style="margin:0 16px 14px;border:2px solid ${color};border-top:none;border-top-left-radius:0;border-top-right-radius:0">
           ${childAssess.length===0?`<div style="padding:20px;text-align:center;color:var(--text-secondary);font-size:14px">No assessments yet</div>`:childAssess.map((a,i,arr)=>{
-            const urg=(a.daysLeft||99)<=7;
+            const dl=assessmentDaysLeft(a);
+            const urg=dl!=null&&dl<=7;
+            const badge=dl==null?'':(dl<0?Math.abs(dl)+'d ago':dl===0?'Today':dl+'d');
             return `<div class="row" style="border-bottom:${i<arr.length-1?'1px solid var(--row-border)':'none'}">
               <div style="flex:1">
                 <div style="font-size:14px;font-weight:600;color:var(--text)">${a.title}</div>
                 <div style="font-size:12px;color:var(--text-secondary)">${a.subject||''}${a.due?' · Due '+a.due:''}</div>
                 ${a.notes?`<div style="font-size:11px;color:var(--text-secondary);font-style:italic;margin-top:2px">${a.notes.substring(0,90)}${a.notes.length>90?'...':''}</div>`:''}
               </div>
-              ${a.daysLeft!==undefined?`<div style="font-size:11px;font-weight:700;color:${urg?'#FF3B30':'#34C759'};background:${urg?'#FFF0EE':'#EAFAF0'};padding:3px 8px;border-radius:12px;white-space:nowrap;margin-right:6px">${a.daysLeft}d</div>`:''}
+              ${badge?`<div style="font-size:11px;font-weight:700;color:${urg?'#FF3B30':'#34C759'};background:${urg?'#FFF0EE':'#EAFAF0'};padding:3px 8px;border-radius:12px;white-space:nowrap;margin-right:6px">${badge}</div>`:''}
               <button onclick="dAssessment('${a.id}')" style="color:#FF3B30;font-size:18px;opacity:0.5;border:none;background:none;cursor:pointer">×</button>
             </div>`;
           }).join('')}
@@ -9133,7 +9135,7 @@ function sAddAssessment(){
         <div style="background:linear-gradient(135deg,#1C3A6B,#2E5FBF);border-radius:14px;padding:16px;color:#fff">
           <div style="font-size:14px;font-weight:700;margin-bottom:4px">📸 Quick Capture</div>
           <div style="font-size:12px;opacity:0.85;margin-bottom:10px">Snap an assessment sheet — we'll fill what we can. Review the details before saving.</div>
-          <input type="file" id="ocr-input" accept="image/*" capture="environment" style="display:none" onchange="runOCR(this)"/>
+          <input type="file" id="ocr-input" accept="image/*" style="display:none" onchange="runOCR(this)"/>
           <button onclick="document.getElementById('ocr-input').click()" style="width:100%;padding:11px;border-radius:10px;background:rgba(255,255,255,0.22);border:none;color:#fff;font-size:14px;font-weight:600;cursor:pointer;font-family:inherit">📷 Take Photo or Upload</button>
           <div id="ocr-status" style="font-size:12px;margin-top:8px;opacity:0.9;min-height:16px"></div>
         </div>
@@ -11260,12 +11262,26 @@ window.runOCR=async function(input){
     if(status)status.innerHTML='❌ OCR failed: '+ex.message+' — please enter manually';
   }
 };
+// Live-recompute days until an assessment's due date. Stored `daysLeft` is
+// frozen at creation time; prefer `dueISO` so the countdown is accurate every
+// render. Returns null when no usable date is present.
+function assessmentDaysLeft(a){
+  if(!a)return null;
+  if(a.dueISO){
+    const d=new Date(a.dueISO+'T12:00');
+    if(!isNaN(d.getTime())){
+      const t=new Date();t.setHours(0,0,0,0);
+      return Math.ceil((d-t)/86400000);
+    }
+  }
+  return (typeof a.daysLeft==='number')?a.daysLeft:null;
+}
 window.hAddAssessment=async()=>{
   const childId=$('achild')?.value,subj=$('asubj')?.value?.trim(),title=$('atitle')?.value?.trim(),due=$('adue')?.value,notes=document.getElementById('anotes')?.value?.trim()||'',err=$('aerr');
   if(!title||!due){if(err)err.textContent='Enter title and due date';return;}
   const daysLeft=Math.ceil((new Date(due+'T12:00')-today)/86400000);
   const dueDisplay=new Date(due+'T12:00').toLocaleDateString('en-AU',{day:'numeric',month:'short'});
-  try{await fadd(['assessments'],{childId,subject:subj,title,due:dueDisplay,daysLeft,notes});notify('Assessment added 📚');S._formTouched=false;setTimeout(back,900);}
+  try{await fadd(['assessments'],{childId,subject:subj,title,due:dueDisplay,dueISO:due,daysLeft,notes});notify('Assessment added 📚');S._formTouched=false;setTimeout(back,900);}
   catch(ex){if(err)err.textContent=ex.message;}
 };
 window.dAssessment=async id=>{try{await fdel(['assessments',id]);notify('Deleted','🗑️');}catch(ex){notify('Delete failed: '+friendlyError(ex),'⚠️');}};
