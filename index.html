@@ -732,6 +732,12 @@ function findUpcomingClashes(daysAhead){
         // every weekday, so e.g. "Maths class vs PE class" would falsely flag every day.
         const isSchoolCat=cat=>cat==='school'||cat==='school-event'||cat==='school-subject';
         if(isSchoolCat(a.category)&&isSchoolCat(b.category))continue;
+        // Skip clashes where EITHER event is an assessment. Assessments happen
+        // during class time, so by definition they can't clash with anything
+        // outside school hours (swimming, sport training, music, etc.) — even
+        // if the auto-created event lacks a specific time and gets the default
+        // {0,1440} all-day window.
+        if(a.source==='assessment'||b.source==='assessment')continue;
 
         // Determine reason for the clash:
         const aIds=Array.isArray(a.participantIds)&&a.participantIds.length?a.participantIds:[a.childId,a.adultUid].filter(Boolean);
