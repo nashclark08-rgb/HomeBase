@@ -2488,36 +2488,44 @@ function sToday(){
             });
           }catch(e){dwarn('[clash-detect] failed',e);}
 
-          // === ASSESSMENT LEAD-UP ===
-          // Surface upcoming assessments as virtual reminders inside the
-          // existing Reminders section. Dated TODAY so they always show on
-          // today's view (the brightness ramp does the time-pressure visual).
-          // Range: 1-14 days out. Hidden on the due date itself (the School
-          // event row handles that day).
-          try{
-            (S.assessments||[]).forEach(a=>{
-              if(!a||!a.id)return;
-              const dl=assessmentDaysLeft(a);
-              if(dl==null||dl<1||dl>14)return;
-              const child=S.children.find(c=>c.id===a.childId);
-              const col=child?.color||NAVY;
-              const childName=child?child.name.split(' ')[0]:'';
-              const subj=a.subject||'';
-              const title=a.title||'Assessment';
-              maybePush({
-                _isBirthday:true, // reuse virtual-reminder code path
-                _isAssessment:true,
-                _assessmentId:a.id,
-                _daysLeft:dl,
-                _date:new Date(), // dated TODAY so it shows on today's view
-                id:'assess-'+a.id,
-                text:'📚 '+(childName?childName+' · ':'')+(subj?subj+' — ':'')+title,
-                tcol:col,
-                forKeys:child?['child:'+child.id]:[]
-              });
-            });
-          }catch(e){dwarn('[assessment-reminders] failed',e);}
+          // Assessment lead-up reminders are generated OUTSIDE this isViewToday
+          // block (below) so they also appear when toggling forward through dates.
         }
+
+        // === ASSESSMENT LEAD-UP (works on any view date, not just today) ===
+        // Surface upcoming assessments as virtual reminders in the Reminders
+        // section. Computed relative to the CURRENTLY VIEWED date, so when the
+        // user toggles to tomorrow they see the ribbon for an assessment that's
+        // 8 days out tomorrow, etc. Range: 1-14 days out. Hidden on the due
+        // date itself (the School event row handles that day).
+        const assessmentReminders=[];
+        try{
+          const viewMid=new Date(viewDateObj);viewMid.setHours(0,0,0,0);
+          (S.assessments||[]).forEach(a=>{
+            if(!a||!a.id||!a.dueISO)return;
+            const dueDate=new Date(a.dueISO+'T12:00');
+            if(isNaN(dueDate.getTime()))return;
+            const dueMid=new Date(dueDate);dueMid.setHours(0,0,0,0);
+            const dl=Math.ceil((dueMid-viewMid)/86400000);
+            if(dl<1||dl>14)return;
+            const child=S.children.find(c=>c.id===a.childId);
+            const col=child?.color||NAVY;
+            const childName=child?child.name.split(' ')[0]:'';
+            const subj=a.subject||'';
+            const title=a.title||'Assessment';
+            assessmentReminders.push({
+              _isBirthday:true, // reuse virtual-reminder render path
+              _isAssessment:true,
+              _assessmentId:a.id,
+              _daysLeft:dl,
+              date:viewDateStr, // sort at the current view's slot
+              id:'assess-'+a.id,
+              text:'📚 '+(childName?childName+' · ':'')+(subj?subj+' — ':'')+title,
+              tcol:col,
+              forKeys:child?['child:'+child.id]:[]
+            });
+          });
+        }catch(e){dwarn('[assessment-reminders] failed',e);}
 
         const realReminders=(S.reminders||[]).filter(r=>{
           if(r.done)return false;
@@ -2533,7 +2541,7 @@ function sToday(){
         });
 
         // Combined list, sorted by date (closest first). Birthdays sort with their next date.
-        const dueReminders=[...realReminders,...birthdayReminders].sort((a,b)=>{
+        const dueReminders=[...realReminders,...birthdayReminders,...assessmentReminders].sort((a,b)=>{
           const da=a.date||'9999-12-31';
           const db=b.date||'9999-12-31';
           return da.localeCompare(db);
