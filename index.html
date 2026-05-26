@@ -8800,7 +8800,7 @@ function sPersonProfile(){
         if(myMeds.length===0){
           const head=`<div onclick="toggleSection('${medsKey}')" style="margin:0 16px 0;padding:13px 14px;background:var(--card);border:2px solid ${color};border-radius:12px;font-size:14px;font-weight:700;color:var(--text);cursor:pointer;display:flex;align-items:center;justify-content:space-between"><span>💊 ${name.split(' ')[0]}'s Medicines</span><span style="font-size:14px;color:var(--text-secondary)">${medsOpen?'▾':'▸'}</span></div>`;
           if(!medsOpen)return head+'<div style="margin-bottom:10px"></div>';
-          return head+`<div class="card" style="margin:0 16px 14px;border-top-left-radius:0;border-top-right-radius:0">
+          return head+`<div class="card" style="margin:0 16px 14px;border:2px solid ${color};border-top:none;border-top-left-radius:0;border-top-right-radius:0">
             <div style="padding:18px 16px;text-align:center;color:var(--text-secondary);font-size:13px;line-height:1.5">No medicines yet.<br/><span style="font-size:12px;opacity:0.8">Add one to track doses and log when given.</span></div>
             <button onclick="openAddMedicineFor('${personKey}')" style="width:100%;padding:13px 16px;border-top:1px solid var(--row-border);background:none;border-left:none;border-right:none;border-bottom:none;color:${color};font-size:14px;font-weight:600;cursor:pointer;font-family:inherit;text-align:center">+ Add Medicine for ${name.split(' ')[0]}</button>
           </div>`;
@@ -8836,7 +8836,7 @@ function sPersonProfile(){
         };
         const head=`<div onclick="toggleSection('${medsKey}')" style="margin:0 16px 0;padding:13px 14px;background:var(--card);border:2px solid ${color};border-radius:12px;font-size:14px;font-weight:700;color:var(--text);cursor:pointer;display:flex;align-items:center;justify-content:space-between"><span>💊 ${name.split(' ')[0]}'s Medicines${active.length?' · '+active.length+' active':''}</span><span style="font-size:14px;color:var(--text-secondary)">${medsOpen?'▾':'▸'}</span></div>`;
         if(!medsOpen)return head+'<div style="margin-bottom:10px"></div>';
-        let html=head+`<div class="card" style="margin:0 16px 14px;border-top-left-radius:0;border-top-right-radius:0">`;
+        let html=head+`<div class="card" style="margin:0 16px 14px;border:2px solid ${color};border-top:none;border-top-left-radius:0;border-top-right-radius:0">`;
         if(active.length){html+=active.map((m,i)=>renderMed(m,i,active,false)).join('');}
         if(ended.length){
           // Collapsible past-medicines archive. Collapsed by default so the
@@ -11428,7 +11428,7 @@ window.runAssessmentParser=async function(input){
 // reminder. Idempotent: queries by linkedAssessmentId before creating.
 async function backfillAssessmentLinks(){
   if(!S.familyId||!Array.isArray(S.assessments)||S.assessments.length===0)return;
-  let evCreated=0,remCreated=0;
+  let evCreated=0;
   for(const a of S.assessments){
     if(!a||!a.id||!a.dueISO)continue; // can't backfill without an ISO date
     try{
@@ -11448,27 +11448,12 @@ async function backfillAssessmentLinks(){
         evCreated++;
       }
     }catch(e){dwarn('backfill: event check/create failed for assessment',a.id,e);}
-    try{
-      const remSnap=await getDocs(query(fcol(['reminders']),where('linkedAssessmentId','==',a.id)));
-      if(remSnap.empty){
-        const dueDate=new Date(a.dueISO+'T12:00');
-        const remDate=new Date(dueDate);remDate.setDate(remDate.getDate()-7);
-        const todayMid=new Date();todayMid.setHours(0,0,0,0);
-        if(remDate<todayMid)remDate.setTime(todayMid.getTime());
-        await fadd(['reminders'],{
-          text:'📚 Assessment due '+(a.due||a.dueISO)+': '+(a.subject?a.subject+' · ':'')+(a.title||''),
-          date:fd(remDate),mode:'ondate',forKeys:[],
-          childId:a.childId||null,adultUid:null,
-          notes:'Auto-created (backfill)',done:false,
-          createdBy:S.user?.uid||'',linkedAssessmentId:a.id
-        });
-        remCreated++;
-      }
-    }catch(e){dwarn('backfill: reminder check/create failed for assessment',a.id,e);}
   }
-  if(evCreated>0||remCreated>0){
-    dlog('Assessment backfill done — events:',evCreated,'reminders:',remCreated);
-    if(typeof notify==='function')notify('Linked '+evCreated+' assessment event'+(evCreated===1?'':'s')+(remCreated?(' + '+remCreated+' reminder'+(remCreated===1?'':'s')):'')+' 📚');
+  // Note: deliberately not creating reminder docs anymore — the lead-up ribbon
+  // on the home dashboard is the persistent week-long signal now.
+  if(evCreated>0){
+    dlog('Assessment backfill done — events:',evCreated);
+    if(typeof notify==='function')notify('Linked '+evCreated+' assessment event'+(evCreated===1?'':'s')+' 📚');
   }
 }
 // Live-recompute days until an assessment's due date. Stored `daysLeft` is
@@ -11514,25 +11499,11 @@ window.hAddAssessment=async()=>{
         linkedAssessmentId:aRef.id
       });
     }catch(e){dwarn('Failed to create assessment event',e);}
-    // Reminder 7 days before due, clamped to today if already inside the window.
-    try{
-      const dueDate=new Date(due+'T12:00');
-      const remDate=new Date(dueDate);remDate.setDate(remDate.getDate()-7);
-      const todayMid=new Date();todayMid.setHours(0,0,0,0);
-      if(remDate<todayMid)remDate.setTime(todayMid.getTime());
-      await fadd(['reminders'],{
-        text:'📚 Assessment due '+dueDisplay+': '+(subj?subj+' · ':'')+title,
-        date:fd(remDate),
-        mode:'ondate',
-        forKeys:[],
-        childId:childId||null,
-        adultUid:null,
-        notes:'Auto-created with assessment',
-        done:false,
-        createdBy:S.user?.uid||'',
-        linkedAssessmentId:aRef.id
-      });
-    }catch(e){dwarn('Failed to create assessment reminder',e);}
+    // Note: we deliberately do NOT create a single-date reminder doc here.
+    // The "📚 Coming up" ribbon on the home dashboard is the persistent visual
+    // signal for the 2-week lead-up, intensifying as the due date approaches.
+    // A one-shot reminder created N days before would be redundant and
+    // becomes stale immediately after its trigger date.
     notify('Assessment added 📚');
     S._formTouched=false;
     setTimeout(back,900);
