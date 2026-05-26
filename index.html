@@ -2216,11 +2216,11 @@ function sToday(){
         </div>`;
       })()}
 
-      <!-- ASSESSMENT LEAD-UP RIBBONS (1–7 days out, intensifies as date approaches) -->
+      <!-- ASSESSMENT LEAD-UP RIBBONS (1–14 days out, intensifies as date approaches) -->
       ${(()=>{
         const upcoming=(S.assessments||[])
           .map(a=>({a,dl:assessmentDaysLeft(a),child:S.children.find(c=>c.id===a.childId)}))
-          .filter(o=>o.dl!=null&&o.dl>=1&&o.dl<=7)
+          .filter(o=>o.dl!=null&&o.dl>=1&&o.dl<=14)
           .sort((x,y)=>x.dl-y.dl);
         if(upcoming.length===0)return '';
         const alphaHex=amt=>{const a=Math.round(Math.max(0,Math.min(1,amt))*255);return a.toString(16).padStart(2,'0').toUpperCase();};
@@ -2228,17 +2228,18 @@ function sToday(){
         <div style="margin-bottom:14px;display:flex;flex-direction:column;gap:6px">
           ${upcoming.map(o=>{
             const col=o.child?.color||NAVY;
-            // Linear ramp: day 7 → 0.12 opacity, day 1 → 0.84 opacity.
-            const op=0.12*(8-o.dl);
+            // Smooth ramp over a 2-week lead-up. day 14 → 0.06 opacity (very
+            // faint), day 1 → 0.875 (bold). Each day closer is visibly brighter.
+            const op=(15-o.dl)/16;
             const bg=col+alphaHex(op);
-            const dayLabel=o.dl===1?'Tomorrow':('in '+o.dl+' days');
+            const dayLabel=o.dl===1?'tomorrow':(o.dl+' days');
             const childName=o.child?o.child.name.split(' ')[0]:'';
             const subj=o.a.subject||'';
             const title=o.a.title||'Assessment';
             return `<div onclick="setTab('lists');S.listTab='assessments';render()" style="cursor:pointer;background:${bg};border-radius:12px;padding:12px 14px;border-left:4px solid ${col};display:flex;align-items:center;gap:10px;transition:background 0.2s">
               <div style="flex:1;min-width:0">
                 <div style="font-size:14px;font-weight:700;color:${col};overflow:hidden;text-overflow:ellipsis;white-space:nowrap">📚 ${childName?childName+' · ':''}${subj?subj+' — ':''}${title}</div>
-                <div style="font-size:12px;color:var(--text-secondary);margin-top:2px">Due ${dayLabel}</div>
+                <div style="font-size:12px;color:var(--text-secondary);margin-top:2px">Due in ${dayLabel}</div>
               </div>
               <div style="font-size:13px;font-weight:800;color:${col};white-space:nowrap;padding:4px 10px;border-radius:14px;background:${col}33">${o.dl}d</div>
             </div>`;
@@ -8927,9 +8928,9 @@ function sPersonProfile(){
         const assKey='profile_assess_'+person.id;
         if(!S.openSections)S.openSections={};
         const assOpen=!!S.openSections[assKey];
-        const head=`<div onclick="toggleSection('${assKey}')" style="margin:0 16px 0;padding:13px 14px;background:var(--card);border:1px solid var(--row-border);border-radius:12px;font-size:14px;font-weight:700;color:var(--text);cursor:pointer;display:flex;align-items:center;justify-content:space-between"><span>📚 Assessments${childAssess.length?' · '+childAssess.length:''}</span><span style="font-size:14px;color:var(--text-secondary)">${assOpen?'▾':'▸'}</span></div>`;
+        const head=`<div onclick="toggleSection('${assKey}')" style="margin:0 16px 0;padding:13px 14px;background:var(--card);border:2px solid ${color};border-radius:12px;font-size:14px;font-weight:700;color:var(--text);cursor:pointer;display:flex;align-items:center;justify-content:space-between"><span>📚 Assessments${childAssess.length?' · '+childAssess.length:''}</span><span style="font-size:14px;color:var(--text-secondary)">${assOpen?'▾':'▸'}</span></div>`;
         if(!assOpen)return head+'<div style="margin-bottom:10px"></div>';
-        return head+`<div class="card" style="margin:0 16px 14px;border:1px solid var(--row-border);border-top:none;border-top-left-radius:0;border-top-right-radius:0">
+        return head+`<div class="card" style="margin:0 16px 14px;border:2px solid ${color};border-top:none;border-top-left-radius:0;border-top-right-radius:0">
           ${childAssess.length===0?`<div style="padding:20px;text-align:center;color:var(--text-secondary);font-size:14px">No assessments yet</div>`:childAssess.map((a,i,arr)=>{
             const dl=assessmentDaysLeft(a);
             const urg=dl!=null&&dl<=7;
@@ -11349,42 +11350,51 @@ window.runAssessmentParser=async function(input){
         const buf=await file.arrayBuffer();
         pdf=await window.pdfjsLib.getDocument({data:buf}).promise;
       }catch(e){
-        if(status)status.innerHTML='❌ PDF appears malformed (' + (e.message||'invalid structure') + '). Try re-exporting from the source app, or take a photo of the pages instead.';
-        return;
+        // pdf.js rejected the PDF. As a last resort, hand the raw binary to
+        // Claude — its parser is sometimes more forgiving than pdf.js. If
+        // Claude also rejects, the outer catch surfaces a clear error.
+        if(status)status.innerHTML='⏳ Local parser couldn\'t open this PDF — trying remote AI...';
+        const b64=await fileToBase64(file);
+        payload={files:[{base64:b64,mediaType:'application/pdf'}],familyId:S.familyId||null};
+        pdf=null;
       }
-      let text='';
-      try{
-        for(let i=1;i<=pdf.numPages;i++){
-          const page=await pdf.getPage(i);
-          const content=await page.getTextContent();
-          const lineStr=content.items.map(it=>it.str||'').filter(s=>s.trim()).join(' ');
-          text+=lineStr+'\n';
-        }
-        text=text.trim();
-      }catch(e){text='';}
-      if(text.length>=50){
-        payload={docxText:text.slice(0,30000),familyId:S.familyId||null};
-      }else{
-        if(status)status.innerHTML='⏳ PDF has no extractable text — rendering pages as images...';
-        const images=[];
-        const maxPages=Math.min(pdf.numPages,3);
-        for(let i=1;i<=maxPages;i++){
-          try{
+      // If pdf is null, the binary-fallback payload was already set above and
+      // we skip local text/image extraction entirely.
+      if(pdf){
+        let text='';
+        try{
+          for(let i=1;i<=pdf.numPages;i++){
             const page=await pdf.getPage(i);
-            const viewport=page.getViewport({scale:2});
-            const canvas=document.createElement('canvas');
-            canvas.width=viewport.width;canvas.height=viewport.height;
-            await page.render({canvasContext:canvas.getContext('2d'),viewport}).promise;
-            const dataUrl=canvas.toDataURL('image/jpeg',0.85);
-            const b64=dataUrl.slice(dataUrl.indexOf(',')+1);
-            images.push({base64:b64,mediaType:'image/jpeg'});
-          }catch(e){dwarn('PDF page render failed',i,e);}
+            const content=await page.getTextContent();
+            const lineStr=content.items.map(it=>it.str||'').filter(s=>s.trim()).join(' ');
+            text+=lineStr+'\n';
+          }
+          text=text.trim();
+        }catch(e){text='';}
+        if(text.length>=50){
+          payload={docxText:text.slice(0,30000),familyId:S.familyId||null};
+        }else{
+          if(status)status.innerHTML='⏳ PDF has no extractable text — rendering pages as images...';
+          const images=[];
+          const maxPages=Math.min(pdf.numPages,3);
+          for(let i=1;i<=maxPages;i++){
+            try{
+              const page=await pdf.getPage(i);
+              const viewport=page.getViewport({scale:2});
+              const canvas=document.createElement('canvas');
+              canvas.width=viewport.width;canvas.height=viewport.height;
+              await page.render({canvasContext:canvas.getContext('2d'),viewport}).promise;
+              const dataUrl=canvas.toDataURL('image/jpeg',0.85);
+              const b64=dataUrl.slice(dataUrl.indexOf(',')+1);
+              images.push({base64:b64,mediaType:'image/jpeg'});
+            }catch(e){dwarn('PDF page render failed',i,e);}
+          }
+          if(images.length===0){
+            if(status)status.innerHTML='❌ Could not extract text or render pages from this PDF. Take a photo of the pages instead.';
+            return;
+          }
+          payload={files:images,familyId:S.familyId||null};
         }
-        if(images.length===0){
-          if(status)status.innerHTML='❌ Could not extract text or render pages from this PDF. Take a photo of the pages instead.';
-          return;
-        }
-        payload={files:images,familyId:S.familyId||null};
       }
     }else{
       if(status)status.innerHTML='⏳ Uploading photo for AI to read...';
