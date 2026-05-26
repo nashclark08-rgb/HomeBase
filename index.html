@@ -2216,6 +2216,36 @@ function sToday(){
         </div>`;
       })()}
 
+      <!-- ASSESSMENT LEAD-UP RIBBONS (1–7 days out, intensifies as date approaches) -->
+      ${(()=>{
+        const upcoming=(S.assessments||[])
+          .map(a=>({a,dl:assessmentDaysLeft(a),child:S.children.find(c=>c.id===a.childId)}))
+          .filter(o=>o.dl!=null&&o.dl>=1&&o.dl<=7)
+          .sort((x,y)=>x.dl-y.dl);
+        if(upcoming.length===0)return '';
+        const alphaHex=amt=>{const a=Math.round(Math.max(0,Math.min(1,amt))*255);return a.toString(16).padStart(2,'0').toUpperCase();};
+        return `<div class="sh" style="margin-bottom:6px">📚 Coming up</div>
+        <div style="margin-bottom:14px;display:flex;flex-direction:column;gap:6px">
+          ${upcoming.map(o=>{
+            const col=o.child?.color||NAVY;
+            // Linear ramp: day 7 → 0.12 opacity, day 1 → 0.84 opacity.
+            const op=0.12*(8-o.dl);
+            const bg=col+alphaHex(op);
+            const dayLabel=o.dl===1?'Tomorrow':('in '+o.dl+' days');
+            const childName=o.child?o.child.name.split(' ')[0]:'';
+            const subj=o.a.subject||'';
+            const title=o.a.title||'Assessment';
+            return `<div onclick="setTab('lists');S.listTab='assessments';render()" style="cursor:pointer;background:${bg};border-radius:12px;padding:12px 14px;border-left:4px solid ${col};display:flex;align-items:center;gap:10px;transition:background 0.2s">
+              <div style="flex:1;min-width:0">
+                <div style="font-size:14px;font-weight:700;color:${col};overflow:hidden;text-overflow:ellipsis;white-space:nowrap">📚 ${childName?childName+' · ':''}${subj?subj+' — ':''}${title}</div>
+                <div style="font-size:12px;color:var(--text-secondary);margin-top:2px">Due ${dayLabel}</div>
+              </div>
+              <div style="font-size:13px;font-weight:800;color:${col};white-space:nowrap;padding:4px 10px;border-radius:14px;background:${col}33">${o.dl}d</div>
+            </div>`;
+          }).join('')}
+        </div>`;
+      })()}
+
       <!-- SCHOOL + ACTIVITIES (split by category) -->
       ${(()=>{
         const schoolCats=['school','school-event','school-subject'];
@@ -2235,22 +2265,23 @@ function sToday(){
           const isEmailOneOff=ev.source==='email';
           const isAssessment=ev.source==='assessment';
           const dotCol=isEmailOneOff?lightenHex(col,0.55):col;
-          // Assessment-linked events use the child's colour at full strength
-          // with a heavier dot fill, thicker border, and coloured title — so
-          // they pop vs both regular school events (subtle) and AI-imported
-          // ones (pastel).
-          const dotBg=isAssessment?dotCol+'40':dotCol+'18';
+          // Assessment-linked events render as a full coloured-ribbon strip on
+          // the due date: light child-colour background, bright bold title, thick
+          // child-colour dot. Visually completes the lead-up ribbon ramp above
+          // — day 7 is faint, day 0 is the full ribbon.
+          const dotBg=isAssessment?dotCol+'55':dotCol+'18';
           const dotBorderW=isAssessment?'3px':'2px';
           const titleCol=isAssessment?dotCol:'var(--text)';
           const ownerName=ec?ec.name:adultMember?adultMember.name:'Family';
           const isMyDropoff=ev.dropoff&&(ev.dropoff===myName||ev.dropoff===myFirstName);
           const isMyPickup=ev.pickup&&(ev.pickup===myName||ev.pickup===myFirstName);
           const isMine=isMyDropoff||isMyPickup;
-          return `<div class="row" onclick="openEventModal('${ev.id}')" data-longpress="event:${ev.id}" style="border-bottom:${i<arr.length-1?'1px solid var(--row-border)':'none'};${isMine?'background:#FFF8E5':''};cursor:pointer">
+          const rowBg=isAssessment?dotCol+'1F':(isMine?'#FFF8E5':'');
+          return `<div class="row" onclick="openEventModal('${ev.id}')" data-longpress="event:${ev.id}" style="border-bottom:${i<arr.length-1?'1px solid var(--row-border)':'none'};${rowBg?'background:'+rowBg+';':''}cursor:pointer">
             <div style="width:48px;text-align:right;font-size:12px;font-weight:600;color:var(--text-secondary);flex-shrink:0">${ev.time||`<span style="font-size:11px">All day</span>`}</div>
             <div style="width:32px;height:32px;border-radius:16px;background:${dotBg};border:${dotBorderW} solid ${dotCol};display:flex;align-items:center;justify-content:center;font-size:14px;flex-shrink:0">${ev.emoji||'📅'}</div>
             <div style="flex:1;min-width:0">
-              <div style="font-size:14px;font-weight:${isAssessment?'700':'600'};color:${titleCol};overflow:hidden;text-overflow:ellipsis;white-space:nowrap">${ev.title}${isMine?' <span style="font-size:9px;font-weight:700;padding:1px 6px;border-radius:7px;background:#FF9500;color:#fff;vertical-align:1px">YOU</span>':''}</div>
+              <div style="font-size:14px;font-weight:${isAssessment?'800':'600'};color:${titleCol};overflow:hidden;text-overflow:ellipsis;white-space:nowrap">${ev.title}${isMine?' <span style="font-size:9px;font-weight:700;padding:1px 6px;border-radius:7px;background:#FF9500;color:#fff;vertical-align:1px">YOU</span>':''}</div>
               <div style="font-size:12px;color:${dotCol};font-weight:600;overflow:hidden;text-overflow:ellipsis;white-space:nowrap">${ownerName}</div>
             </div>
             <div style="color:var(--text-secondary);font-size:18px;flex-shrink:0;font-weight:300;padding-right:2px">›</div>
@@ -8896,9 +8927,9 @@ function sPersonProfile(){
         const assKey='profile_assess_'+person.id;
         if(!S.openSections)S.openSections={};
         const assOpen=!!S.openSections[assKey];
-        const head=`<div onclick="toggleSection('${assKey}')" style="margin:0 16px 0;padding:13px 14px;background:var(--card);border:2px solid ${color};border-radius:12px;font-size:14px;font-weight:700;color:var(--text);cursor:pointer;display:flex;align-items:center;justify-content:space-between"><span>📚 Assessments${childAssess.length?' · '+childAssess.length:''}</span><span style="font-size:14px;color:var(--text-secondary)">${assOpen?'▾':'▸'}</span></div>`;
+        const head=`<div onclick="toggleSection('${assKey}')" style="margin:0 16px 0;padding:13px 14px;background:var(--card);border:1px solid var(--row-border);border-radius:12px;font-size:14px;font-weight:700;color:var(--text);cursor:pointer;display:flex;align-items:center;justify-content:space-between"><span>📚 Assessments${childAssess.length?' · '+childAssess.length:''}</span><span style="font-size:14px;color:var(--text-secondary)">${assOpen?'▾':'▸'}</span></div>`;
         if(!assOpen)return head+'<div style="margin-bottom:10px"></div>';
-        return head+`<div class="card" style="margin:0 16px 14px;border:2px solid ${color};border-top:none;border-top-left-radius:0;border-top-right-radius:0">
+        return head+`<div class="card" style="margin:0 16px 14px;border:1px solid var(--row-border);border-top:none;border-top-left-radius:0;border-top-right-radius:0">
           ${childAssess.length===0?`<div style="padding:20px;text-align:center;color:var(--text-secondary);font-size:14px">No assessments yet</div>`:childAssess.map((a,i,arr)=>{
             const dl=assessmentDaysLeft(a);
             const urg=dl!=null&&dl<=7;
@@ -11306,17 +11337,55 @@ window.runAssessmentParser=async function(input){
       }
       payload={docxText:text,familyId:S.familyId||null};
     }else if(isPdf){
-      // Anthropic's document-block PDF support returns 400 on Haiku 4.5 here,
-      // so mirror the pattern that already works for fixtures/timetable: extract
-      // text client-side via pdf.js, then send as text. For scanned/image-only
-      // PDFs there's no text to extract — we tell the user to take a photo.
+      // Layered PDF handling. pdf.js text extraction works for normal text PDFs
+      // (cheapest path). When text is empty (scanned/image-only PDFs), render up
+      // to 3 pages to JPEG and send via the image channel. If pdf.js can't even
+      // open the file, the PDF is malformed enough that Anthropic also rejects
+      // it (confirmed in logs) — clear error instead of a confusing 400.
       if(status)status.innerHTML='⏳ Reading PDF...';
-      const pdfText=await extractRawTextFromPDF(file);
-      if(!pdfText||pdfText.trim().length<50){
-        if(status)status.innerHTML='❌ This PDF looks like a scan (no extractable text). Take a photo of the pages instead.';
+      let pdf;
+      try{
+        await loadPDFJS();
+        const buf=await file.arrayBuffer();
+        pdf=await window.pdfjsLib.getDocument({data:buf}).promise;
+      }catch(e){
+        if(status)status.innerHTML='❌ PDF appears malformed (' + (e.message||'invalid structure') + '). Try re-exporting from the source app, or take a photo of the pages instead.';
         return;
       }
-      payload={docxText:pdfText.slice(0,30000),familyId:S.familyId||null};
+      let text='';
+      try{
+        for(let i=1;i<=pdf.numPages;i++){
+          const page=await pdf.getPage(i);
+          const content=await page.getTextContent();
+          const lineStr=content.items.map(it=>it.str||'').filter(s=>s.trim()).join(' ');
+          text+=lineStr+'\n';
+        }
+        text=text.trim();
+      }catch(e){text='';}
+      if(text.length>=50){
+        payload={docxText:text.slice(0,30000),familyId:S.familyId||null};
+      }else{
+        if(status)status.innerHTML='⏳ PDF has no extractable text — rendering pages as images...';
+        const images=[];
+        const maxPages=Math.min(pdf.numPages,3);
+        for(let i=1;i<=maxPages;i++){
+          try{
+            const page=await pdf.getPage(i);
+            const viewport=page.getViewport({scale:2});
+            const canvas=document.createElement('canvas');
+            canvas.width=viewport.width;canvas.height=viewport.height;
+            await page.render({canvasContext:canvas.getContext('2d'),viewport}).promise;
+            const dataUrl=canvas.toDataURL('image/jpeg',0.85);
+            const b64=dataUrl.slice(dataUrl.indexOf(',')+1);
+            images.push({base64:b64,mediaType:'image/jpeg'});
+          }catch(e){dwarn('PDF page render failed',i,e);}
+        }
+        if(images.length===0){
+          if(status)status.innerHTML='❌ Could not extract text or render pages from this PDF. Take a photo of the pages instead.';
+          return;
+        }
+        payload={files:images,familyId:S.familyId||null};
+      }
     }else{
       if(status)status.innerHTML='⏳ Uploading photo for AI to read...';
       const b64=await fileToBase64(file);
