@@ -1555,7 +1555,10 @@ function subscribe(){
     // a session flag so it doesn't churn on every snapshot update.
     if(!S._assessBackfillScheduled){
       S._assessBackfillScheduled=true;
-      setTimeout(()=>{backfillAssessmentLinks().catch(e=>dwarn('Assessment backfill failed',e));},2500);
+      setTimeout(()=>{
+        backfillAssessmentLinks().catch(e=>dwarn('Assessment backfill failed',e));
+        cleanupPastAssessments().catch(e=>dwarn('Past-assessment cleanup failed',e));
+      },2500);
     }
   }));
   S.unsubs.push(onSnapshot(fcol(['groceries']),s=>{S.groceries=s.docs.map(d=>({id:d.id,...d.data()}));queueRender();}));
@@ -2216,37 +2219,6 @@ function sToday(){
         </div>`;
       })()}
 
-      <!-- ASSESSMENT LEAD-UP RIBBONS (1–14 days out, intensifies as date approaches) -->
-      ${(()=>{
-        const upcoming=(S.assessments||[])
-          .map(a=>({a,dl:assessmentDaysLeft(a),child:S.children.find(c=>c.id===a.childId)}))
-          .filter(o=>o.dl!=null&&o.dl>=1&&o.dl<=14)
-          .sort((x,y)=>x.dl-y.dl);
-        if(upcoming.length===0)return '';
-        const alphaHex=amt=>{const a=Math.round(Math.max(0,Math.min(1,amt))*255);return a.toString(16).padStart(2,'0').toUpperCase();};
-        return `<div class="sh" style="margin-bottom:6px">📚 Coming up</div>
-        <div style="margin-bottom:14px;display:flex;flex-direction:column;gap:6px">
-          ${upcoming.map(o=>{
-            const col=o.child?.color||NAVY;
-            // Smooth ramp over a 2-week lead-up. day 14 → 0.06 opacity (very
-            // faint), day 1 → 0.875 (bold). Each day closer is visibly brighter.
-            const op=(15-o.dl)/16;
-            const bg=col+alphaHex(op);
-            const dayLabel=o.dl===1?'tomorrow':(o.dl+' days');
-            const childName=o.child?o.child.name.split(' ')[0]:'';
-            const subj=o.a.subject||'';
-            const title=o.a.title||'Assessment';
-            return `<div onclick="setTab('lists');S.listTab='assessments';render()" style="cursor:pointer;background:${bg};border-radius:12px;padding:12px 14px;border-left:4px solid ${col};display:flex;align-items:center;gap:10px;transition:background 0.2s">
-              <div style="flex:1;min-width:0">
-                <div style="font-size:14px;font-weight:700;color:${col};overflow:hidden;text-overflow:ellipsis;white-space:nowrap">📚 ${childName?childName+' · ':''}${subj?subj+' — ':''}${title}</div>
-                <div style="font-size:12px;color:var(--text-secondary);margin-top:2px">Due in ${dayLabel}</div>
-              </div>
-              <div style="font-size:13px;font-weight:800;color:${col};white-space:nowrap;padding:4px 10px;border-radius:14px;background:${col}33">${o.dl}d</div>
-            </div>`;
-          }).join('')}
-        </div>`;
-      })()}
-
       <!-- SCHOOL + ACTIVITIES (split by category) -->
       ${(()=>{
         const schoolCats=['school','school-event','school-subject'];
@@ -2515,6 +2487,36 @@ function sToday(){
               });
             });
           }catch(e){dwarn('[clash-detect] failed',e);}
+
+          // === ASSESSMENT LEAD-UP ===
+          // Surface upcoming assessments as virtual reminders inside the
+          // existing Reminders section. Dated TODAY so they always show on
+          // today's view (the brightness ramp does the time-pressure visual).
+          // Range: 1-14 days out. Hidden on the due date itself (the School
+          // event row handles that day).
+          try{
+            (S.assessments||[]).forEach(a=>{
+              if(!a||!a.id)return;
+              const dl=assessmentDaysLeft(a);
+              if(dl==null||dl<1||dl>14)return;
+              const child=S.children.find(c=>c.id===a.childId);
+              const col=child?.color||NAVY;
+              const childName=child?child.name.split(' ')[0]:'';
+              const subj=a.subject||'';
+              const title=a.title||'Assessment';
+              maybePush({
+                _isBirthday:true, // reuse virtual-reminder code path
+                _isAssessment:true,
+                _assessmentId:a.id,
+                _daysLeft:dl,
+                _date:new Date(), // dated TODAY so it shows on today's view
+                id:'assess-'+a.id,
+                text:'📚 '+(childName?childName+' · ':'')+(subj?subj+' — ':'')+title,
+                tcol:col,
+                forKeys:child?['child:'+child.id]:[]
+              });
+            });
+          }catch(e){dwarn('[assessment-reminders] failed',e);}
         }
 
         const realReminders=(S.reminders||[]).filter(r=>{
@@ -2547,8 +2549,29 @@ function sToday(){
         return remHeader+`
         <div class="card" style="margin-bottom:14px">
           ${dueReminders.map((r,i)=>{
-            // Virtual rows (birthdays, parent days) render differently — no checkbox, no delete X
+            // Virtual rows (birthdays, parent days, assessments) render differently — no checkbox, no delete X
             if(r._isBirthday){
+              // Assessment lead-up ribbon: background opacity ramps from
+              // faint (day 14) to bold (day 1). Each day closer is visibly
+              // brighter. Tap → Assessments list.
+              if(r._isAssessment){
+                const dl=r._daysLeft||1;
+                const alphaHex=amt=>{const a=Math.round(Math.max(0,Math.min(1,amt))*255);return a.toString(16).padStart(2,'0').toUpperCase();};
+                const op=(15-dl)/16;
+                const bgFill=r.tcol+alphaHex(op);
+                const dayLabel=dl===1?'Tomorrow':('in '+dl+' days');
+                const cleanText=String(r.text||'').replace(/^📚\s*/,'');
+                return `<div class="row" onclick="setTab('lists');S.listTab='assessments';render()" style="border-bottom:${i<dueReminders.length-1?'1px solid var(--row-border)':'none'};background:${bgFill};cursor:pointer">
+                  <div style="width:36px;height:36px;border-radius:18px;background:${r.tcol}30;border:2px solid ${r.tcol};display:flex;align-items:center;justify-content:center;font-size:18px;flex-shrink:0">📚</div>
+                  <div style="flex:1;min-width:0">
+                    <div style="font-size:15px;color:${r.tcol};font-weight:800">${cleanText}</div>
+                    <div style="display:flex;align-items:center;gap:6px;margin-top:3px">
+                      <span style="font-size:11px;font-weight:700;padding:2px 8px;border-radius:8px;background:${r.tcol};color:#fff">Due ${dayLabel}</span>
+                    </div>
+                  </div>
+                  <span style="color:${r.tcol};font-size:18px;opacity:0.7">›</span>
+                </div>`;
+              }
               // Clash row: open the clash action sheet listing BOTH conflicting
               // events so the user can pick which one to skip. The clash date is
               // known up-front so the skip flow doesn't need a date picker.
@@ -8722,7 +8745,7 @@ function sPersonProfile(){
       </div>
 
       <!-- Activities — Settings-style collapsible -->
-      ${(()=>{const evKey='profile_events_'+person.id;if(!S.openSections)S.openSections={};const evOpen=!!S.openSections[evKey];return `<div onclick="toggleSection('${evKey}')" style="margin:0 16px 0;padding:13px 14px;background:var(--card);border:2px solid ${color};border-radius:12px;font-size:14px;font-weight:700;color:var(--text);cursor:pointer;display:flex;align-items:center;justify-content:space-between"><span>📅 ${dayLabel}'s Events${dayEvents.length?' · '+dayEvents.length:''}</span><span style="font-size:14px;color:var(--text-secondary)">${evOpen?'▾':'▸'}</span></div>${evOpen?'<div class="card" style="margin:0 16px 14px;border:2px solid ${color};border-top:none;border-top-left-radius:0;border-top-right-radius:0">':'<div style="margin-bottom:10px"></div><div style="display:none">'}`;})()}
+      ${(()=>{const evKey='profile_events_'+person.id;if(!S.openSections)S.openSections={};const evOpen=!!S.openSections[evKey];return `<div onclick="toggleSection('${evKey}')" style="margin:0 16px 0;padding:13px 14px;background:var(--card);border-radius:12px;box-shadow:var(--shadow-md);font-size:14px;font-weight:700;color:var(--text);cursor:pointer;display:flex;align-items:center;justify-content:space-between"><span>📅 ${dayLabel}'s Events${dayEvents.length?' · '+dayEvents.length:''}</span><span style="font-size:14px;color:var(--text-secondary)">${evOpen?'▾':'▸'}</span></div>${evOpen?'<div class="card" style="margin:0 16px 14px;border-top-left-radius:0;border-top-right-radius:0">':'<div style="margin-bottom:10px"></div><div style="display:none">'}`;})()}
         ${dayEvents.length===0?`<div style="padding:20px;text-align:center;color:var(--text-secondary);font-size:14px">No events ${dayLabel.toLowerCase()}</div>`:''}
         ${dayEvents.map((ev,i)=>`<div class="row" style="border-bottom:${i<dayEvents.length-1?'1px solid var(--row-border)':'none'}">
           <div style="width:44px;text-align:right;font-size:12px;font-weight:600;color:var(--text-secondary);flex-shrink:0">${ev.time||`<span style="font-size:10px">All day</span>`}</div>
@@ -8761,9 +8784,9 @@ function sPersonProfile(){
         const remKey='profile_rem_'+person.id;
         if(!S.openSections)S.openSections={};
         const remOpen=!!S.openSections[remKey];
-        const head=`<div onclick="toggleSection('${remKey}')" style="margin:0 16px 0;padding:13px 14px;background:var(--card);border:2px solid ${color};border-radius:12px;font-size:14px;font-weight:700;color:var(--text);cursor:pointer;display:flex;align-items:center;justify-content:space-between"><span>⏰ ${dayLabel}'s Reminders · ${personReminders.length}</span><span style="font-size:14px;color:var(--text-secondary)">${remOpen?'▾':'▸'}</span></div>`;
+        const head=`<div onclick="toggleSection('${remKey}')" style="margin:0 16px 0;padding:13px 14px;background:var(--card);border-radius:12px;box-shadow:var(--shadow-md);font-size:14px;font-weight:700;color:var(--text);cursor:pointer;display:flex;align-items:center;justify-content:space-between"><span>⏰ ${dayLabel}'s Reminders · ${personReminders.length}</span><span style="font-size:14px;color:var(--text-secondary)">${remOpen?'▾':'▸'}</span></div>`;
         if(!remOpen)return head+'<div style="margin-bottom:10px"></div>';
-        return head+`<div class="card" style="margin:0 16px 14px;border:2px solid ${color};border-top:none;border-top-left-radius:0;border-top-right-radius:0">
+        return head+`<div class="card" style="margin:0 16px 14px;border-top-left-radius:0;border-top-right-radius:0">
           ${personReminders.map((r,i)=>{
             // Build "Due X" label for ongoing reminders
             let dueLabel='';
@@ -8798,9 +8821,9 @@ function sPersonProfile(){
         if(!S.openSections)S.openSections={};
         const medsOpen=!!S.openSections[medsKey];
         if(myMeds.length===0){
-          const head=`<div onclick="toggleSection('${medsKey}')" style="margin:0 16px 0;padding:13px 14px;background:var(--card);border:2px solid ${color};border-radius:12px;font-size:14px;font-weight:700;color:var(--text);cursor:pointer;display:flex;align-items:center;justify-content:space-between"><span>💊 ${name.split(' ')[0]}'s Medicines</span><span style="font-size:14px;color:var(--text-secondary)">${medsOpen?'▾':'▸'}</span></div>`;
+          const head=`<div onclick="toggleSection('${medsKey}')" style="margin:0 16px 0;padding:13px 14px;background:var(--card);border-radius:12px;box-shadow:var(--shadow-md);font-size:14px;font-weight:700;color:var(--text);cursor:pointer;display:flex;align-items:center;justify-content:space-between"><span>💊 ${name.split(' ')[0]}'s Medicines</span><span style="font-size:14px;color:var(--text-secondary)">${medsOpen?'▾':'▸'}</span></div>`;
           if(!medsOpen)return head+'<div style="margin-bottom:10px"></div>';
-          return head+`<div class="card" style="margin:0 16px 14px;border:2px solid ${color};border-top:none;border-top-left-radius:0;border-top-right-radius:0">
+          return head+`<div class="card" style="margin:0 16px 14px;border-top-left-radius:0;border-top-right-radius:0">
             <div style="padding:18px 16px;text-align:center;color:var(--text-secondary);font-size:13px;line-height:1.5">No medicines yet.<br/><span style="font-size:12px;opacity:0.8">Add one to track doses and log when given.</span></div>
             <button onclick="openAddMedicineFor('${personKey}')" style="width:100%;padding:13px 16px;border-top:1px solid var(--row-border);background:none;border-left:none;border-right:none;border-bottom:none;color:${color};font-size:14px;font-weight:600;cursor:pointer;font-family:inherit;text-align:center">+ Add Medicine for ${name.split(' ')[0]}</button>
           </div>`;
@@ -8834,9 +8857,9 @@ function sPersonProfile(){
             <span style="color:${color};font-size:18px;opacity:0.6">›</span>
           </div>`;
         };
-        const head=`<div onclick="toggleSection('${medsKey}')" style="margin:0 16px 0;padding:13px 14px;background:var(--card);border:2px solid ${color};border-radius:12px;font-size:14px;font-weight:700;color:var(--text);cursor:pointer;display:flex;align-items:center;justify-content:space-between"><span>💊 ${name.split(' ')[0]}'s Medicines${active.length?' · '+active.length+' active':''}</span><span style="font-size:14px;color:var(--text-secondary)">${medsOpen?'▾':'▸'}</span></div>`;
+        const head=`<div onclick="toggleSection('${medsKey}')" style="margin:0 16px 0;padding:13px 14px;background:var(--card);border-radius:12px;box-shadow:var(--shadow-md);font-size:14px;font-weight:700;color:var(--text);cursor:pointer;display:flex;align-items:center;justify-content:space-between"><span>💊 ${name.split(' ')[0]}'s Medicines${active.length?' · '+active.length+' active':''}</span><span style="font-size:14px;color:var(--text-secondary)">${medsOpen?'▾':'▸'}</span></div>`;
         if(!medsOpen)return head+'<div style="margin-bottom:10px"></div>';
-        let html=head+`<div class="card" style="margin:0 16px 14px;border:2px solid ${color};border-top:none;border-top-left-radius:0;border-top-right-radius:0">`;
+        let html=head+`<div class="card" style="margin:0 16px 14px;border-top-left-radius:0;border-top-right-radius:0">`;
         if(active.length){html+=active.map((m,i)=>renderMed(m,i,active,false)).join('');}
         if(ended.length){
           // Collapsible past-medicines archive. Collapsed by default so the
@@ -8854,7 +8877,7 @@ function sPersonProfile(){
 
       ${person.isAdult?`
       <!-- Today's Logistics — Settings-style collapsible -->
-      ${(()=>{const lgKey='profile_logistics_'+person.id;if(!S.openSections)S.openSections={};const lgOpen=!!S.openSections[lgKey];return `<div onclick="toggleSection('${lgKey}')" style="margin:0 16px 0;padding:13px 14px;background:var(--card);border:2px solid ${color};border-radius:12px;font-size:14px;font-weight:700;color:var(--text);cursor:pointer;display:flex;align-items:center;justify-content:space-between"><span>🚗 ${dayLabel}'s Logistics${dayLogistics.length?' · '+dayLogistics.length:''}</span><span style="font-size:14px;color:var(--text-secondary)">${lgOpen?'▾':'▸'}</span></div>${lgOpen?'<div class="card" style="margin:0 16px 14px;border:2px solid ${color};border-top:none;border-top-left-radius:0;border-top-right-radius:0">':'<div style="margin-bottom:10px"></div><div style="display:none">'}`;})()}
+      ${(()=>{const lgKey='profile_logistics_'+person.id;if(!S.openSections)S.openSections={};const lgOpen=!!S.openSections[lgKey];return `<div onclick="toggleSection('${lgKey}')" style="margin:0 16px 0;padding:13px 14px;background:var(--card);border-radius:12px;box-shadow:var(--shadow-md);font-size:14px;font-weight:700;color:var(--text);cursor:pointer;display:flex;align-items:center;justify-content:space-between"><span>🚗 ${dayLabel}'s Logistics${dayLogistics.length?' · '+dayLogistics.length:''}</span><span style="font-size:14px;color:var(--text-secondary)">${lgOpen?'▾':'▸'}</span></div>${lgOpen?'<div class="card" style="margin:0 16px 14px;border-top-left-radius:0;border-top-right-radius:0">':'<div style="margin-bottom:10px"></div><div style="display:none">'}`;})()}
         ${dayLogistics.length===0?`<div style="padding:20px;text-align:center;color:var(--text-secondary);font-size:14px">No drop-offs or pick-ups ${dayLabel.toLowerCase()}</div>`:''}
         ${dayLogistics.map((ev,i)=>{
           const firstName=name.split(' ')[0];
@@ -8886,7 +8909,7 @@ function sPersonProfile(){
 
       ${!person.isAdult&&!S.screenParams?.fromFamily?`
       <!-- Packing list (children only, NOT shown when reached from Family page) -->
-      ${(()=>{const pkKey='profile_packing_'+person.id;if(!S.openSections)S.openSections={};const pkOpen=!!S.openSections[pkKey];return `<div onclick="toggleSection('${pkKey}')" style="margin:0 16px 0;padding:13px 14px;background:var(--card);border:2px solid ${color};border-radius:12px;font-size:14px;font-weight:700;color:var(--text);cursor:pointer;display:flex;align-items:center;justify-content:space-between"><span>🎒 ${dayLabel}'s Packing · ${pk.filter(p=>p.checked).length}/${pk.length}</span><span style="font-size:14px;color:var(--text-secondary)">${pkOpen?'▾':'▸'}</span></div>${pkOpen?'<div class="card" style="margin:0 16px 14px;border:2px solid ${color};border-top:none;border-top-left-radius:0;border-top-right-radius:0">':'<div style="margin-bottom:10px"></div><div style="display:none">'}`;})()}
+      ${(()=>{const pkKey='profile_packing_'+person.id;if(!S.openSections)S.openSections={};const pkOpen=!!S.openSections[pkKey];return `<div onclick="toggleSection('${pkKey}')" style="margin:0 16px 0;padding:13px 14px;background:var(--card);border-radius:12px;box-shadow:var(--shadow-md);font-size:14px;font-weight:700;color:var(--text);cursor:pointer;display:flex;align-items:center;justify-content:space-between"><span>🎒 ${dayLabel}'s Packing · ${pk.filter(p=>p.checked).length}/${pk.length}</span><span style="font-size:14px;color:var(--text-secondary)">${pkOpen?'▾':'▸'}</span></div>${pkOpen?'<div class="card" style="margin:0 16px 14px;border-top-left-radius:0;border-top-right-radius:0">':'<div style="margin-bottom:10px"></div><div style="display:none">'}`;})()}
         ${pk.length===0?`<div style="padding:20px;text-align:center;color:var(--text-secondary);font-size:14px;line-height:1.5">Nothing to pack ${dayLabel.toLowerCase()} 🎉<br><span style="font-size:12px">Pack items appear here based on ${name.split(' ')[0]}'s events for this day</span></div>`:''}
         ${pk.map((item,i)=>`<div class="row" style="border-bottom:${i<pk.length-1?'1px solid var(--row-border)':'none'}">
           <div class="cb ${item.checked?'on':''}" style="${item.checked?'background:'+color+';border:none':'border-color:'+color}" onclick="tPack('${person.id}','${item.id}',${!item.checked})">${item.checked?ck():''}</div>
@@ -8904,9 +8927,9 @@ function sPersonProfile(){
         const giftsKey='gifts_'+person.id;
         const giftsOpen=!!(S.openSections&&S.openSections[giftsKey]);
         const countLbl=personGifts.length===1?'1 present':personGifts.length+' presents';
-        const head=`<div onclick="toggleSection('${giftsKey}')" style="margin:0 16px 0;padding:13px 14px;background:var(--card);border:2px solid ${color};border-radius:12px;font-size:14px;font-weight:700;color:var(--text);cursor:pointer;display:flex;align-items:center;justify-content:space-between"><span>🎁 Gift Ideas <span style="font-weight:500;color:var(--text-secondary);font-size:13px">· ${countLbl}</span></span><span style="font-size:14px;color:var(--text-secondary)">${giftsOpen?'▾':'▸'}</span></div>`;
+        const head=`<div onclick="toggleSection('${giftsKey}')" style="margin:0 16px 0;padding:13px 14px;background:var(--card);border-radius:12px;box-shadow:var(--shadow-md);font-size:14px;font-weight:700;color:var(--text);cursor:pointer;display:flex;align-items:center;justify-content:space-between"><span>🎁 Gift Ideas <span style="font-weight:500;color:var(--text-secondary);font-size:13px">· ${countLbl}</span></span><span style="font-size:14px;color:var(--text-secondary)">${giftsOpen?'▾':'▸'}</span></div>`;
         if(!giftsOpen)return head+'<div style="margin-bottom:10px"></div>';
-        return head+`<div class="card" style="margin:0 16px 14px;border:2px solid ${color};border-top:none;border-top-left-radius:0;border-top-right-radius:0">
+        return head+`<div class="card" style="margin:0 16px 14px;border-top-left-radius:0;border-top-right-radius:0">
           ${personGifts.length===0?`<div style="padding:20px;text-align:center;color:var(--text-secondary);font-size:14px">No gift ideas yet</div>`:personGifts.map((g,i,arr)=>`<div class="row" style="border-bottom:${i<arr.length-1?'1px solid var(--row-border)':'none'}">
             <div style="flex:1">
               <div style="font-size:14px;font-weight:600;color:var(--text)">${g.label}</div>
@@ -8928,9 +8951,9 @@ function sPersonProfile(){
         const assKey='profile_assess_'+person.id;
         if(!S.openSections)S.openSections={};
         const assOpen=!!S.openSections[assKey];
-        const head=`<div onclick="toggleSection('${assKey}')" style="margin:0 16px 0;padding:13px 14px;background:var(--card);border:2px solid ${color};border-radius:12px;font-size:14px;font-weight:700;color:var(--text);cursor:pointer;display:flex;align-items:center;justify-content:space-between"><span>📚 Assessments${childAssess.length?' · '+childAssess.length:''}</span><span style="font-size:14px;color:var(--text-secondary)">${assOpen?'▾':'▸'}</span></div>`;
+        const head=`<div onclick="toggleSection('${assKey}')" style="margin:0 16px 0;padding:13px 14px;background:var(--card);border-radius:12px;box-shadow:var(--shadow-md);font-size:14px;font-weight:700;color:var(--text);cursor:pointer;display:flex;align-items:center;justify-content:space-between"><span>📚 Assessments${childAssess.length?' · '+childAssess.length:''}</span><span style="font-size:14px;color:var(--text-secondary)">${assOpen?'▾':'▸'}</span></div>`;
         if(!assOpen)return head+'<div style="margin-bottom:10px"></div>';
-        return head+`<div class="card" style="margin:0 16px 14px;border:2px solid ${color};border-top:none;border-top-left-radius:0;border-top-right-radius:0">
+        return head+`<div class="card" style="margin:0 16px 14px;border-top-left-radius:0;border-top-right-radius:0">
           ${childAssess.length===0?`<div style="padding:20px;text-align:center;color:var(--text-secondary);font-size:14px">No assessments yet</div>`:childAssess.map((a,i,arr)=>{
             const dl=assessmentDaysLeft(a);
             const urg=dl!=null&&dl<=7;
@@ -8952,7 +8975,7 @@ function sPersonProfile(){
 
       ${person.isAdult&&S.screenParams?.fromFamily?`
       <!-- Contact (adult only, from Family page) -->
-      ${(()=>{const prKey='profile_details_'+person.id;if(!S.openSections)S.openSections={};const prOpen=!!S.openSections[prKey];return `<div onclick="toggleSection('${prKey}')" style="margin:0 16px 0;padding:13px 14px;background:var(--card);border:2px solid ${color};border-radius:12px;font-size:14px;font-weight:700;color:var(--text);cursor:pointer;display:flex;align-items:center;justify-content:space-between"><span>👤 Profile</span><span style="font-size:14px;color:var(--text-secondary)">${prOpen?'▾':'▸'}</span></div>${prOpen?'<div class="card" style="margin:0 16px 14px;border:2px solid ${color};border-top:none;border-top-left-radius:0;border-top-right-radius:0">':'<div style="margin-bottom:10px"></div><div style="display:none">'}`;})()}
+      ${(()=>{const prKey='profile_details_'+person.id;if(!S.openSections)S.openSections={};const prOpen=!!S.openSections[prKey];return `<div onclick="toggleSection('${prKey}')" style="margin:0 16px 0;padding:13px 14px;background:var(--card);border-radius:12px;box-shadow:var(--shadow-md);font-size:14px;font-weight:700;color:var(--text);cursor:pointer;display:flex;align-items:center;justify-content:space-between"><span>👤 Profile</span><span style="font-size:14px;color:var(--text-secondary)">${prOpen?'▾':'▸'}</span></div>${prOpen?'<div class="card" style="margin:0 16px 14px;border-top-left-radius:0;border-top-right-radius:0">':'<div style="margin-bottom:10px"></div><div style="display:none">'}`;})()}
         <div class="row"><span style="flex:1;color:var(--text-secondary);font-size:14px">Role</span><span style="color:var(--text);font-weight:600">${person.role||'Member'}</span></div>
         ${person.relationship?`<div class="row"><span style="flex:1;color:var(--text-secondary);font-size:14px">Relationship</span><span style="color:var(--text);font-weight:600">${person.relationship}</span></div>`:''}
         ${person.email?`<div class="row"><span style="flex:1;color:var(--text-secondary);font-size:14px">Email</span><span style="color:var(--text);font-weight:600;font-size:13px">${person.email}</span></div>`:''}
@@ -8964,7 +8987,7 @@ function sPersonProfile(){
         const m=person.isAdult?members().find(x=>x.uid===person.id):null;
         const code=person.isAdult?(m?.personalCode||''):(person.personalCode||'');
         const escName=name.replace(/'/g,"\\\\'");
-        const invKey='profile_invite_'+person.id;if(!S.openSections)S.openSections={};const invOpen=!!S.openSections[invKey];return `<div onclick="toggleSection('${invKey}')" style="margin:0 16px 0;padding:13px 14px;background:var(--card);border:2px solid ${color};border-radius:12px;font-size:14px;font-weight:700;color:var(--text);cursor:pointer;display:flex;align-items:center;justify-content:space-between"><span>🔑 Personal Invite</span><span style="font-size:14px;color:var(--text-secondary)">${invOpen?'▾':'▸'}</span></div>${invOpen?`<div style="margin:0 16px 14px;background:var(--card);border:2px solid ${color};border-top:none;border-top-left-radius:0;border-top-right-radius:0;border-radius:0 0 12px 12px;padding:14px;color:var(--text)">`:'<div style="margin-bottom:10px"></div><div style="display:none">'}
+        const invKey='profile_invite_'+person.id;if(!S.openSections)S.openSections={};const invOpen=!!S.openSections[invKey];return `<div onclick="toggleSection('${invKey}')" style="margin:0 16px 0;padding:13px 14px;background:var(--card);border-radius:12px;box-shadow:var(--shadow-md);font-size:14px;font-weight:700;color:var(--text);cursor:pointer;display:flex;align-items:center;justify-content:space-between"><span>🔑 Personal Invite</span><span style="font-size:14px;color:var(--text-secondary)">${invOpen?'▾':'▸'}</span></div>${invOpen?`<div style="margin:0 16px 14px;background:var(--card);border-top-left-radius:0;border-top-right-radius:0;border-radius:0 0 12px 12px;padding:14px;color:var(--text)">`:'<div style="margin-bottom:10px"></div><div style="display:none">'}
           ${code?`
             <div style="font-size:11px;font-weight:700;color:var(--text-secondary);letter-spacing:0.5px;margin-bottom:6px">FOR ${name.toUpperCase()} ONLY</div>
             <div style="font-size:13px;color:var(--text);line-height:1.5;margin-bottom:14px">When ${name.split(' ')[0]} taps the link below, they'll be guided through sign-up and their account will link directly to this profile.</div>
@@ -11426,6 +11449,32 @@ window.runAssessmentParser=async function(input){
 // existing linked event or reminder in this family, create them now so the
 // item shows on the home dashboard on the due date and triggers a 7-day-out
 // reminder. Idempotent: queries by linkedAssessmentId before creating.
+// Sweep past-due assessments. Runs once per session after the snapshot first
+// fires. An assessment is "past due" when its dueISO is strictly before today
+// (so the assessment is still visible ON the due date itself; gone the next
+// day). Cascades to the linked school event and any legacy linked reminders.
+async function cleanupPastAssessments(){
+  if(!S.familyId||!Array.isArray(S.assessments)||S.assessments.length===0)return;
+  const todayISO=fd(new Date());
+  let deleted=0;
+  for(const a of S.assessments){
+    if(!a||!a.id||!a.dueISO)continue;
+    if(a.dueISO>=todayISO)continue;
+    try{
+      await fdel(['assessments',a.id]);
+      try{
+        const evSnap=await getDocs(query(fcol(['events']),where('linkedAssessmentId','==',a.id)));
+        await Promise.all(evSnap.docs.map(d=>fdel(['events',d.id]).catch(()=>null)));
+      }catch(e){dwarn('cleanup: linked-event purge failed',a.id,e);}
+      try{
+        const remSnap=await getDocs(query(fcol(['reminders']),where('linkedAssessmentId','==',a.id)));
+        await Promise.all(remSnap.docs.map(d=>fdel(['reminders',d.id]).catch(()=>null)));
+      }catch(e){dwarn('cleanup: linked-reminder purge failed',a.id,e);}
+      deleted++;
+    }catch(e){dwarn('cleanup: assessment delete failed',a.id,e);}
+  }
+  if(deleted>0)dlog('Auto-deleted',deleted,'past assessment(s)');
+}
 async function backfillAssessmentLinks(){
   if(!S.familyId||!Array.isArray(S.assessments)||S.assessments.length===0)return;
   let evCreated=0;
