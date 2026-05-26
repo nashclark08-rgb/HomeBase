@@ -291,6 +291,17 @@ async function loadTesseract(){
     document.head.appendChild(s);
   });
 }
+let _mammothLoaded=false;
+async function loadMammoth(){
+  if(_mammothLoaded)return window.mammoth;
+  return new Promise((resolve,reject)=>{
+    const s=document.createElement('script');
+    s.src='https://cdn.jsdelivr.net/npm/mammoth@1.6.0/mammoth.browser.min.js';
+    s.onload=()=>{_mammothLoaded=true;resolve(window.mammoth);};
+    s.onerror=()=>reject(new Error('Word-doc reader failed to load'));
+    document.head.appendChild(s);
+  });
+}
 
 const fbapp=initializeApp({apiKey:"AIzaSyA2lrJJ0T_y_CBk8kOqRmwejCqHx6RVPXA",authDomain:"homebase-56151.firebaseapp.com",projectId:"homebase-56151",storageBucket:"homebase-56151.firebasestorage.app",messagingSenderId:"647157335008",appId:"1:647157335008:web:a15452fabd943bf5a8a185"});
 const auth=getAuth(fbapp);
@@ -9147,10 +9158,10 @@ function sAddAssessment(){
     <div class="scroll-view" style="padding:20px;max-width:560px;margin:auto;width:100%">
       <div style="display:flex;flex-direction:column;gap:12px">
         <div style="background:linear-gradient(135deg,#1C3A6B,#2E5FBF);border-radius:14px;padding:16px;color:#fff">
-          <div style="font-size:14px;font-weight:700;margin-bottom:4px">📸 Quick Capture</div>
-          <div style="font-size:12px;opacity:0.85;margin-bottom:10px">Snap an assessment sheet — we'll fill what we can. Review the details before saving.</div>
-          <input type="file" id="ocr-input" accept="image/*" style="display:none" onchange="runOCR(this)"/>
-          <button onclick="document.getElementById('ocr-input').click()" style="width:100%;padding:11px;border-radius:10px;background:rgba(255,255,255,0.22);border:none;color:#fff;font-size:14px;font-weight:600;cursor:pointer;font-family:inherit">📷 Take Photo or Upload</button>
+          <div style="font-size:14px;font-weight:700;margin-bottom:4px">📎 Quick Capture (AI)</div>
+          <div style="font-size:12px;opacity:0.85;margin-bottom:10px">Upload an assessment notification — photo, PDF, or Word doc. We'll read it and fill the form. Review before saving.</div>
+          <input type="file" id="ocr-input" accept="image/*,application/pdf,.pdf,.doc,.docx,application/vnd.openxmlformats-officedocument.wordprocessingml.document" style="display:none" onchange="runAssessmentParser(this)"/>
+          <button onclick="document.getElementById('ocr-input').click()" style="width:100%;padding:11px;border-radius:10px;background:rgba(255,255,255,0.22);border:none;color:#fff;font-size:14px;font-weight:600;cursor:pointer;font-family:inherit">📎 Upload photo, PDF or Word doc</button>
           <div id="ocr-status" style="font-size:12px;margin-top:8px;opacity:0.9;min-height:16px"></div>
         </div>
         <select class="input" id="achild">
@@ -11230,50 +11241,81 @@ window.hAddNote=async()=>{
   if(!text){if(err)err.textContent='Write a note first';return;}
   try{await fadd(['notes'],{text,childId});notify('Note saved 📝');S._formTouched=false;setTimeout(back,900);}catch(ex){if(err)err.textContent=ex.message;}
 };
-window.runOCR=async function(input){
+// Read a File as base64 (strips the data:...;base64, prefix).
+function fileToBase64(file){
+  return new Promise((resolve,reject)=>{
+    const r=new FileReader();
+    r.onload=()=>{
+      const s=String(r.result||'');
+      const i=s.indexOf('base64,');
+      resolve(i>=0?s.slice(i+7):s);
+    };
+    r.onerror=()=>reject(new Error('Could not read file'));
+    r.readAsDataURL(file);
+  });
+}
+// Add Assessment quick-capture. Accepts an image, PDF, or .docx. Sends the
+// file to parseAssessmentWithAI (Claude) and pre-fills the form. Replaces
+// the old Tesseract.js path which was image-only and frequently wrong.
+window.runAssessmentParser=async function(input){
   if(!input||!input.files||!input.files[0])return;
   const file=input.files[0];
   const status=document.getElementById('ocr-status');
-  if(status)status.innerHTML='⏳ Loading OCR engine...';
+  const name=(file.name||'').toLowerCase();
+  const mime=(file.type||'').toLowerCase();
+  const isDocx=name.endsWith('.docx')||mime==='application/vnd.openxmlformats-officedocument.wordprocessingml.document';
+  const isDoc=name.endsWith('.doc')&&!isDocx; // legacy binary .doc — mammoth can't parse these
+  const isPdf=mime==='application/pdf'||name.endsWith('.pdf');
+  const isImage=mime.startsWith('image/');
+  // Guard: cap at ~10 MB to keep Anthropic happy and the cloud function fast.
+  if(file.size>10*1024*1024){
+    if(status)status.innerHTML='❌ File is too large (max 10 MB). Try compressing or split it up.';
+    input.value='';return;
+  }
+  if(isDoc){
+    if(status)status.innerHTML='❌ Old .doc format is not supported — please save as .docx or PDF and try again.';
+    input.value='';return;
+  }
+  if(!isDocx&&!isPdf&&!isImage){
+    if(status)status.innerHTML='❌ Unsupported file. Use a photo, PDF, or .docx Word doc.';
+    input.value='';return;
+  }
   try{
-    const T=await loadTesseract();
-    if(status)status.innerHTML='📖 Reading image (this may take 10-20 seconds)...';
-    const r=await T.recognize(file,'eng',{
-      logger:m=>{if(m.status==='recognizing text'&&status)status.innerHTML='📖 Reading text... '+Math.round(m.progress*100)+'%';}
-    });
-    const text=r.data.text;
-    if(status)status.innerHTML='✅ Done! Auto-filled below. Review and edit.';
-    // Try to extract details
-    const lines=text.split(/\n+/).map(l=>l.trim()).filter(l=>l.length>2);
-    // Find subject (look for common subjects)
-    const subjects=['English','Maths','Mathematics','Science','HASS','PDHPE','Geography','History','Art','Music','Drama','Technology','Japanese','French','Italian'];
-    let foundSubject='';
-    for(const line of lines){
-      for(const s of subjects){if(line.toLowerCase().includes(s.toLowerCase())){foundSubject=s;break;}}
-      if(foundSubject)break;
+    let payload;
+    if(isDocx){
+      if(status)status.innerHTML='⏳ Reading Word doc...';
+      const mam=await loadMammoth();
+      const buf=await file.arrayBuffer();
+      const ex=await mam.extractRawText({arrayBuffer:buf});
+      const text=(ex&&ex.value||'').trim();
+      if(!text){
+        if(status)status.innerHTML='❌ Word doc looks empty. Try a PDF or photo instead.';
+        return;
+      }
+      payload={docxText:text,familyId:S.familyId||null};
+    }else{
+      if(status)status.innerHTML='⏳ Uploading '+(isPdf?'PDF':'photo')+' for AI to read...';
+      const b64=await fileToBase64(file);
+      payload={files:[{base64:b64,mediaType:isPdf?'application/pdf':(mime||'image/jpeg')}],familyId:S.familyId||null};
     }
-    // Title is usually the longest meaningful early line
-    const title=lines.slice(0,5).filter(l=>l.length>10&&l.length<80&&!l.match(/^\d/))[0]||lines[0]||'';
-    // Date - look for dd/mm/yyyy or dd Month yyyy patterns
-    let foundDate='';
-    const dateMatch=text.match(/(\d{1,2})[\/\-\s]+(\d{1,2}|Jan|Feb|Mar|Apr|May|Jun|Jul|Aug|Sep|Oct|Nov|Dec|January|February|March|April|May|June|July|August|September|October|November|December)[\/\-\s]+(\d{2,4})/i);
-    if(dateMatch){
-      const day=dateMatch[1].padStart(2,'0');
-      let month=dateMatch[2];
-      const year=dateMatch[3].length===2?'20'+dateMatch[3]:dateMatch[3];
-      const monthMap={jan:'01',feb:'02',mar:'03',apr:'04',may:'05',jun:'06',jul:'07',aug:'08',sep:'09',oct:'10',nov:'11',dec:'12'};
-      const mLower=month.toLowerCase().slice(0,3);
-      if(monthMap[mLower])month=monthMap[mLower];
-      else month=String(month).padStart(2,'0');
-      foundDate=year+'-'+month+'-'+day;
-    }
-    // Auto-fill
-    if(foundSubject)document.getElementById('asubj').value=foundSubject;
-    if(title&&title.length<80)document.getElementById('atitle').value=title;
-    if(foundDate)document.getElementById('adue').value=foundDate;
-    document.getElementById('anotes').value=text.substring(0,500);
+    if(status)status.innerHTML='🤖 Reading with Claude — this usually takes 5-15 seconds...';
+    const call=httpsCallable(functions,'parseAssessmentWithAI');
+    const res=await call(payload);
+    const r=res.data||{};
+    // Pre-fill the form. Skip any field the AI couldn't extract.
+    if(r.subject){const e=document.getElementById('asubj');if(e)e.value=r.subject;}
+    if(r.title){const e=document.getElementById('atitle');if(e)e.value=r.title;}
+    if(r.dueDate&&/^\d{4}-\d{2}-\d{2}$/.test(r.dueDate)){const e=document.getElementById('adue');if(e)e.value=r.dueDate;}
+    if(r.notes){const e=document.getElementById('anotes');if(e)e.value=r.notes;}
+    const conf=r.confidence||'medium';
+    const confIcon=conf==='high'?'✅':(conf==='medium'?'⚠️':'❓');
+    const summary=r.summary?(' — '+r.summary):'';
+    if(status)status.innerHTML=confIcon+' '+(conf==='low'?'Low confidence':'Filled in')+summary+' · review before saving';
   }catch(ex){
-    if(status)status.innerHTML='❌ OCR failed: '+ex.message+' — please enter manually';
+    const msg=friendlyError?friendlyError(ex):(ex&&ex.message||'unknown error');
+    if(status)status.innerHTML='❌ Could not read file: '+msg+' — please enter manually';
+  }finally{
+    if(input)input.value=''; // allow re-upload of same file
   }
 };
 // Live-recompute days until an assessment's due date. Stored `daysLeft` is
