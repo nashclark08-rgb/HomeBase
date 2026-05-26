@@ -2574,21 +2574,24 @@ function sToday(){
               // brighter. Tap → Assessments list.
               if(r._isAssessment){
                 const dl=r._daysLeft||1;
-                const dayLabel=dl===1?'Tomorrow':('in '+dl+' days');
+                const dayLabel=dl===1?'tomorrow':('in '+dl+' days');
                 const childName=r._childName||'';
                 const childFirst=childName?childName.split(' ')[0]:'';
                 const childPhoto=r._childPhoto||'';
                 const subj=r._subject||'';
                 const title=r._title||'Assessment';
-                const fullText='📋 '+(subj?subj+' — ':'')+title;
-                const subtitle=childFirst?(childFirst+'’s assessment'):'Assessment';
+                const fullText=(subj?subj+' — ':'')+title;
                 return `<div class="row" onclick="setTab('lists');S.listTab='assessments';render()" style="border-bottom:${i<dueReminders.length-1?'1px solid var(--row-border)':'none'};cursor:pointer">
-                  ${av(childName,r.tcol,36,childPhoto)}
+                  <div style="width:36px;height:36px;border-radius:18px;background:${r.tcol}18;border:2px solid ${r.tcol};display:flex;align-items:center;justify-content:center;font-size:17px;flex-shrink:0">📋</div>
                   <div style="flex:1;min-width:0">
                     <div style="font-size:14px;font-weight:700;color:var(--text);overflow:hidden;text-overflow:ellipsis;white-space:nowrap">${fullText}</div>
-                    <div style="font-size:12px;color:${r.tcol};font-weight:600;overflow:hidden;text-overflow:ellipsis;white-space:nowrap">${subtitle}</div>
+                    <div style="display:flex;align-items:center;gap:6px;margin-top:3px">
+                      ${av(childName,r.tcol,16,childPhoto)}
+                      <span style="font-size:11px;color:${r.tcol};font-weight:600">${childFirst}</span>
+                      <span style="font-size:11px;color:var(--text-secondary)">· Due ${dayLabel}</span>
+                    </div>
                   </div>
-                  <span style="font-size:11px;font-weight:700;padding:3px 10px;border-radius:8px;background:${r.tcol};color:#fff;white-space:nowrap">Due ${dayLabel}</span>
+                  <span style="font-size:11px;font-weight:700;padding:3px 10px;border-radius:8px;background:${r.tcol};color:#fff;white-space:nowrap">${dl}d</span>
                 </div>`;
               }
               // Clash row: open the clash action sheet listing BOTH conflicting
