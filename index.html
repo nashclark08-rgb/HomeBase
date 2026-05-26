@@ -2573,17 +2573,28 @@ function sToday(){
                 const alphaHex=amt=>{const a=Math.round(Math.max(0,Math.min(1,amt))*255);return a.toString(16).padStart(2,'0').toUpperCase();};
                 const op=(15-dl)/16;
                 const bgFill=r.tcol+alphaHex(op);
+                // Once the fill passes ~45% opacity (≈day 8 and closer), child-
+                // colour text on a child-colour background becomes unreadable.
+                // Flip the foreground to white and invert the badge to white-bg/
+                // colour-text. Dot border + icon backdrop also lighten so they
+                // stay visible against the dark fill.
+                const useWhite=op>=0.45;
+                const txtCol=useWhite?'#fff':r.tcol;
+                const dotBg=useWhite?'rgba(255,255,255,0.28)':r.tcol+'30';
+                const dotBorder=useWhite?'rgba(255,255,255,0.7)':r.tcol;
+                const badgeBg=useWhite?'#fff':r.tcol;
+                const badgeTxt=useWhite?r.tcol:'#fff';
                 const dayLabel=dl===1?'Tomorrow':('in '+dl+' days');
                 const cleanText=String(r.text||'').replace(/^📚\s*/,'');
                 return `<div class="row" onclick="setTab('lists');S.listTab='assessments';render()" style="border-bottom:${i<dueReminders.length-1?'1px solid var(--row-border)':'none'};background:${bgFill};cursor:pointer">
-                  <div style="width:36px;height:36px;border-radius:18px;background:${r.tcol}30;border:2px solid ${r.tcol};display:flex;align-items:center;justify-content:center;font-size:18px;flex-shrink:0">📚</div>
+                  <div style="width:36px;height:36px;border-radius:18px;background:${dotBg};border:2px solid ${dotBorder};display:flex;align-items:center;justify-content:center;font-size:18px;flex-shrink:0">📚</div>
                   <div style="flex:1;min-width:0">
-                    <div style="font-size:15px;color:${r.tcol};font-weight:800">${cleanText}</div>
+                    <div style="font-size:15px;color:${txtCol};font-weight:800">${cleanText}</div>
                     <div style="display:flex;align-items:center;gap:6px;margin-top:3px">
-                      <span style="font-size:11px;font-weight:700;padding:2px 8px;border-radius:8px;background:${r.tcol};color:#fff">Due ${dayLabel}</span>
+                      <span style="font-size:11px;font-weight:700;padding:2px 8px;border-radius:8px;background:${badgeBg};color:${badgeTxt}">Due ${dayLabel}</span>
                     </div>
                   </div>
-                  <span style="color:${r.tcol};font-size:18px;opacity:0.7">›</span>
+                  <span style="color:${txtCol};font-size:18px;opacity:0.7">›</span>
                 </div>`;
               }
               // Clash row: open the clash action sheet listing BOTH conflicting
