@@ -66,7 +66,6 @@ body{font-family:-apple-system,BlinkMacSystemFont,system-ui,sans-serif;backgroun
 .sh{padding:8px 16px 4px;font-size:12px;font-weight:700;color:#8E8E93;text-transform:uppercase;letter-spacing:0.6px}
 .hb-section summary::-webkit-details-marker{display:none}
 .hb-section summary::marker{display:none}
-.hb-section[open] summary{border-radius:12px 12px 0 0}
 .hb-section[open] .hb-chev{transform:rotate(180deg)}
 .hb-section summary:focus-visible{outline:2px solid var(--navy);outline-offset:2px}
 .row{display:flex;align-items:center;gap:12px;padding:13px 16px;border-bottom:1px solid var(--row-border)}
@@ -13655,17 +13654,22 @@ window.syncSectionToggle=function(key,isOpen){
   S.openSections[key]=!!isOpen;
 };
 // Render a collapsible profile section using native <details>/<summary>, so
-// it gets the same focus/keyboard behaviour as Settings dropdowns. headerHtml
-// and bodyHtml are inserted as raw HTML.
+// it gets the same focus/keyboard behaviour as Settings dropdowns. The output
+// is intentionally identical in structure to the section() helper inside
+// sSettings — summary is a self-contained rounded card, body sits below in
+// padded space with the content auto-wrapped in its own card. This mirrors the
+// "head + breathing room + content card" pattern of Settings.
 function profileSection(key,headerHtml,bodyHtml){
   const open=!!(S.openSections&&S.openSections[key]);
   const safeKey=String(key).replace(/'/g,"\\'");
   return '<details class="hb-section" data-section-key="'+key+'" style="margin:0 16px 10px"'+(open?' open':'')+' ontoggle="syncSectionToggle(\''+safeKey+'\',this.open)">'
-    +'<summary style="padding:13px 14px;background:var(--card);border:1px solid var(--border);border-radius:12px;font-size:14px;font-weight:700;color:var(--text);cursor:pointer;list-style:none;display:flex;align-items:center;justify-content:space-between">'
+    +'<summary style="padding:13px 14px;background:var(--card);border:1px solid var(--row-border);border-radius:12px;font-size:14px;font-weight:700;color:var(--text);cursor:pointer;list-style:none;display:flex;align-items:center;justify-content:space-between">'
     +'<span>'+headerHtml+'</span>'
     +'<span class="hb-chev" style="font-size:14px;color:var(--text-secondary);transition:transform 0.15s">▾</span>'
     +'</summary>'
-    +'<div style="background:var(--card);border:1px solid var(--border);border-top:none;border-radius:0 0 12px 12px;overflow:hidden">'+bodyHtml+'</div>'
+    +'<div style="padding:10px 0 0">'
+      +'<div style="background:var(--card);border-radius:14px;box-shadow:var(--shadow-md);overflow:hidden">'+bodyHtml+'</div>'
+    +'</div>'
     +'</details>';
 }
 window.changeDayOffset=function(delta){
