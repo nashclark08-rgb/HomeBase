@@ -4153,8 +4153,8 @@ function sSpreadsheet(){
         </div>
 
         <!-- Quick reference -->
-        <details style="background:var(--card);border-radius:14px;padding:14px 18px;border:1px solid var(--row-border)">
-          <summary style="font-size:14px;font-weight:700;color:var(--text);cursor:pointer">What goes in each column?</summary>
+        <details class="hb-section" style="background:var(--card);border-radius:14px;padding:14px 18px;border:1px solid var(--row-border)">
+          <summary style="font-size:14px;font-weight:700;color:var(--text);cursor:pointer;list-style:none;display:flex;align-items:center;justify-content:space-between"><span>What goes in each column?</span><span class="hb-chev" style="font-size:14px;color:var(--text-secondary);transition:transform 0.15s">▾</span></summary>
           <div style="font-size:12px;color:var(--text-secondary);line-height:1.6;margin-top:10px">
             <div><strong>Title</strong> — required. The event name.</div>
             <div><strong>Type</strong> — required. <em>Game, Training, Music, Work, Social, Medical, Other</em>.</div>
@@ -4707,8 +4707,8 @@ function sFixturesImport(){
           <div style="font-size:11px;color:var(--text-secondary);margin-top:6px;line-height:1.4">Take a screenshot of any fixture page (NetballConnect, school site, Facebook post). AI reads it like a person.</div>`:''}
         </div>
 
-        <details style="background:var(--card);border-radius:14px;padding:14px 18px;border:1px solid var(--row-border);margin-bottom:14px">
-          <summary style="font-size:14px;font-weight:700;color:var(--text);cursor:pointer">💡 Tips for best results</summary>
+        <details class="hb-section" style="background:var(--card);border-radius:14px;padding:14px 18px;border:1px solid var(--row-border);margin-bottom:14px">
+          <summary style="font-size:14px;font-weight:700;color:var(--text);cursor:pointer;list-style:none;display:flex;align-items:center;justify-content:space-between"><span>💡 Tips for best results</span><span class="hb-chev" style="font-size:14px;color:var(--text-secondary);transition:transform 0.15s">▾</span></summary>
           <div style="font-size:12px;color:var(--text-secondary);line-height:1.6;margin-top:10px">
             <div><strong>Revolutionise URLs</strong> usually work well — pages with a fixture table.</div>
             <div><strong>School fixture pages</strong> work too if they use a normal HTML table.</div>
@@ -5352,8 +5352,8 @@ function sTimetableImport(){
           </div>`:''}
         </div>
 
-        <details style="background:var(--card);border-radius:14px;padding:14px 18px;border:1px solid var(--row-border);margin-bottom:14px">
-          <summary style="font-size:14px;font-weight:700;color:var(--text);cursor:pointer">💡 Tips for best results</summary>
+        <details class="hb-section" style="background:var(--card);border-radius:14px;padding:14px 18px;border:1px solid var(--row-border);margin-bottom:14px">
+          <summary style="font-size:14px;font-weight:700;color:var(--text);cursor:pointer;list-style:none;display:flex;align-items:center;justify-content:space-between"><span>💡 Tips for best results</span><span class="hb-chev" style="font-size:14px;color:var(--text-secondary);transition:transform 0.15s">▾</span></summary>
           <div style="font-size:12px;color:var(--text-secondary);line-height:1.6;margin-top:10px">
             <div><strong>Clear photos work best.</strong> Direct overhead shot, no glare, no fingers in frame.</div>
             <div><strong>PDFs from the school portal</strong> usually parse perfectly.</div>
@@ -6125,16 +6125,16 @@ function sEmailImport(){
         <button onclick="parseEmailWithAI()" style="width:100%;padding:14px;border-radius:12px;background:linear-gradient(135deg,#AF52DE,#5856D6);border:none;color:#fff;font-size:15px;font-weight:700;cursor:pointer;font-family:inherit;margin-bottom:8px;box-shadow:0 4px 12px rgba(175,82,222,0.3)">🤖 Find events with AI</button>
         <button onclick="parseEmailNow()" style="width:100%;padding:11px;border-radius:12px;background:transparent;border:1px solid var(--border);color:var(--text-secondary);font-size:13px;font-weight:600;cursor:pointer;font-family:inherit;margin-bottom:14px">🔍 Use basic parser instead</button>
 
-        <details style="background:var(--card);border-radius:14px;padding:14px 18px;border:1px solid var(--row-border);margin-bottom:14px">
-          <summary style="font-size:14px;font-weight:700;color:var(--text);cursor:pointer">🤖 What's the difference?</summary>
+        <details class="hb-section" style="background:var(--card);border-radius:14px;padding:14px 18px;border:1px solid var(--row-border);margin-bottom:14px">
+          <summary style="font-size:14px;font-weight:700;color:var(--text);cursor:pointer;list-style:none;display:flex;align-items:center;justify-content:space-between"><span>🤖 What's the difference?</span><span class="hb-chev" style="font-size:14px;color:var(--text-secondary);transition:transform 0.15s">▾</span></summary>
           <div style="font-size:12px;color:var(--text-secondary);line-height:1.6;margin-top:10px">
             <div><strong>AI parser</strong> reads the email like a person — handles odd formatting, picks up locations from context, generates clean titles. Costs ~$0.001 per email (paid by your Anthropic credit). Limit: 50 emails/day per family.</div>
             <div style="margin-top:8px"><strong>Basic parser</strong> uses pattern matching. Free and instant, but misses things in messy emails.</div>
           </div>
         </details>
 
-        <details style="background:var(--card);border-radius:14px;padding:14px 18px;border:1px solid var(--row-border)">
-          <summary style="font-size:14px;font-weight:700;color:var(--text);cursor:pointer">💡 Tips for best results</summary>
+        <details class="hb-section" style="background:var(--card);border-radius:14px;padding:14px 18px;border:1px solid var(--row-border)">
+          <summary style="font-size:14px;font-weight:700;color:var(--text);cursor:pointer;list-style:none;display:flex;align-items:center;justify-content:space-between"><span>💡 Tips for best results</span><span class="hb-chev" style="font-size:14px;color:var(--text-secondary);transition:transform 0.15s">▾</span></summary>
           <div style="font-size:12px;color:var(--text-secondary);line-height:1.6;margin-top:10px">
             <div><strong>Paste plain text.</strong> Just the email body — strip out images and forwarded headers if you can.</div>
             <div><strong>Review every result.</strong> Auto-extraction can miss context — the preview lets you fix titles, dates, and times before commit.</div>
