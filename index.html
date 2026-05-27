@@ -1115,7 +1115,7 @@ function downloadICS(events,filename){
   setTimeout(()=>{document.body.removeChild(a);URL.revokeObjectURL(url);},100);
 }
 
-function members(){return Object.entries(S.family&&S.family.members||{}).map(([uid,m])=>({uid,name:m.name,role:m.role,color:m.color||NAVY,relationship:m.relationship||'',photoURL:m.photoURL||'',phone:m.phone||'',email:m.email||'',personalCode:m.personalCode||'',dob:m.dob||'',dietary:m.dietary||'',celebrateMothersDay:!!m.celebrateMothersDay,celebrateFathersDay:!!m.celebrateFathersDay}));}
+function members(){return Object.entries(S.family&&S.family.members||{}).map(([uid,m])=>({uid,name:m.name,role:m.role,color:m.color||NAVY,relationship:m.relationship||'',photoURL:m.photoURL||'',phone:m.phone||'',email:m.email||'',personalCode:m.personalCode||'',linkedChildId:m.linkedChildId||'',dob:m.dob||'',dietary:m.dietary||'',celebrateMothersDay:!!m.celebrateMothersDay,celebrateFathersDay:!!m.celebrateFathersDay}));}
 
 // Reusable empty-state card. Returns a friendly placeholder with an emoji,
 // title, optional explanation, and an optional call-to-action button. Used
@@ -1147,7 +1147,11 @@ function emptyState(emoji,title,body,ctaLabel,ctaOnclick,compact){
 // or any "who's involved" selectors. They DO still show on the Family tab
 // where they need to be managed. Mirrors `coreMemberUidsFromMap` used by
 // the Cloud Functions for notification routing.
-function coreMembers(){return members().filter(m=>m.role!=='Logistics');}
+// Core adult-only members. Excludes Logistics-role users AND any member that
+// has linkedChildId (those are children who signed in via personal code — they
+// have a real auth uid in family.members but they're not adults; their visible
+// profile lives in /children).
+function coreMembers(){return members().filter(m=>m.role!=='Logistics'&&!m.linkedChildId);}
 
 async function fw(){
   if(S.weather)return;
