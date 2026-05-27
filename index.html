@@ -2260,7 +2260,7 @@ function sToday(){
             <div style="width:48px;text-align:right;font-size:12px;font-weight:600;color:var(--text-secondary);flex-shrink:0">${ev.time||`<span style="font-size:11px">All day</span>`}</div>
             <div style="width:32px;height:32px;border-radius:16px;background:${dotBg};border:${dotBorderW} solid ${dotCol};display:flex;align-items:center;justify-content:center;font-size:14px;flex-shrink:0">${ev.emoji||'📅'}</div>
             <div style="flex:1;min-width:0">
-              <div style="font-size:14px;font-weight:${isAssessment?'800':'600'};color:${titleCol};overflow:hidden;text-overflow:ellipsis;white-space:nowrap">${ev.title}${isMine?' <span style="font-size:9px;font-weight:700;padding:1px 6px;border-radius:7px;background:#FF9500;color:#fff;vertical-align:1px">YOU</span>':''}</div>
+              <div style="font-size:14px;font-weight:600;color:${titleCol};overflow:hidden;text-overflow:ellipsis;white-space:nowrap">${ev.title}${isMine?' <span style="font-size:9px;font-weight:700;padding:1px 6px;border-radius:7px;background:#FF9500;color:#fff;vertical-align:1px">YOU</span>':''}</div>
               <div style="font-size:12px;color:${dotCol};font-weight:600;overflow:hidden;text-overflow:ellipsis;white-space:nowrap">${ownerName}</div>
             </div>
             <div style="color:var(--text-secondary);font-size:18px;flex-shrink:0;font-weight:300;padding-right:2px">›</div>
@@ -2340,7 +2340,7 @@ function sToday(){
           return '<div data-med-scheduled="'+d.scheduledFor+'" onclick="openMedicineLog(\''+d.med.id+'\')" style="padding:11px 14px;border-bottom:'+(i<due.length-1?'1px solid var(--row-border)':'none')+';display:flex;align-items:center;gap:10px;cursor:pointer;background:'+statusBg+'">'
             +'<div style="width:36px;height:36px;border-radius:18px;background:'+tcol+'18;border:2px solid '+tcol+';display:flex;align-items:center;justify-content:center;font-size:17px;flex-shrink:0">💊</div>'
             +'<div style="flex:1;min-width:0">'
-              +'<div style="font-size:14px;color:var(--text);font-weight:700">'+String(d.med.name||'').replace(/</g,'&lt;')+' <span style="font-weight:500;color:var(--text-secondary);font-size:12px">· '+String(d.med.dosage||'').replace(/</g,'&lt;')+'</span></div>'
+              +'<div style="font-size:14px;color:var(--text);font-weight:600">'+String(d.med.name||'').replace(/</g,'&lt;')+' <span style="font-weight:500;color:var(--text-secondary);font-size:12px">· '+String(d.med.dosage||'').replace(/</g,'&lt;')+'</span></div>'
               +'<div style="display:flex;align-items:center;gap:6px;margin-top:3px">'
                 +(recip?av(recip.name,recip.color,16,recip.photo):'')
                 +'<span style="font-size:11px;color:'+tcol+';font-weight:600">'+(recip?recip.name.split(' ')[0]:'(?)')+'</span>'
@@ -2584,7 +2584,7 @@ function sToday(){
                 return `<div class="row" onclick="setTab('lists');S.listTab='assessments';render()" style="border-bottom:${i<dueReminders.length-1?'1px solid var(--row-border)':'none'};cursor:pointer">
                   <div style="width:36px;height:36px;border-radius:18px;background:${r.tcol}18;border:2px solid ${r.tcol};display:flex;align-items:center;justify-content:center;font-size:17px;flex-shrink:0">📋</div>
                   <div style="flex:1;min-width:0">
-                    <div style="font-size:14px;font-weight:700;color:var(--text);overflow:hidden;text-overflow:ellipsis;white-space:nowrap">${fullText}</div>
+                    <div style="font-size:14px;font-weight:600;color:var(--text);overflow:hidden;text-overflow:ellipsis;white-space:nowrap">${fullText}</div>
                     <div style="display:flex;align-items:center;gap:6px;margin-top:3px">
                       ${av(childName,r.tcol,16,childPhoto)}
                       <span style="font-size:11px;color:${r.tcol};font-weight:600">${childFirst}</span>
@@ -2663,7 +2663,7 @@ function sToday(){
             return `<div class="row" data-longpress="reminder:${r.id}" onclick="${inBulk?`hbBulkToggle('${r.id}')`:''}" style="border-bottom:${i<dueReminders.length-1?'1px solid var(--row-border)':'none'};${r.done?'opacity:0.55':''};${sel?'background:var(--navy-soft)':''};${inBulk?'cursor:pointer':''}">
               ${inBulk?`<div class="cb ${sel?'on':''}" style="${sel?'background:'+NAVY+';border:none':'border-color:'+tcol}" onclick="event.stopPropagation();hbBulkToggle('${r.id}')">${sel?ck():''}</div>`:`<div class="cb ${r.done?'on':''}" onclick="tReminder('${r.id}',${!r.done})" style="${r.done?'background:'+tcol+';border:none':'border-color:'+tcol}">${r.done?ck():''}</div>`}
               <div style="flex:1;min-width:0">
-                <div style="font-size:15px;color:var(--text);font-weight:500;${r.done?'text-decoration:line-through':''}">${r.text}</div>
+                <div style="font-size:14px;color:var(--text);font-weight:600;${r.done?'text-decoration:line-through':''}">${r.text}</div>
                 ${dueLabel}
                 ${targets.length===0?`<div style="font-size:11px;color:var(--text-secondary);font-weight:600;margin-top:3px">👨‍👩‍👧‍👦 Family-wide</div>`:`<div style="display:flex;align-items:center;gap:4px;margin-top:3px;flex-wrap:wrap">${targets.slice(0,4).map(t=>av(t.name,t.color,18,t.photo)).join('')}<span style="font-size:11px;color:${tcol};font-weight:600;margin-left:2px">${targets.map(t=>t.name.split(' ')[0]).join(', ')}${targets.length>4?' +'+(targets.length-4):''}</span></div>`}
                 ${r.notes?`<div style="font-size:11px;color:var(--text-secondary);font-style:italic;margin-top:2px">${r.notes}</div>`:''}
@@ -8821,7 +8821,7 @@ function sPersonProfile(){
             return `<div class="row" data-longpress="reminder:${r.id}" style="border-bottom:${i<personReminders.length-1?'1px solid var(--row-border)':'none'};${r.done?'opacity:0.55':''}">
             <div class="cb ${r.done?'on':''}" onclick="tReminder('${r.id}',${!r.done})" style="${r.done?'background:'+color+';border:none':'border-color:'+color}">${r.done?ck():''}</div>
             <div style="flex:1">
-              <div style="font-size:15px;font-weight:500;color:var(--text);${r.done?'text-decoration:line-through':''}">${r.text}</div>
+              <div style="font-size:14px;font-weight:600;color:var(--text);${r.done?'text-decoration:line-through':''}">${r.text}</div>
               ${dueLabel}
               ${r.notes?`<div style="font-size:11px;color:var(--text-secondary);font-style:italic;margin-top:2px">${r.notes}</div>`:''}
             </div>
