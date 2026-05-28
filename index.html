@@ -802,8 +802,20 @@ const S={
 
 // Parse ?invite=HB-A-XXXXX from the URL so a recipient can land directly into signup
 // with their invite code already filled in. Strip from URL after grabbing so refresh doesn't loop.
+//
+// Critically: persist to localStorage too. The URL param is removed immediately,
+// but sign-in flows (especially Google's signInWithRedirect on mobile) can
+// reload the page mid-flow — without persistence the pending invite would be
+// silently lost and the user would land on family-setup with no apparent
+// invite, prompting them to create a new family. localStorage survives reload.
+// Cleared in joinFamily success paths so the code can't replay on a later visit.
 (function parseInviteUrl(){
   try{
+    // Restore from previous session if we have one (survives page reload during auth)
+    const stored=localStorage.getItem('hb_pending_invite');
+    if(stored&&(/^HB-[A-Z]-?[A-Z0-9-]+$/.test(stored)||stored.startsWith('HB-'))){
+      S.pendingInvite=stored;
+    }
     const params=new URLSearchParams(window.location.search);
     const inv=params.get('invite');
     if(inv){
@@ -811,6 +823,7 @@ const S={
       // Sanity check format
       if(/^HB-[A-Z]-?[A-Z0-9-]+$/.test(clean)||clean.startsWith('HB-')){
         S.pendingInvite=clean;
+        try{localStorage.setItem('hb_pending_invite',clean);}catch(e){}
       }
       // Remove the invite param so the URL is clean (avoids re-applying on refresh after consume)
       params.delete('invite');
@@ -820,6 +833,12 @@ const S={
     }
   }catch(e){}
 })();
+// Centralised clear — call this anywhere we consume the pending invite so the
+// in-memory state AND the localStorage backup are both wiped together.
+function clearPendingInvite(){
+  S.pendingInvite=null;
+  try{localStorage.removeItem('hb_pending_invite');}catch(e){}
+}
 
 // ── HELPERS ──────────────────────────────────────
 const $=id=>document.getElementById(id);
@@ -10235,7 +10254,7 @@ window.hSignup=async()=>{
       if(btn)btn.textContent='Joining family...';
       try{
         S.familyId=await joinFamily(inviteCode);
-        S.pendingInvite=null; // consumed
+        clearPendingInvite(); // consumed
         subscribe();
         render();
         notify('🎉 Account created — welcome to '+(S.family?.name||'the family')+'!','✅');
@@ -10256,14 +10275,20 @@ window.hSignup=async()=>{
 window.hCreateFamily=async()=>{
   const n=$('fn')?.value?.trim(),err=$('ferr');
   if(!n){if(err)err.textContent='Enter a family name';return;}
-  try{S.familyId=await createFamily(n);subscribe();render();}catch(ex){if(err)err.textContent=ex.message;}
+  // Safety check: if user has a pending invite, double-check they really want
+  // to start a new family rather than join the one they were invited to.
+  if(S.pendingInvite){
+    const ok=confirm("You have a pending invite ("+S.pendingInvite+"). Creating a new family will skip the invite. Continue?");
+    if(!ok)return;
+  }
+  try{S.familyId=await createFamily(n);clearPendingInvite();subscribe();render();}catch(ex){if(err)err.textContent=ex.message;}
 };
 window.hJoinFamily=async()=>{
   const c=$('fc')?.value?.trim(),err=$('jerr');
   if(!c){if(err)err.textContent='Enter an invite code';return;}
   try{
     S.familyId=await joinFamily(c);
-    S.pendingInvite=null; // consumed
+    clearPendingInvite(); // consumed
     subscribe();
     render();
     notify('🎉 You\'re in!','✅');
@@ -14958,7 +14983,7 @@ onAuthStateChanged(auth,async user=>{
       try{
         notify('Joining family...','⏳');
         S.familyId=await joinFamily(S.pendingInvite);
-        S.pendingInvite=null;
+        clearPendingInvite();
         subscribe();
         notify('🎉 You\'re in!','✅');
       }catch(ex){
