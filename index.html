@@ -1685,31 +1685,38 @@ function sSignup(){
 }
 
 function sFamilySetup(){
+  const hasInvite=!!S.pendingInvite;
+  const joinError=S._lastJoinError||'';
+  // Build the join card (invite) — primary when there's a pending invite
+  const joinCard=`<div style="background:#fff;border-radius:16px;padding:20px;box-shadow:0 1px 4px rgba(0,0,0,0.08);${hasInvite?'border:2px solid #1C3A6B':''}">
+    <div style="font-size:17px;font-weight:700;margin-bottom:4px">🔑 ${hasInvite?'Use your invite':'Got an invite?'}</div>
+    <div style="font-size:14px;color:#8E8E93;margin-bottom:14px;line-height:1.45">${hasInvite?'Code already filled in — just tap below to join.':'Enter the personal invite code your partner or family admin sent you'}</div>
+    <input class="input" id="fc" type="text" placeholder="Invite code (e.g. HB-A-XXXXX)" value="${S.pendingInvite||''}" style="margin-bottom:10px;font-family:monospace;text-transform:uppercase"/>
+    <div id="jerr" class="err" style="margin-bottom:8px">${joinError?`<span style="color:#FF3B30">⚠️ ${joinError.replace(/</g,'&lt;')}</span>`:''}</div>
+    <button class="green-btn" onclick="inflight(this, hJoinFamily)">Join with Code</button>
+  </div>`;
+  // Build the create card — primary when no invite, secondary otherwise
+  const createCard=`<div style="background:#fff;border-radius:16px;padding:20px;box-shadow:0 1px 4px rgba(0,0,0,0.08);${hasInvite?'opacity:0.7':''}">
+    <div style="font-size:17px;font-weight:700;margin-bottom:4px">🏠 Create a new family</div>
+    <div style="font-size:14px;color:#8E8E93;margin-bottom:14px">${hasInvite?'Or, if your invite is invalid, start fresh here.':'Start fresh and invite others to join'}</div>
+    <input class="input" id="fn" type="text" placeholder="Family name (e.g. The Clarks)" style="margin-bottom:10px"/>
+    <div id="ferr" class="err" style="margin-bottom:8px"></div>
+    <button class="${hasInvite?'secondary-btn':'primary-btn'}" onclick="inflight(this, hCreateFamily)">Create Family</button>
+  </div>`;
   return `<div style="min-height:100%;display:flex;flex-direction:column;background:#F2F2F7">
     <div style="background:#fff;padding:16px;border-bottom:1px solid #F2F2F7">
-      <div style="font-size:22px;font-weight:800;color:#1C3A6B">Set up your family</div>
+      <div style="font-size:22px;font-weight:800;color:#1C3A6B">${hasInvite?"You've been invited":'Set up your family'}</div>
       <div style="font-size:14px;color:#8E8E93;margin-top:4px">Hi ${S.user?.displayName||'there'}! 👋</div>
     </div>
     <div class="scroll-view" style="padding:20px;display:flex;flex-direction:column;gap:16px">
-      ${S.pendingInvite?`<div style="background:linear-gradient(135deg,#1C3A6B,#2E5FBF);border-radius:14px;padding:14px 16px;color:#fff">
+      ${hasInvite?`<div style="background:linear-gradient(135deg,#1C3A6B,#2E5FBF);border-radius:14px;padding:14px 16px;color:#fff">
         <div style="font-size:13px;font-weight:700;color:rgba(255,255,255,0.85);letter-spacing:0.4px;margin-bottom:4px">🔑 INVITE CODE READY</div>
-        <div style="font-size:13px;color:#fff;line-height:1.5;margin-bottom:10px">Tap <strong>Join with Code</strong> below to apply your invite (${S.pendingInvite}).</div>
+        <div style="font-size:13px;color:#fff;line-height:1.5;margin-bottom:6px">Tap <strong>Join with Code</strong> below to join the family that invited you.</div>
+        <div style="font-size:11px;color:rgba(255,255,255,0.7);font-family:monospace">Code: ${S.pendingInvite}</div>
       </div>`:''}
-      <div style="background:#fff;border-radius:16px;padding:20px;box-shadow:0 1px 4px rgba(0,0,0,0.08)">
-        <div style="font-size:17px;font-weight:700;margin-bottom:4px">🏠 Create a new family</div>
-        <div style="font-size:14px;color:#8E8E93;margin-bottom:14px">Start fresh and invite others to join</div>
-        <input class="input" id="fn" type="text" placeholder="Family name (e.g. The Clarks)" style="margin-bottom:10px"/>
-        <div id="ferr" class="err" style="margin-bottom:8px"></div>
-        <button class="primary-btn" onclick="inflight(this, hCreateFamily)">Create Family</button>
-      </div>
+      ${hasInvite?joinCard:createCard}
       <div style="text-align:center;color:#8E8E93;font-size:14px">— or —</div>
-      <div style="background:#fff;border-radius:16px;padding:20px;box-shadow:0 1px 4px rgba(0,0,0,0.08);${S.pendingInvite?'border:2px solid #1C3A6B':''}">
-        <div style="font-size:17px;font-weight:700;margin-bottom:4px">🔑 ${S.pendingInvite?'Use your invite':'Got an invite?'}</div>
-        <div style="font-size:14px;color:#8E8E93;margin-bottom:14px;line-height:1.45">${S.pendingInvite?'Code already filled in — just tap below.':'Enter the personal invite code your partner or family admin sent you'}</div>
-        <input class="input" id="fc" type="text" placeholder="Invite code (e.g. HB-A-XXXXX)" value="${S.pendingInvite||''}" style="margin-bottom:10px;font-family:monospace;text-transform:uppercase"/>
-        <div id="jerr" class="err" style="margin-bottom:8px"></div>
-        <button class="green-btn" onclick="inflight(this, hJoinFamily)">Join with Code</button>
-      </div>
+      ${hasInvite?createCard:joinCard}
     </div>
   </div>`;
 }
@@ -10286,14 +10293,18 @@ window.hCreateFamily=async()=>{
 window.hJoinFamily=async()=>{
   const c=$('fc')?.value?.trim(),err=$('jerr');
   if(!c){if(err)err.textContent='Enter an invite code';return;}
+  S._lastJoinError=''; // clear stale auto-join error from previous attempt
   try{
+    dlog('[invite] Manual join with code',c,'for uid',S.user?.uid);
     S.familyId=await joinFamily(c);
     clearPendingInvite(); // consumed
     subscribe();
     render();
     notify('🎉 You\'re in!','✅');
   }catch(ex){
-    if(err)err.textContent=ex.message||'Code not recognised. Check and try again.';
+    const msg=ex.message||'Code not recognised. Check and try again.';
+    dwarn('[invite] Manual join failed:',msg,'code',c,'uid',S.user?.uid);
+    if(err)err.textContent=msg;
   }
 };
 window.onPhoto=async(input)=>{
@@ -14981,13 +14992,18 @@ onAuthStateChanged(auth,async user=>{
     // If the user is signed in, has no family, AND we have a pending invite from the URL — auto-join
     if(!S.familyId&&S.pendingInvite){
       try{
+        dlog('[invite] Attempting auto-join with code',S.pendingInvite,'for uid',S.user?.uid);
         notify('Joining family...','⏳');
         S.familyId=await joinFamily(S.pendingInvite);
         clearPendingInvite();
+        S._lastJoinError='';
         subscribe();
         notify('🎉 You\'re in!','✅');
       }catch(ex){
-        notify('Invite couldn\'t be applied: '+(ex.message||'unknown error'),'⚠️');
+        const msg=ex.message||'unknown error';
+        dwarn('[invite] Auto-join failed:',msg,'for code',S.pendingInvite,'uid',S.user?.uid);
+        S._lastJoinError=msg;
+        notify('Invite couldn\'t be applied: '+msg,'⚠️');
         // Leave S.pendingInvite set so the family-setup screen can offer it
       }
     }
