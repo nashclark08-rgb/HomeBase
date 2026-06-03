@@ -2778,8 +2778,7 @@ function sToday(){
               <!-- Item rows removed per Nash request — Today shows count + quick-add + view link only. -->
               <!-- Inline quick-add row -->
               <div style="display:flex;align-items:center;gap:8px;padding:10px 12px" onclick="event.stopPropagation()">
-                <input id="todayGrocInput" type="text" placeholder="Add an item..." onkeydown="if(event.key==='Enter')quickAddGroc()" onclick="event.stopPropagation()" style="flex:1;border:none;background:transparent;font-size:15px;font-family:inherit;color:var(--text);outline:none;padding:4px 0"/>
-                <button onclick="event.stopPropagation();quickAddGroc()" style="padding:6px 14px;border-radius:10px;background:var(--navy);border:none;color:#fff;font-size:13px;font-weight:600;cursor:pointer;font-family:inherit;flex-shrink:0">+ Add</button>
+                <input id="todayGrocInput" type="text" placeholder="Add an item... (press Enter)" onkeydown="if(event.key==='Enter')quickAddGroc()" onclick="event.stopPropagation()" style="flex:1;border:none;background:transparent;font-size:15px;font-family:inherit;color:var(--text);outline:none;padding:4px 0"/>
               </div>
               <div style="padding:8px 16px 12px;text-align:center;border-top:1px solid var(--row-border)">
                 <button onclick="event.stopPropagation();setTab('lists');S.listTab='groceries';render()" style="background:none;border:none;color:var(--navy);font-size:13px;font-weight:600;cursor:pointer;font-family:inherit">View full list ›</button>
@@ -2799,8 +2798,7 @@ function sToday(){
           <div>
               <!-- Inline quick-add row -->
               <div style="display:flex;align-items:center;gap:8px;padding:10px 12px" onclick="event.stopPropagation()">
-                <input id="todayJobInput" type="text" placeholder="Add a job..." onkeydown="if(event.key==='Enter')quickAddJob()" onclick="event.stopPropagation()" style="flex:1;border:none;background:transparent;font-size:15px;font-family:inherit;color:var(--text);outline:none;padding:4px 0"/>
-                <button onclick="event.stopPropagation();quickAddJob()" style="padding:6px 14px;border-radius:10px;background:var(--navy);border:none;color:#fff;font-size:13px;font-weight:600;cursor:pointer;font-family:inherit;flex-shrink:0">+ Add</button>
+                <input id="todayJobInput" type="text" placeholder="Add a job... (press Enter)" onkeydown="if(event.key==='Enter')quickAddJob()" onclick="event.stopPropagation()" style="flex:1;border:none;background:transparent;font-size:15px;font-family:inherit;color:var(--text);outline:none;padding:4px 0"/>
               </div>
               <div style="padding:8px 16px 12px;text-align:center;border-top:1px solid var(--row-border)">
                 <button onclick="event.stopPropagation();go('jobs')" style="background:none;border:none;color:var(--navy);font-size:13px;font-weight:600;cursor:pointer;font-family:inherit">View full list ›</button>
