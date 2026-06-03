@@ -783,7 +783,7 @@ function findUpcomingClashes(daysAhead){
 // ── STATE ────────────────────────────────────────
 const S={
   user:null,familyId:null,family:null,
-  children:[],packing:{},events:[],deletedEvents:[],assessments:[],groceries:[],gifts:[],dinners:[],playdates:[],contacts:[],mealIdeas:[],handoffs:[],reminders:[],medicines:[],medicineDoses:[],
+  children:[],packing:{},events:[],deletedEvents:[],assessments:[],groceries:[],gifts:[],dinners:[],playdates:[],contacts:[],mealIdeas:[],handoffs:[],reminders:[],medicines:[],medicineDoses:[],jobs:[],
   tab:'today',screen:null,screenParams:{},
   activeChild:null,morningMode:false,
   calWeekOffset:0,calDate:null,showTomorrow:false,
@@ -1171,6 +1171,14 @@ function emptyState(emoji,title,body,ctaLabel,ctaOnclick,compact){
 // have a real auth uid in family.members but they're not adults; their visible
 // profile lives in /children).
 function coreMembers(){return members().filter(m=>m.role!=='Logistics'&&!m.linkedChildId);}
+
+// Adults who can own a Job. Any real adult member (incl. Logistics, since a
+// grandparent might still "call the plumber") but NOT child accounts (those
+// have linkedChildId). Used by the adults-only Jobs list for assignment.
+function adultMembers(){return members().filter(m=>!m.linkedChildId);}
+// True when the signed-in user is an adult (not a child account). The Jobs
+// list is hidden entirely from child accounts.
+function viewerIsAdult(){const m=S.family&&S.family.members&&S.family.members[S.user&&S.user.uid];return !!m&&!m.linkedChildId;}
 
 async function fw(){
   if(S.weather)return;
@@ -1595,6 +1603,9 @@ function subscribe(){
     }
   }));
   S.unsubs.push(onSnapshot(fcol(['groceries']),s=>{S.groceries=s.docs.map(d=>({id:d.id,...d.data()}));queueRender();}));
+  // Jobs — shared adult to-do list (call plumber, fix light, etc.). Family-scoped
+  // like every other collection, so all adults see the same list automatically.
+  S.unsubs.push(onSnapshot(fcol(['jobs']),s=>{S.jobs=s.docs.map(d=>({id:d.id,...d.data()}));queueRender();}));
   S.unsubs.push(onSnapshot(fcol(['gifts']),s=>{S.gifts=s.docs.map(d=>({id:d.id,...d.data()}));queueRender();}));
   S.unsubs.push(onSnapshot(fcol(['dinners']),s=>{S.dinners=s.docs.map(d=>({id:d.id,...d.data()}));queueRender();}));
   S.unsubs.push(onSnapshot(fcol(['playdates']),s=>{S.playdates=s.docs.map(d=>({id:d.id,...d.data()}));queueRender();}));
@@ -2775,6 +2786,26 @@ function sToday(){
               </div>
             </div>
         </div>`}
+
+      <!-- JOBS — shared adult to-do list. Hidden entirely from child accounts. -->
+      ${!viewerIsAdult()?'':(()=>{
+        const open=openJobs();const closedCount=S.jobs.filter(j=>j.done).length;
+        return `<div class="sh" style="margin-bottom:6px;display:flex;align-items:center;justify-content:space-between;padding-right:16px">
+          <span>🔧 Jobs${open.length?' · '+open.length:''}</span>
+          <button onclick="go('jobs')" style="font-size:11px;font-weight:700;background:var(--navy);color:#fff;padding:4px 10px;border-radius:8px;border:none;cursor:pointer;font-family:inherit;text-transform:none;letter-spacing:0">Manage</button>
+        </div>
+        <div class="card" style="margin-bottom:14px;overflow:hidden">
+          ${open.length===0?`<div style="padding:18px 16px;text-align:center;color:var(--text-secondary);font-size:13px;line-height:1.5">No open jobs 🎉<br><span style="font-size:12px">Add one below — e.g. “Call plumber”, “Fix light in laundry”.</span></div>`:open.map((j,i)=>jobRow(j,i,open)).join('')}
+          <!-- Inline quick-add -->
+          <div style="display:flex;align-items:center;gap:8px;padding:10px 12px;border-top:1px solid var(--row-border)" onclick="event.stopPropagation()">
+            <input id="todayJobInput" type="text" placeholder="Add a job..." onkeydown="if(event.key==='Enter')quickAddJob()" onclick="event.stopPropagation()" style="flex:1;border:none;background:transparent;font-size:15px;font-family:inherit;color:var(--text);outline:none;padding:4px 0"/>
+            <button onclick="event.stopPropagation();quickAddJob()" style="padding:6px 14px;border-radius:10px;background:var(--navy);border:none;color:#fff;font-size:13px;font-weight:600;cursor:pointer;font-family:inherit;flex-shrink:0">+ Add</button>
+          </div>
+          ${closedCount>0?`<div style="padding:8px 16px 12px;text-align:center;border-top:1px solid var(--row-border)">
+            <button onclick="go('jobs')" style="background:none;border:none;color:var(--navy);font-size:13px;font-weight:600;cursor:pointer;font-family:inherit">View ${closedCount} closed ›</button>
+          </div>`:''}
+        </div>`;
+      })()}
     </div>
 
     <div class="fab">
@@ -8277,6 +8308,97 @@ function sGroceries(){
     </div>`;
 }
 
+// HTML-escape job labels (free text from users) before injecting into markup.
+function jobEsc(s){return String(s==null?'':s).replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;');}
+// Assignee chip — tap to cycle through adults. Filled pill when assigned,
+// dashed "+ Assign" when not.
+function jobAssigneeChip(j){
+  const am=j.assigneeUid?adultMembers().find(x=>x.uid===j.assigneeUid):null;
+  if(am){const col=am.color||NAVY;return `<span style="display:inline-flex;align-items:center;gap:5px;background:${col}18;border:1px solid ${col}55;border-radius:20px;padding:2px 9px 2px 2px;font-size:12px;font-weight:600;color:${col}">${av(am.name,col,20,am.photoURL)}${jobEsc(am.name.split(' ')[0])}</span>`;}
+  return `<span style="display:inline-flex;align-items:center;gap:4px;background:var(--bg);border:1px dashed var(--border);border-radius:20px;padding:3px 10px;font-size:12px;font-weight:600;color:var(--text-secondary)">+ Assign</span>`;
+}
+// One open-job row: close checkbox · label + assignee chip · up/down · delete.
+function jobRow(j,i,arr){
+  const last=i>=arr.length-1;
+  return `<div class="row" style="align-items:flex-start;border-bottom:${last?'none':'1px solid var(--row-border)'}">
+    <div class="cb" onclick="tJob('${j.id}',true)" title="Mark done" style="margin-top:1px;flex-shrink:0"></div>
+    <div style="flex:1;min-width:0;display:flex;flex-direction:column;gap:5px">
+      <span style="font-size:15px;line-height:1.3;word-break:break-word">${jobEsc(j.label)}</span>
+      <button onclick="cycleJobAssignee('${j.id}')" title="Tap to assign" style="align-self:flex-start;background:none;border:none;padding:0;cursor:pointer;font-family:inherit">${jobAssigneeChip(j)}</button>
+    </div>
+    <div style="display:flex;flex-direction:column;gap:3px;flex-shrink:0">
+      <button onclick="moveJob('${j.id}',-1)" aria-label="Move up" ${i===0?'disabled':''} style="width:28px;height:22px;border:none;background:var(--bg);border-radius:6px;cursor:${i===0?'default':'pointer'};opacity:${i===0?0.3:1};font-size:11px;color:var(--text);font-family:inherit">▲</button>
+      <button onclick="moveJob('${j.id}',1)" aria-label="Move down" ${last?'disabled':''} style="width:28px;height:22px;border:none;background:var(--bg);border-radius:6px;cursor:${last?'default':'pointer'};opacity:${last?0.3:1};font-size:11px;color:var(--text);font-family:inherit">▼</button>
+    </div>
+    <button onclick="dJob('${j.id}')" aria-label="Delete" style="color:#FF3B30;font-size:20px;opacity:0.5;border:none;background:none;cursor:pointer;flex-shrink:0;margin-top:-2px">×</button>
+  </div>`;
+}
+
+// Full Jobs screen — adults only. Open list (reorder/assign/close) + closed list.
+function sJobs(){
+  if(!viewerIsAdult()){
+    return `<div style="flex:1;display:flex;flex-direction:column">
+      <div style="background:var(--card);padding:14px 16px;display:flex;align-items:center;border-bottom:1px solid var(--row-border);position:sticky;top:0;z-index:10">
+        <button class="back-btn" onclick="back()">${bk()} Back</button>
+        <div style="flex:1;text-align:center;font-size:17px;font-weight:600">🔧 Jobs</div>
+        <div style="width:60px"></div>
+      </div>
+      <div style="padding:40px 24px;text-align:center;color:var(--text-secondary);font-size:14px;line-height:1.6">The Jobs list is for adults in the family.</div>
+    </div>`;
+  }
+  const open=openJobs();
+  const done=S.jobs.filter(j=>j.done).sort((a,b)=>jobTime(b)-jobTime(a));
+  return `
+    <div style="flex:1;display:flex;flex-direction:column">
+      <div style="background:var(--card);padding:14px 16px;display:flex;align-items:center;border-bottom:1px solid var(--row-border);position:sticky;top:0;z-index:10">
+        <button class="back-btn" onclick="back()">${bk()} Back</button>
+        <div style="flex:1;text-align:center;font-size:17px;font-weight:600">🔧 Jobs</div>
+        <button class="btn" onclick="go('addJob')" style="color:#1C3A6B;font-size:15px;font-weight:600">+ Add</button>
+      </div>
+      <div class="scroll-view" style="padding:14px 0">
+        <div style="padding:0 16px 10px;font-size:12px;color:var(--text-secondary);line-height:1.5">Shared with every adult. Assign who'll do it, drag the order with ▲▼, tap the circle to close.</div>
+        <div class="sh" style="margin-bottom:6px">To do (${open.length})</div>
+        <div class="card" style="margin-bottom:14px">
+          ${open.length===0?emptyState('🔧','No open jobs','Add things the grown-ups need to handle — call the plumber, fix the laundry light.','+ Add a job',"go('addJob')",true):open.map((j,i)=>jobRow(j,i,open)).join('')}
+        </div>
+        ${done.length?`<div class="sh" style="margin-bottom:6px">Closed (${done.length})</div>
+        <div class="card" style="margin-bottom:14px">
+          ${done.map((j,i)=>{const aName=jobAssigneeName(j.assigneeUid);return `<div class="row" style="border-bottom:${i<done.length-1?'1px solid var(--row-border)':'none'}">
+            <div class="cb" style="background:#34C759;border:none;flex-shrink:0" onclick="tJob('${j.id}',false)" title="Reopen">${ck()}</div>
+            <span style="flex:1;font-size:15px;color:#8E8E93;text-decoration:line-through;word-break:break-word">${jobEsc(j.label)}${aName?' · '+jobEsc(aName.split(' ')[0]):''}</span>
+            <button onclick="dJob('${j.id}')" aria-label="Delete" style="color:#FF3B30;font-size:20px;opacity:0.5;border:none;background:none;cursor:pointer;flex-shrink:0">×</button>
+          </div>`;}).join('')}
+          <button class="btn" onclick="clearDoneJobs()" style="width:100%;padding:12px;color:#FF3B30;font-size:14px;font-weight:600;border-top:1px solid var(--row-border);text-align:center">Clear closed (${done.length})</button>
+        </div>`:''}
+      </div>
+      <div style="padding:16px"><button class="primary-btn" onclick="go('addJob')">+ Add Job</button></div>
+    </div>`;
+}
+
+// Add Job form — label + optional assignee.
+function sAddJob(){
+  const adults=adultMembers();
+  return `<div style="min-height:100%;display:flex;flex-direction:column;background:var(--bg)">
+    <div style="background:var(--card);padding:14px 16px;display:flex;align-items:center;border-bottom:1px solid var(--row-border);position:sticky;top:0;z-index:10">
+      <button class="back-btn" aria-label="Go back" onclick="back()">${bk()} Back</button>
+      <div style="flex:1;text-align:center;font-size:17px;font-weight:600">Add Job</div>
+      <div style="width:60px"></div>
+    </div>
+    <div style="padding:20px;display:flex;flex-direction:column;gap:14px;max-width:560px;margin:auto;width:100%">
+      <input class="input" id="jl" type="text" placeholder="Job (e.g. Call plumber, Fix light in laundry)" onkeydown="if(event.key==='Enter')hAddJob()"/>
+      <div>
+        <div class="sh" style="margin-bottom:6px;padding-left:0">Assign to (optional)</div>
+        <select class="input" id="ja">
+          <option value="">Anyone</option>
+          ${adults.map(m=>`<option value="${m.uid}">${jobEsc(m.name)}</option>`).join('')}
+        </select>
+      </div>
+      <div id="jerr" class="err"></div>
+      <button class="primary-btn" onclick="inflight(this, hAddJob)">Add Job</button>
+    </div>
+  </div>`;
+}
+
 function sAssessments(){
   const f=S.listFilter==='all'?S.assessments:S.assessments.filter(a=>a.childId===S.listFilter);
   const sorted=[...f].sort((a,b)=>{const da=assessmentDaysLeft(a),db=assessmentDaysLeft(b);return (da==null?999:da)-(db==null?999:db);});
@@ -9817,6 +9939,7 @@ function render(){
       signup:sSignup,addChild:sAddChild,addEvent:sAddEvent,
       addPackItem:sAddPackItem,addNote:sAddNote,addAssessment:sAddAssessment,
       addGrocery:sAddGrocery,addGift:sAddGift,childProfile:sFamily,
+      jobs:sJobs,addJob:sAddJob,
       logHandoff:sLogHandoff,addReminder:sAddReminder,addMedicine:sAddMedicine,medicineLog:sMedicineLog,
       editChild:sEditChild,editFamily:sEditFamily,
       addCaregiver:sAddCaregiver,editCaregiver:sEditCaregiver,
@@ -11695,6 +11818,64 @@ window.undoLastDelete=async function(){
   window._pendingUndo=null;
 };
 window.clearDone=async()=>{const done=S.groceries.filter(g=>g.addedToList&&g.checked);let failed=0;for(const g of done)try{await fdel(['groceries',g.id]);}catch(e){failed++;}if(failed>0){notify('Cleared with '+failed+' errors','⚠️');}else{notify('List cleared ✅');}};
+
+// ── JOBS (shared adult to-do list) ────────────────────────────────
+// Stable ordering: open jobs sort by numeric `order` (assigned on add as
+// max+1 so new jobs land at the bottom), tie-broken by createdAt.
+function jobTime(j){const c=j&&j.createdAt;if(!c)return 0;if(typeof c.seconds==='number')return c.seconds*1000;const t=new Date(c).getTime();return isNaN(t)?0:t;}
+function jobSort(a,b){const ao=typeof a.order==='number'?a.order:1e15;const bo=typeof b.order==='number'?b.order:1e15;return ao!==bo?ao-bo:jobTime(a)-jobTime(b);}
+function nextJobOrder(){return S.jobs.reduce((m,j)=>typeof j.order==='number'&&j.order>m?j.order:m,-1)+1;}
+function openJobs(){return S.jobs.filter(j=>!j.done).sort(jobSort);}
+function jobAssigneeName(uid){if(!uid)return '';const m=adultMembers().find(x=>x.uid===uid);return m?m.name:'';}
+
+// Add a job from the dedicated Add Job form (label + optional assignee).
+window.hAddJob=async()=>{
+  const label=$('jl')?.value?.trim();const assignee=$('ja')?.value||'';const err=$('jerr');
+  if(!label){if(err)err.textContent='Enter a job (e.g. Call plumber)';return;}
+  try{
+    await fadd(['jobs'],{label,assigneeUid:assignee,done:false,order:nextJobOrder(),createdBy:S.user?.uid||''});
+    back();
+    notify('Job added 🔧');
+  }catch(ex){if(err)err.textContent=ex.message;}
+};
+// Inline quick-add from the Today landing-page Jobs section.
+window.quickAddJob=async function(){
+  const input=document.getElementById('todayJobInput');if(!input)return;
+  const label=input.value.trim();if(!label)return;
+  try{
+    await fadd(['jobs'],{label,assigneeUid:'',done:false,order:nextJobOrder(),createdBy:S.user?.uid||''});
+    input.value='';notify('Job added 🔧');
+    setTimeout(()=>{const i=document.getElementById('todayJobInput');if(i)i.focus();},50);
+  }catch(ex){notify('Error: '+ex.message,'❌');}
+};
+// Close (✓) / reopen a job.
+window.tJob=async(id,val)=>{try{await fupd(['jobs',id],{done:val});if(val)notify('Job closed ✅');}catch(ex){notify('Save failed: '+friendlyError(ex),'⚠️');}};
+window.dJob=async id=>{try{await fdel(['jobs',id]);notify('Job deleted');}catch(ex){notify('Delete failed: '+friendlyError(ex),'⚠️');}};
+// Explicit assignment (from the Add form / full-screen <select>).
+window.assignJob=async(id,uid)=>{try{await fupd(['jobs',id],{assigneeUid:uid||''});}catch(ex){notify('Save failed: '+friendlyError(ex),'⚠️');}};
+// Tap-to-cycle assignee on compact rows: Anyone → adult1 → adult2 → … → Anyone.
+window.cycleJobAssignee=async id=>{
+  const j=S.jobs.find(x=>x.id===id);if(!j)return;
+  const opts=['',...adultMembers().map(m=>m.uid)];
+  const cur=Math.max(0,opts.indexOf(j.assigneeUid||''));
+  const next=opts[(cur+1)%opts.length];
+  try{await fupd(['jobs',id],{assigneeUid:next});}catch(ex){notify('Save failed: '+friendlyError(ex),'⚠️');}
+};
+// Move a job up/down within the open list. Reindexes the whole (short) open
+// list to sequential orders so positions stay consistent across devices.
+window.moveJob=async(id,dir)=>{
+  const arr=openJobs();
+  const idx=arr.findIndex(j=>j.id===id);
+  if(idx<0)return;
+  const target=idx+dir;
+  if(target<0||target>=arr.length)return;
+  const moved=arr.slice();
+  const [it]=moved.splice(idx,1);
+  moved.splice(target,0,it);
+  try{await Promise.all(moved.map((j,i)=>j.order===i?null:fupd(['jobs',j.id],{order:i})).filter(Boolean));}
+  catch(ex){notify('Reorder failed: '+friendlyError(ex),'⚠️');}
+};
+window.clearDoneJobs=async()=>{const done=S.jobs.filter(j=>j.done);let failed=0;for(const j of done)try{await fdel(['jobs',j.id]);}catch(e){failed++;}if(failed>0){notify('Cleared with '+failed+' errors','⚠️');}else{notify('Closed jobs cleared ✅');}};
 
 // ── BULK-SELECT HANDLERS (groceries) ──────────────────────────────
 // Toggle one item in/out of the selection set. Called from row taps when
