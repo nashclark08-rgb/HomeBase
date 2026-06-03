@@ -2787,23 +2787,25 @@ function sToday(){
             </div>
         </div>`}
 
-      <!-- JOBS — shared adult to-do list. Hidden entirely from child accounts. -->
+      <!-- JOBS — shared adult to-do list. Hidden from child accounts. Compact, mirrors Shopping List:
+           count + quick-add + view link only. The full interactive list (assign/reorder/close) lives on sJobs. -->
       ${!viewerIsAdult()?'':(()=>{
-        const open=openJobs();const closedCount=S.jobs.filter(j=>j.done).length;
+        const openCount=S.jobs.filter(j=>!j.done).length;
         return `<div class="sh" style="margin-bottom:6px;display:flex;align-items:center;justify-content:space-between;padding-right:16px">
-          <span>🔧 Jobs${open.length?' · '+open.length:''}</span>
-          <button onclick="go('jobs')" style="font-size:11px;font-weight:700;background:var(--navy);color:#fff;padding:4px 10px;border-radius:8px;border:none;cursor:pointer;font-family:inherit;text-transform:none;letter-spacing:0">Manage</button>
+          <span>🔧 Jobs${openCount?' · '+openCount+' '+(openCount===1?'job':'jobs'):''}</span>
+          <button onclick="go('jobs')" style="font-size:11px;font-weight:700;background:var(--navy);color:#fff;padding:4px 10px;border-radius:8px;border:none;cursor:pointer;font-family:inherit;text-transform:none;letter-spacing:0">+ Add</button>
         </div>
         <div class="card" style="margin-bottom:14px;overflow:hidden">
-          ${open.length===0?`<div style="padding:18px 16px;text-align:center;color:var(--text-secondary);font-size:13px;line-height:1.5">No open jobs 🎉<br><span style="font-size:12px">Add one below — e.g. “Call plumber”, “Fix light in laundry”.</span></div>`:open.map((j,i)=>jobRow(j,i,open)).join('')}
-          <!-- Inline quick-add -->
-          <div style="display:flex;align-items:center;gap:8px;padding:10px 12px;border-top:1px solid var(--row-border)" onclick="event.stopPropagation()">
-            <input id="todayJobInput" type="text" placeholder="Add a job..." onkeydown="if(event.key==='Enter')quickAddJob()" onclick="event.stopPropagation()" style="flex:1;border:none;background:transparent;font-size:15px;font-family:inherit;color:var(--text);outline:none;padding:4px 0"/>
-            <button onclick="event.stopPropagation();quickAddJob()" style="padding:6px 14px;border-radius:10px;background:var(--navy);border:none;color:#fff;font-size:13px;font-weight:600;cursor:pointer;font-family:inherit;flex-shrink:0">+ Add</button>
-          </div>
-          ${closedCount>0?`<div style="padding:8px 16px 12px;text-align:center;border-top:1px solid var(--row-border)">
-            <button onclick="go('jobs')" style="background:none;border:none;color:var(--navy);font-size:13px;font-weight:600;cursor:pointer;font-family:inherit">View ${closedCount} closed ›</button>
-          </div>`:''}
+          <div>
+              <!-- Inline quick-add row -->
+              <div style="display:flex;align-items:center;gap:8px;padding:10px 12px" onclick="event.stopPropagation()">
+                <input id="todayJobInput" type="text" placeholder="Add a job..." onkeydown="if(event.key==='Enter')quickAddJob()" onclick="event.stopPropagation()" style="flex:1;border:none;background:transparent;font-size:15px;font-family:inherit;color:var(--text);outline:none;padding:4px 0"/>
+                <button onclick="event.stopPropagation();quickAddJob()" style="padding:6px 14px;border-radius:10px;background:var(--navy);border:none;color:#fff;font-size:13px;font-weight:600;cursor:pointer;font-family:inherit;flex-shrink:0">+ Add</button>
+              </div>
+              <div style="padding:8px 16px 12px;text-align:center;border-top:1px solid var(--row-border)">
+                <button onclick="event.stopPropagation();go('jobs')" style="background:none;border:none;color:var(--navy);font-size:13px;font-weight:600;cursor:pointer;font-family:inherit">View full list ›</button>
+              </div>
+            </div>
         </div>`;
       })()}
     </div>
