@@ -60,10 +60,10 @@ body{font-family:-apple-system,BlinkMacSystemFont,system-ui,sans-serif;backgroun
 .tabbar{background:rgba(249,249,249,0.97);backdrop-filter:blur(20px);border-top:0.5px solid rgba(0,0,0,0.15);display:flex;padding-bottom:env(safe-area-inset-bottom);position:fixed;bottom:0;left:0;right:0;z-index:100}
 .tab{flex:1;display:flex;flex-direction:column;align-items:center;padding:8px 0 6px;border:none;background:transparent;cursor:pointer;gap:2px;font-family:inherit;font-size:9px;font-weight:600;color:#8E8E93;min-width:0}
 .tab.active{color:#1C3A6B}
-.scroll-view{display:block;}
+.scroll-view{display:block;padding-bottom:96px}
 
 .card{background:var(--card);border-radius:14px;margin:0 16px;box-shadow:var(--shadow-md);overflow:hidden}
-.sh{padding:8px 16px 4px;font-size:12px;font-weight:700;color:#8E8E93;text-transform:uppercase;letter-spacing:0.6px}
+.sh{padding:8px 16px 4px;font-size:12px;font-weight:700;color:#8E8E93;letter-spacing:0.2px}
 .hb-section summary::-webkit-details-marker{display:none}
 .hb-section summary::marker{display:none}
 .hb-section[open] .hb-chev{transform:rotate(180deg)}
@@ -2188,9 +2188,17 @@ function sToday(){
           <div style="font-size:11px;color:var(--text-secondary);line-height:1">·</div>
         </div>
       </div>
+      <!-- Badge legend — explains the 🎒 / 🚗 chips under each avatar -->
+      ${(()=>{
+        const _vds=getViewDateStr();
+        const showPack=S.children.some(c=>packingForChildOnDate(c,_vds).length>0);
+        const showRun=members().some(m=>['Mum','Dad','Stepmum','Stepdad'].includes(m.relationship||''));
+        if(!showPack&&!showRun)return '';
+        return `<div style="text-align:center;font-size:10px;color:var(--text-secondary);padding:2px 16px 0;letter-spacing:0.2px">${showPack?'🎒 packing':''}${showPack&&showRun?'  ·  ':''}${showRun?'🚗 school runs':''}</div>`;
+      })()}
     </div>
 
-    <div style="padding:16px 0 100px">
+    <div style="padding:16px 0 130px">
       ${!S.weather?`<div style="margin:0 16px 14px;background:#fff;border-radius:12px;padding:10px 14px;display:flex;align-items:center;gap:8px;box-shadow:0 1px 3px rgba(0,0,0,0.05);border:1px solid #F2F2F7"><span style="font-size:18px">🌤</span><span style="flex:1;font-size:13px;color:#8E8E93">No weather — set location</span><button onclick="setTab('settings')" style="padding:5px 10px;border-radius:8px;background:#1C3A6B;border:none;color:#fff;font-size:12px;font-weight:600;cursor:pointer;font-family:inherit">Set up →</button></div>`:''}
 
       ${!onboardingDone&&!S.hideOnboarding?(()=>{
@@ -3777,7 +3785,7 @@ function sEvents(){
       <button onclick="go('addEvent')" style="width:100%;padding:14px;border-radius:14px;background:var(--navy);border:none;color:#fff;font-size:15px;font-weight:700;cursor:pointer;font-family:inherit;margin-bottom:18px;display:flex;align-items:center;justify-content:center;gap:6px;box-shadow:0 2px 8px rgba(28,58,107,0.15)">+ Add Event</button>
 
       <!-- IMPORT TOOLS -->
-      <div class="sh" style="padding:0;margin-bottom:8px">IMPORT EVENTS</div>
+      <div class="sh" style="padding:0;margin-bottom:8px">Import Events</div>
       <div style="display:grid;grid-template-columns:repeat(auto-fit,minmax(140px,1fr));gap:10px;margin-bottom:22px">
         <!-- Spreadsheet tile removed — AI fixtures + voice + email forwarding cover the bulk-add cases -->
         <div onclick="go('fixturesImport')" style="background:var(--card);border:1px dashed var(--border);border-radius:14px;padding:14px;cursor:pointer;display:flex;flex-direction:column;gap:6px;min-height:96px">
@@ -3793,7 +3801,7 @@ function sEvents(){
       </div>
 
       <!-- CATEGORY TILES -->
-      <div class="sh" style="padding:0;margin-bottom:10px">CATEGORIES</div>
+      <div class="sh" style="padding:0;margin-bottom:10px">Categories</div>
       <div style="display:grid;grid-template-columns:repeat(4,1fr);gap:14px 4px;margin-bottom:18px">
         ${EV_CATEGORIES.map(c=>{
           const count=counts[c.id]||0;
@@ -6931,7 +6939,7 @@ function sInboxSetup(){
       </div>
 
       <!-- YOUR ADDRESS -->
-      <div class="sh" style="margin-bottom:6px">YOUR FORWARDING ADDRESS</div>
+      <div class="sh" style="margin-bottom:6px">Your Forwarding Address</div>
       <div class="card" style="margin-bottom:16px;padding:16px">
         <div style="background:var(--bg);border-radius:10px;padding:12px;display:flex;align-items:center;gap:8px">
           <code style="flex:1;font-family:Menlo,monospace;font-size:13px;color:var(--text);word-break:break-all;font-weight:600">${activeAddress||'(generating — please wait)'}</code>
@@ -6941,7 +6949,7 @@ function sInboxSetup(){
       </div>
 
       <!-- HOW IT WORKS -->
-      <div class="sh" style="margin-bottom:6px">HOW IT WORKS</div>
+      <div class="sh" style="margin-bottom:6px">How It Works</div>
       <div class="card" style="margin-bottom:16px;padding:14px 18px">
         <ol style="margin:0;padding-left:20px;font-size:13px;line-height:1.7;color:var(--text)">
           <li>Forward an email (school newsletter, sport notice) to your address above.</li>
@@ -6952,7 +6960,7 @@ function sInboxSetup(){
       </div>
 
       <!-- SETUP GUIDES -->
-      <div class="sh" style="margin-bottom:6px">SETUP GUIDES</div>
+      <div class="sh" style="margin-bottom:6px">Setup Guides</div>
       <div class="card" style="margin-bottom:16px;overflow:hidden">
 
         <!-- Gmail -->
@@ -7008,7 +7016,7 @@ function sInboxSetup(){
       </div>
 
       <!-- ADVANCED -->
-      <div class="sh" style="margin-bottom:6px">ADVANCED</div>
+      <div class="sh" style="margin-bottom:6px">Advanced</div>
       <div class="card" style="margin-bottom:16px;padding:14px 18px">
         <div style="font-size:12px;color:var(--text-secondary);line-height:1.6">
           <strong style="color:var(--text)">Privacy:</strong> Your forwarding address is private. Only emails to this exact address get processed.
@@ -9562,7 +9570,7 @@ function sLogHandoff(){
 
       ${recent.length>0?`
         <div style="margin-top:8px">
-          <div class="sh" style="margin-bottom:6px">RECENT HAND-OFFS · ${child.name}</div>
+          <div class="sh" style="margin-bottom:6px">Recent Hand-offs · ${child.name}</div>
           <div class="card">
             ${recent.map((h,i)=>{
               const d=new Date(h.when||0);
