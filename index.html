@@ -635,6 +635,7 @@ function findUpcomingClashes(daysAhead){
       // because the recurring event still matches the day filter below.
       if(Array.isArray(ev.skipDates)&&ev.skipDates.includes(dateStr))return false;
       if(!ev.freq||ev.freq==='once')return ev.date===dateStr;
+      if(suppressedByHolidays(ev,dateStr))return false; // hide school items in holidays
       // Recurring: check days + start/end window
       if(!ev.days||!ev.days[dayName])return false;
       const sd=ev.startDate||ev.date;
@@ -1069,6 +1070,23 @@ function isSchoolDay(dateStr){
     if(start&&end&&dateStr>=start&&dateStr<=end)return true;
   }
   return false;
+}
+// Should a recurring school subject/event be hidden on this date because it
+// falls in the school holidays (outside every configured term)?
+//  - One-off events always keep their explicit date (never suppressed here).
+//  - Only school categories are affected (subjects + school events).
+//  - If no term dates are set at all, we can't tell, so nothing is suppressed.
+function suppressedByHolidays(ev,dateStr){
+  if(!ev||!ev.freq||ev.freq==='once')return false;
+  const c=ev.category||'';
+  if(c!=='school-subject'&&c!=='school-event'&&c!=='school')return false;
+  const td=S.termDates;
+  if(!td||(!td.t1s&&!td.t2s&&!td.t3s&&!td.t4s))return false;
+  for(const t of ['t1','t2','t3','t4']){
+    const s=td[t+'s'],e=td[t+'e'];
+    if(s&&e&&dateStr>=s&&dateStr<=e)return false; // inside a term → keep
+  }
+  return true; // outside all terms → school holidays → hide
 }
 function getViewDate(){
   const d=new Date(today);
@@ -1783,6 +1801,7 @@ function eventsForChildOnDate(child, dateStr){
     }
     if(!belongsToChild)return false;
     if(!ev.freq||ev.freq==='once')return ev.date===dateStr;
+    if(suppressedByHolidays(ev,dateStr))return false; // hide school items in holidays
     const start=new Date((ev.startDate||ev.date||dateStr)+'T12:00');
     const end=ev.endDate?new Date(ev.endDate+'T12:00'):null;
     if(dateObj<start||(end&&dateObj>end))return false;
@@ -1827,6 +1846,7 @@ function todayEventsForChild(child){
   return S.events.filter(ev=>{
     if(!ev.childId||ev.childId===child.id){
       if(!ev.freq||ev.freq==='once')return ev.date===todayStr;
+      if(suppressedByHolidays(ev,todayStr))return false; // hide school items in holidays
       const start=new Date((ev.startDate||ev.date||todayStr)+'T12:00');
       const end=ev.endDate?new Date(ev.endDate+'T12:00'):null;
       const now=new Date(todayStr+'T12:00');
@@ -2089,6 +2109,7 @@ function sToday(){
     if(!ev.freq||ev.freq==='once')return ev.date===viewDateStr;
     // Honour explicit skipped dates for this recurring event
     if(Array.isArray(ev.skipDates)&&ev.skipDates.includes(viewDateStr))return false;
+    if(suppressedByHolidays(ev,viewDateStr))return false; // hide school items in holidays
     const start=new Date((ev.startDate||ev.date||viewDateStr)+'T12:00');
     const end=ev.endDate?new Date(ev.endDate+'T12:00'):null;
     const now=viewDateObj;
@@ -3088,6 +3109,7 @@ function sCalendar(){
     return S.events.filter(ev=>{
       if(!ev.freq||ev.freq==='once')return ev.date===ds;
       if(Array.isArray(ev.skipDates)&&ev.skipDates.includes(ds))return false;
+      if(suppressedByHolidays(ev,ds))return false; // hide school items in holidays
       const start=new Date((ev.startDate||ev.date||ds)+'T12:00');
       const end=ev.endDate?new Date(ev.endDate+'T12:00'):null;
       const d=new Date(ds+'T12:00');
@@ -8879,6 +8901,8 @@ function sPersonProfile(){
       let happens=false;
       if(!e.freq||e.freq==='once'){
         happens=(e.date===viewDateStr);
+      }else if(suppressedByHolidays(e,viewDateStr)){
+        return; // hide school items in holidays
       }else{
         const start=new Date((e.startDate||e.date||viewDateStr)+'T12:00');
         const end=e.endDate?new Date(e.endDate+'T12:00'):null;
@@ -13136,6 +13160,7 @@ function scheduleEventNotifs(){
     // Skip occurrences explicitly skipped via the clash flow
     if(Array.isArray(ev.skipDates)&&ev.skipDates.includes(today))return false;
     if(!ev.freq||ev.freq==='once')return ev.date===today;
+    if(suppressedByHolidays(ev,today))return false; // hide school items in holidays
     if(!ev.days||!ev.days[dayName])return false;
     const sd=ev.startDate||ev.date;
     if(sd&&today<sd)return false;
@@ -13168,6 +13193,7 @@ function sendDailyNotif(){
   if(typeof Notification==='undefined'||Notification.permission!=='granted')return;
   const allEvs=S.events.filter(function(ev){
     if(!ev.freq||ev.freq==='once')return ev.date===todayStr;
+    if(suppressedByHolidays(ev,todayStr))return false; // hide school items in holidays
     const start=new Date((ev.startDate||ev.date||todayStr)+'T12:00');
     const end=ev.endDate?new Date(ev.endDate+'T12:00'):null;
     const now=new Date(todayStr+'T12:00');
