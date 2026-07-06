@@ -784,7 +784,8 @@ function findUpcomingClashes(daysAhead){
 // ── STATE ────────────────────────────────────────
 const S={
   user:null,familyId:null,family:null,
-  children:[],packing:{},events:[],deletedEvents:[],assessments:[],groceries:[],gifts:[],dinners:[],playdates:[],contacts:[],mealIdeas:[],handoffs:[],reminders:[],medicines:[],medicineDoses:[],jobs:[],
+  children:[],packing:{},events:[],deletedEvents:[],assessments:[],groceries:[],gifts:[],dinners:[],playdates:[],contacts:[],mealIdeas:[],handoffs:[],reminders:[],medicines:[],medicineDoses:[],jobs:[],tripPacking:[],
+  tf:null, // trip-packing create form
   tab:'today',screen:null,screenParams:{},
   activeChild:null,morningMode:false,
   calWeekOffset:0,calDate:null,showTomorrow:false,
@@ -1637,6 +1638,8 @@ function subscribe(){
   // single onSnapshot covers them all — faster + simpler than collectionGroup.
   S.unsubs.push(onSnapshot(fcol(['medicines']),s=>{S.medicines=s.docs.map(d=>({id:d.id,...d.data()}));queueRender();}));
   S.unsubs.push(onSnapshot(fcol(['medicineDoses']),s=>{S.medicineDoses=s.docs.map(d=>({id:d.id,...d.data()}));queueRender();}));
+  // Trip Packing — AI-drafted, itemised, day-scaled packing lists per trip.
+  S.unsubs.push(onSnapshot(fcol(['tripPacking']),s=>{S.tripPacking=s.docs.map(d=>({id:d.id,...d.data()}));queueRender();}));
   // Pending events from inbound emails — only show ones still pending review
   S.unsubs.push(onSnapshot(fcol(['pending_events']),s=>{
     S.pendingEmails=s.docs.map(d=>({id:d.id,...d.data()}))
@@ -3804,7 +3807,10 @@ function sEvents(){
     ${(S.evSearch||'').trim()?'':`<div class="scroll-view" style="padding:14px 16px 100px">
 
       <!-- Quick add one-off -->
-      <button onclick="go('addEvent')" style="width:100%;padding:14px;border-radius:14px;background:var(--navy);border:none;color:#fff;font-size:15px;font-weight:700;cursor:pointer;font-family:inherit;margin-bottom:18px;display:flex;align-items:center;justify-content:center;gap:6px;box-shadow:0 2px 8px rgba(28,58,107,0.15)">+ Add Event</button>
+      <button onclick="go('addEvent')" style="width:100%;padding:14px;border-radius:14px;background:var(--navy);border:none;color:#fff;font-size:15px;font-weight:700;cursor:pointer;font-family:inherit;margin-bottom:10px;display:flex;align-items:center;justify-content:center;gap:6px;box-shadow:0 2px 8px rgba(28,58,107,0.15)">+ Add Event</button>
+
+      <!-- Trip Packing: create a trip, AI drafts an itemised packing list -->
+      <button onclick="go('trips')" style="width:100%;padding:14px;border-radius:14px;background:var(--card);border:1px solid var(--border);color:var(--text);font-size:15px;font-weight:700;cursor:pointer;font-family:inherit;margin-bottom:18px;display:flex;align-items:center;justify-content:center;gap:8px">🧳 Trips &amp; Packing Lists</button>
 
       <!-- IMPORT TOOLS -->
       <div class="sh" style="padding:0;margin-bottom:8px">Import Events</div>
@@ -8338,6 +8344,285 @@ function sGroceries(){
     </div>`;
 }
 
+// ═══════════════════════════════════════════════════════════════════
+// TRIP PACKING — AI-drafted, itemised, day-scaled packing lists.
+// A shared list + one list per attendee. An adult curates the draft, then
+// Publishes (creates a calendar event + tick-off for everyone going).
+// Backend callable: generatePackingList (Claude + Open-Meteo forecast).
+// ═══════════════════════════════════════════════════════════════════
+(function(){ // one-off spinner keyframes for the generating overlay
+  if(document.getElementById('trip-spin-style'))return;
+  const s=document.createElement('style');s.id='trip-spin-style';
+  s.textContent='@keyframes trip-spin{to{transform:rotate(360deg)}}';
+  document.head.appendChild(s);
+})();
+
+function tripUid(){return 'i'+Date.now().toString(36)+Math.random().toString(36).slice(2,6);}
+function tripAgeYears(dob){if(!dob)return null;const d=new Date(dob);if(isNaN(d))return null;const t=new Date();let a=t.getFullYear()-d.getFullYear();const m=t.getMonth()-d.getMonth();if(m<0||(m===0&&t.getDate()<d.getDate()))a--;return (a>=0&&a<120)?a:null;}
+function tripSeason(ds){const m=parseInt((ds||'').slice(5,7),10);if(!m)return '';if(m===12||m<=2)return 'Summer';if(m<=5)return 'Autumn';if(m<=8)return 'Winter';return 'Spring';}
+function tripFmtDate(ds){if(!ds)return '';const d=new Date(ds+'T00:00:00');if(isNaN(d))return ds;return d.toLocaleDateString('en-AU',{weekday:'short',day:'numeric',month:'short'});}
+function tripFmtPackBy(s){if(!s)return '';const d=new Date(s);if(isNaN(d))return s;return d.toLocaleDateString('en-AU',{weekday:'short',day:'numeric',month:'short'})+' · '+d.toLocaleTimeString('en-AU',{hour:'numeric',minute:'2-digit'});}
+function tripDoc(id){return (S.tripPacking||[]).find(x=>x.id===id);}
+function tripFindAttendee(t,id){return (t.attendees||[]).find(a=>a.id===id)||{name:'?',color:NAVY,photoURL:''};}
+function tripCandidates(){
+  const kids=(S.children||[]).map(c=>({id:c.id,name:c.name,role:'child',color:c.color||NAVY,photoURL:c.photoURL||'',ageYears:tripAgeYears(c.dob)}));
+  const adults=adultMembers().map(m=>({id:m.uid,name:m.name,role:'adult',color:m.color||NAVY,photoURL:m.photoURL||'',ageYears:tripAgeYears(m.dob)}));
+  return kids.concat(adults);
+}
+function tripProgress(t){let done=0,total=0;(t.shared||[]).forEach(i=>{total++;if(i.checked)done++;});Object.values(t.people||{}).forEach(arr=>(arr||[]).forEach(i=>{total++;if(i.checked)done++;}));return {done,total,pct:total?done/total:0};}
+function tripOverlay(emoji,title,sub){
+  const o=document.createElement('div');
+  o.style.cssText='position:fixed;inset:0;z-index:9999;background:rgba(20,25,35,.55);backdrop-filter:blur(4px);display:flex;align-items:center;justify-content:center;padding:24px';
+  o.innerHTML='<div style="background:var(--card);border-radius:18px;padding:26px 24px;max-width:300px;text-align:center;box-shadow:0 20px 60px rgba(0,0,0,.3)"><div style="font-size:34px;margin-bottom:10px">'+emoji+'</div><div style="font-size:16px;font-weight:700;color:var(--text);margin-bottom:6px">'+title+'</div><div style="font-size:13px;color:var(--text-secondary);line-height:1.45">'+(sub||'')+'</div><div style="margin:16px auto 0;width:26px;height:26px;border:3px solid var(--row-border);border-top-color:var(--navy);border-radius:50%;animation:trip-spin 0.8s linear infinite"></div></div>';
+  document.body.appendChild(o);return o;
+}
+
+// ── Trip list (under Kitchen › Trip Packing) ──
+function sTrips(){
+  const trips=(S.tripPacking||[]).slice().sort((a,b)=>(b.startDate||'').localeCompare(a.startDate||''));
+  return `
+   <div style="flex:1;display:flex;flex-direction:column">
+    <div style="background:var(--card);padding:14px 16px;display:flex;align-items:center;border-bottom:1px solid var(--row-border);position:sticky;top:0;z-index:10">
+      <button class="back-btn" onclick="back()">${bk()} Back</button>
+      <div style="flex:1;text-align:center;font-size:17px;font-weight:600">🧳 Trip Packing</div>
+      <button class="btn" onclick="tripNew()" style="color:var(--navy);font-size:15px;font-weight:600">+ New</button>
+    </div>
+    <div class="scroll-view" style="padding:14px 0">
+      ${trips.length===0?emptyState('🧳','No trips yet','Create a trip and HomeBase will draft an itemised packing list for everyone going.','+ New trip','tripNew()',true):''}
+      <div style="padding:0 16px;display:flex;flex-direction:column;gap:10px">
+        ${trips.map(t=>tripCard(t)).join('')}
+      </div>
+    </div>
+   </div>`;
+}
+function tripCard(t){
+  const pr=tripProgress(t);const pub=t.status==='published';
+  const avatars=(t.attendees||[]).slice(0,5).map(a=>av(a.name,a.color,26,a.photoURL)).join('');
+  return `<button class="btn card" onclick="go('tripDetail',{id:'${t.id}'})" style="width:100%;text-align:left;padding:14px;display:flex;flex-direction:column;gap:9px">
+    <div style="display:flex;align-items:flex-start;gap:10px">
+      <div style="flex:1;min-width:0"><div style="font-size:16px;font-weight:700">${jobEsc(t.title||'Trip')}</div>
+      <div style="font-size:12.5px;color:var(--text-secondary);margin-top:1px">${jobEsc(t.place||'')}${t.place?' · ':''}${tripFmtDate(t.startDate)} – ${tripFmtDate(t.endDate)}</div></div>
+      <span style="font-size:10px;font-weight:800;letter-spacing:.05em;padding:3px 8px;border-radius:20px;flex-shrink:0;${pub?'background:#34C75920;color:#1B8A3A':'background:#FF950022;color:#B26B00'}">${pub?'SENT':'DRAFT'}</span>
+    </div>
+    <div style="display:flex;align-items:center;gap:9px">
+      <div style="display:flex">${avatars}</div>
+      <div style="flex:1;height:6px;background:var(--bg);border-radius:3px;overflow:hidden"><div style="height:100%;width:${Math.round(pr.pct*100)}%;background:#34C759"></div></div>
+      <span style="font-size:12px;font-weight:700;color:var(--text-secondary)">${pr.done}/${pr.total}</span>
+    </div>
+  </button>`;
+}
+
+// ── Create Trip form ──
+function sAddTrip(){
+  const tf=S.tf||{};const cands=tripCandidates();
+  const IST='width:100%;border:none;background:transparent;font-size:16px;font-family:inherit;color:var(--text);outline:none';
+  const tripRow=(label,inner,last)=>`<div class="row" style="border-bottom:${last?'none':'1px solid var(--row-border)'}"><span style="width:82px;color:var(--text-secondary);font-size:15px;flex-shrink:0">${label}</span><div style="flex:1;min-width:0">${inner}</div></div>`;
+  return `
+   <div style="flex:1;display:flex;flex-direction:column">
+    <div style="background:var(--card);padding:14px 16px;display:flex;align-items:center;border-bottom:1px solid var(--row-border);position:sticky;top:0;z-index:10">
+      <button class="back-btn" onclick="back()">${bk()} Cancel</button>
+      <div style="flex:1;text-align:center;font-size:17px;font-weight:600">New Trip</div>
+      <div style="width:60px"></div>
+    </div>
+    <div class="scroll-view" style="padding:8px 0 24px">
+      <div class="sh">Trip</div>
+      <div class="card">
+        ${tripRow('Name',`<input id="tf_title" value="${jobEsc(tf.title||'')}" oninput="tfSet('title',this.value)" placeholder="e.g. Water polo tournament" style="${IST}">`)}
+        ${tripRow('Place',`<input id="tf_place" value="${jobEsc(tf.place||'')}" oninput="tfSet('place',this.value)" placeholder="e.g. Hobart, TAS" style="${IST}">`,true)}
+      </div>
+      <div class="sh">When</div>
+      <div class="card">
+        ${tripRow('Starts',`<input type="date" value="${tf.startDate||''}" onchange="tfSetDate('startDate',this.value)" style="${IST}">`)}
+        ${tripRow('Ends',`<input type="date" value="${tf.endDate||''}" min="${tf.startDate||''}" onchange="tfSetDate('endDate',this.value)" style="${IST}">`)}
+        ${tripRow('Season',`<select onchange="tfSet('season',this.value)" style="${IST}">${['Summer','Autumn','Winter','Spring'].map(s=>`<option ${tf.season===s?'selected':''}>${s}</option>`).join('')}</select>`)}
+        ${tripRow('Pack by',`<input type="datetime-local" value="${tf.packBy||''}" onchange="tfSet('packBy',this.value)" style="${IST}">`,true)}
+      </div>
+      <div class="sh">Activities</div>
+      <div class="card" style="padding:12px">
+        <div style="display:flex;flex-wrap:wrap;gap:8px;align-items:center">
+          ${(tf.activities||[]).map((a,i)=>`<span style="display:inline-flex;align-items:center;gap:6px;background:var(--navy-soft,#EAF3FF);color:var(--navy);font-size:14px;font-weight:600;padding:6px 10px;border-radius:20px">${jobEsc(a)}<span onclick="tfRemoveActivity(${i})" style="cursor:pointer;opacity:.6;font-size:12px">✕</span></span>`).join('')}
+          <input id="tf_activity" placeholder="+ Add activity" onkeydown="if(event.key==='Enter'){event.preventDefault();tfAddActivity();}" style="flex:1;min-width:120px;border:none;background:transparent;font-size:15px;font-family:inherit;color:var(--text);outline:none">
+        </div>
+      </div>
+      <div class="sh">Who's going</div>
+      <div class="card" style="padding:11px 12px">
+        ${cands.length===0?`<div style="color:var(--text-secondary);font-size:13px;padding:4px">Add family members first (Family tab).</div>`:
+        `<div style="display:flex;flex-wrap:wrap;gap:8px">${cands.map(c=>tripAttendeeToggle(c)).join('')}</div>`}
+      </div>
+      <div style="padding:12px 18px;font-size:12.5px;color:var(--text-secondary);line-height:1.5">HomeBase drafts the list from these details — activities, season, the forecast and each person's age. You review and edit every item before anyone sees it.</div>
+      <div style="padding:0 16px">
+        <button onclick="hGenerateTrip()" style="width:100%;background:var(--navy);color:#fff;border:none;border-radius:14px;padding:16px;font-size:17px;font-weight:650;cursor:pointer;font-family:inherit">✨ Generate packing list</button>
+      </div>
+    </div>
+   </div>`;
+}
+function tripAttendeeToggle(c){
+  const on=((S.tf&&S.tf.attendeeIds)||[]).includes(c.id);
+  return `<button onclick="tfToggleAttendee('${c.id}')" style="display:inline-flex;align-items:center;gap:7px;border-radius:20px;padding:5px 12px 5px 5px;font-size:14px;font-weight:600;cursor:pointer;font-family:inherit;border:1.5px solid ${on?c.color:'var(--border)'};background:${on?c.color+'18':'transparent'};color:${on?c.color:'var(--text)'}">${av(c.name,c.color,26,c.photoURL)}${jobEsc(c.name)}${c.ageYears!=null?` <span style="opacity:.7;font-weight:500">${c.ageYears}</span>`:''}</button>`;
+}
+
+// ── Trip detail: curate (draft) + tick-off (published) ──
+function tripFact(k,v,vcol){return `<div style="flex:1;min-width:90px;background:var(--bg);border-radius:10px;padding:8px 11px"><div style="font-size:10px;font-weight:700;letter-spacing:.04em;text-transform:uppercase;color:var(--text-secondary)">${k}</div><div style="font-size:13.5px;font-weight:700;margin-top:2px;${vcol?'color:'+vcol:''}">${v}</div></div>`;}
+function sTripDetail(){
+  const id=S.screenParams&&S.screenParams.id;const t=tripDoc(id);
+  if(!t)return `<div style="flex:1;display:flex;flex-direction:column"><div style="background:var(--card);padding:14px 16px;display:flex;align-items:center;border-bottom:1px solid var(--row-border)"><button class="back-btn" onclick="back()">${bk()} Back</button><div style="flex:1;text-align:center;font-size:17px;font-weight:600">Packing list</div><div style="width:60px"></div></div><div style="padding:40px 24px;text-align:center;color:var(--text-secondary)">This trip no longer exists.</div></div>`;
+  const pub=t.status==='published';const pr=tripProgress(t);
+  return `
+   <div style="flex:1;display:flex;flex-direction:column">
+    <div style="background:var(--card);padding:14px 16px;display:flex;align-items:center;border-bottom:1px solid var(--row-border);position:sticky;top:0;z-index:10">
+      <button class="back-btn" onclick="back()">${bk()} Back</button>
+      <div style="flex:1;text-align:center;font-size:17px;font-weight:600">Packing list</div>
+      ${pub?`<button class="btn" onclick="tripDelete('${id}')" style="color:#FF3B30;font-size:14px;font-weight:600">Delete</button>`:`<button class="btn" onclick="tripPublish('${id}')" style="color:var(--navy);font-size:15px;font-weight:700">Publish</button>`}
+    </div>
+    <div class="scroll-view" style="padding:12px 0 34px">
+      <div class="card" style="padding:14px 16px">
+        <div style="font-size:19px;font-weight:800">${jobEsc(t.title||'Trip')}</div>
+        <div style="font-size:13px;color:var(--text-secondary);margin-top:2px">${jobEsc(t.place||'')}${t.place?' · ':''}${tripFmtDate(t.startDate)} – ${tripFmtDate(t.endDate)}${t.season?' · '+t.season:''}</div>
+        <div style="display:flex;gap:8px;margin-top:12px;flex-wrap:wrap">
+          ${tripFact('Status',pub?'Sent to family':'Draft · not sent')}
+          ${t.packBy?tripFact('Pack by',tripFmtPackBy(t.packBy),'#B26B00'):''}
+          ${tripFact('Packed',pr.done+'/'+pr.total)}
+        </div>
+        ${t.weatherSummary?`<div style="display:flex;gap:9px;margin-top:11px;padding:11px 12px;background:#EAF1F8;border-radius:12px"><span style="font-size:18px">🌦️</span><div style="font-size:12.5px;line-height:1.45;color:#33475b">${jobEsc(t.weatherSummary)}</div></div>`:''}
+      </div>
+      ${!pub?`<div style="display:flex;gap:9px;margin:12px 16px;padding:11px 12px;background:#EAF3FF;border:1px solid #DCEAFF;border-radius:12px"><span>✨</span><div style="font-size:12.5px;line-height:1.4;color:#0A4B93">Drafted from your trip. Remove anything, change a quantity, or add your own — nothing sends until you tap <b>Publish</b>.</div></div>`:''}
+      ${tripSection(t,'shared',null,'Shared')}
+      ${(t.attendees||[]).map(a=>tripSection(t,'person',a.id,a.name)).join('')}
+    </div>
+   </div>`;
+}
+function tripSection(t,scope,personId,label){
+  const pub=t.status==='published';
+  const items=scope==='shared'?(t.shared||[]):(((t.people||{})[personId])||[]);
+  const a=personId?tripFindAttendee(t,personId):null;
+  const col=a?a.color:NAVY;
+  const done=items.filter(i=>i.checked).length;
+  const key=scope==='shared'?'shared':('p_'+personId);
+  return `
+    <div class="sh" style="display:flex;align-items:center;gap:8px;margin-top:14px">
+      ${a?av(a.name,a.color,22,a.photoURL):'<span style="font-size:15px">🧺</span>'}
+      <span>${scope==='shared'?'Shared':jobEsc(label)}</span>
+      <span style="margin-left:auto;color:var(--text-secondary);font-weight:700">${pub?done+'/'+items.length:items.length}</span>
+    </div>
+    <div class="card">
+      ${items.length===0?`<div style="padding:14px 16px;color:var(--text-secondary);font-size:13px">No items yet.</div>`:''}
+      ${items.map((it,i)=>tripItemRow(t,scope,personId,it,i<items.length-1)).join('')}
+      ${pub?'':`<div style="display:flex;gap:8px;align-items:center;padding:9px 12px;border-top:${items.length?'1px solid var(--row-border)':'none'}">
+        <input id="taddin_${key}" placeholder="${scope==='shared'?'Add shared item…':'Add item…'}" onkeydown="if(event.key==='Enter'){event.preventDefault();tripAddItem('${t.id}','${scope}','${personId||''}')}" style="flex:1;border:none;background:transparent;font-size:15px;font-family:inherit;color:var(--text);outline:none">
+        <button onclick="tripAddItem('${t.id}','${scope}','${personId||''}')" aria-label="Add item" style="background:var(--navy);color:#fff;border:none;border-radius:8px;width:30px;height:30px;font-size:18px;cursor:pointer;font-family:inherit;flex-shrink:0">+</button>
+      </div>`}
+    </div>`;
+}
+function tripItemRow(t,scope,personId,it,border){
+  const pub=t.status==='published';const bd=border?'1px solid var(--row-border)':'none';
+  const owner=scope==='shared'&&it.owner?tripFindAttendee(t,it.owner):null;
+  const ownerAv=owner?av(owner.name,owner.color,24,owner.photoURL):'';
+  const tag=it.source==='manual'?`<span style="font-size:9px;font-weight:800;color:#0A7A3C;background:#E7F7ED;padding:2px 6px;border-radius:5px;margin-left:6px">ADDED</span>`:'';
+  if(pub){
+    return `<div class="row" style="border-bottom:${bd}">
+      <div class="cb ${it.checked?'on':''}" style="${it.checked?'background:#34C759;border:none':''}" onclick="tripToggle('${t.id}','${scope}','${personId||''}','${it.id}')">${it.checked?ck():''}</div>
+      <span style="flex:1;font-size:15px;${it.checked?'color:var(--text-secondary);text-decoration:line-through':''}">${jobEsc(it.label)}${it.quantity>1?' <span style="color:var(--text-secondary);font-weight:700">×'+it.quantity+'</span>':''}</span>
+      ${ownerAv}
+    </div>`;
+  }
+  return `<div class="row" style="border-bottom:${bd};gap:10px">
+    <button onclick="tripRemoveItem('${t.id}','${scope}','${personId||''}','${it.id}')" aria-label="Remove" style="width:22px;height:22px;border-radius:50%;border:2px solid var(--border);color:var(--text-secondary);background:none;font-size:15px;font-weight:800;line-height:1;cursor:pointer;flex-shrink:0">−</button>
+    <span style="flex:1;font-size:15px;min-width:0">${jobEsc(it.label)}${tag}</span>
+    <span style="display:inline-flex;align-items:center;background:var(--bg);border-radius:9px;overflow:hidden;flex-shrink:0">
+      <button onclick="tripQty('${t.id}','${scope}','${personId||''}','${it.id}',-1)" ${it.quantity<=1?'disabled':''} style="border:none;background:none;width:27px;height:28px;font-size:17px;color:${it.quantity<=1?'var(--text-tertiary,#C7C7CC)':'var(--navy)'};cursor:${it.quantity<=1?'default':'pointer'};font-family:inherit">−</button>
+      <span style="min-width:20px;text-align:center;font-size:14px;font-weight:700">${it.quantity}</span>
+      <button onclick="tripQty('${t.id}','${scope}','${personId||''}','${it.id}',1)" style="border:none;background:none;width:27px;height:28px;font-size:17px;color:var(--navy);cursor:pointer;font-family:inherit">+</button>
+    </span>
+    ${ownerAv}
+  </div>`;
+}
+
+// ── Trip handlers (exposed on window for inline onclick) ──
+function tripGetItems(t,scope,personId){return scope==='shared'?(t.shared||[]).slice():(((t.people||{})[personId])||[]).slice();}
+function tripWriteItems(t,scope,personId,arr){if(scope==='shared')return fupd(['tripPacking',t.id],{shared:arr});const people=Object.assign({},t.people||{});people[personId]=arr;return fupd(['tripPacking',t.id],{people});}
+
+window.tripNew=()=>{
+  const today=new Date();const start=fd(today);const end=fd(new Date(today.getTime()+2*86400000));
+  const pb=new Date(start+'T00:00:00');pb.setDate(pb.getDate()-1);
+  S.tf={title:'',place:'',startDate:start,endDate:end,season:tripSeason(start),packBy:fd(pb)+'T18:00',activities:[],attendeeIds:[]};
+  go('addTrip');
+};
+window.tfSet=(k,v)=>{if(S.tf)S.tf[k]=v;};
+window.tfSetDate=(k,v)=>{if(!S.tf)return;S.tf[k]=v;if(k==='startDate'){S.tf.season=tripSeason(v);if(S.tf.endDate&&S.tf.endDate<v)S.tf.endDate=v;}render();};
+window.tfToggleAttendee=(id)=>{if(!S.tf)return;const a=S.tf.attendeeIds||(S.tf.attendeeIds=[]);const i=a.indexOf(id);if(i<0)a.push(id);else a.splice(i,1);render();};
+window.tfAddActivity=()=>{if(!S.tf)return;const el=$('tf_activity');if(!el)return;const v=(el.value||'').trim();if(!v)return;(S.tf.activities||(S.tf.activities=[])).push(v.slice(0,60));el.value='';render();};
+window.tfRemoveActivity=(i)=>{if(!S.tf||!S.tf.activities)return;S.tf.activities.splice(i,1);render();};
+
+window.hGenerateTrip=async()=>{
+  const tf=S.tf||{};
+  if(!tf.title||!tf.title.trim())return notify('Give the trip a name','✏️');
+  if(!tf.startDate||!tf.endDate)return notify('Pick start and end dates','📅');
+  if(tf.endDate<tf.startDate)return notify('The end date is before the start date','📅');
+  const ids=tf.attendeeIds||[];
+  if(!ids.length)return notify('Pick who is going','👥');
+  if(typeof httpsCallable==='undefined'||!functions)return notify('Cloud functions not loaded — try again in a moment','⚠️');
+  const cands=tripCandidates();
+  const attendees=ids.map(id=>cands.find(c=>c.id===id)).filter(Boolean);
+  const idSet=new Set(ids);
+  const meds=(S.medicines||[]).filter(m=>m.isActive!==false&&((m.childId&&idSet.has(m.childId))||(m.adultUid&&idSet.has(m.adultUid)))).map(m=>({name:m.name,owner:m.childId||m.adultUid||''}));
+  const overlay=tripOverlay('🧳','Drafting the packing list…','Reading the forecast and each person’s details');
+  try{
+    const callable=httpsCallable(functions,'generatePackingList');
+    const resp=await callable({familyId:S.familyId||'',medicines:meds,trip:{
+      title:tf.title.trim(),place:(tf.place||'').trim(),startDate:tf.startDate,endDate:tf.endDate,season:tf.season||'',
+      activities:tf.activities||[],attendees:attendees.map(a=>({id:a.id,name:a.name,role:a.role,ageYears:a.ageYears}))
+    }});
+    const data=(resp&&resp.data)||{};
+    const stamp=it=>({id:tripUid(),label:String(it.label||'').slice(0,80),quantity:it.quantity||1,category:it.category||'other',owner:it.owner||'',checked:false,checkedBy:'',source:'ai'});
+    const people={};(data.people||[]).forEach(p=>{people[p.id]=(p.items||[]).map(stamp);});
+    attendees.forEach(a=>{if(!people[a.id])people[a.id]=[];});
+    const doc={
+      title:tf.title.trim(),place:(tf.place||'').trim(),startDate:tf.startDate,endDate:tf.endDate,season:tf.season||'',packBy:tf.packBy||'',
+      activities:tf.activities||[],attendees:attendees.map(a=>({id:a.id,name:a.name,role:a.role,color:a.color,ageYears:a.ageYears,photoURL:a.photoURL||''})),
+      weatherSummary:data.weatherSummary||'',status:'draft',shared:(data.shared||[]).map(stamp),people:people,eventId:'',createdBy:(S.user&&S.user.uid)||''
+    };
+    const ref=await fadd(['tripPacking'],doc);
+    overlay.remove();
+    notify('Draft ready — review and publish','✨');
+    S.tf=null;S.screen='tripDetail';S.screenParams={id:ref.id};render();
+  }catch(ex){overlay.remove();notify('Could not draft the list: '+friendlyError(ex),'❌');}
+};
+
+window.tripQty=async(id,scope,personId,itemId,delta)=>{const t=tripDoc(id);if(!t)return;const arr=tripGetItems(t,scope,personId);const it=arr.find(x=>x.id===itemId);if(!it)return;it.quantity=Math.max(1,Math.min(99,(it.quantity||1)+delta));try{await tripWriteItems(t,scope,personId,arr);}catch(ex){notify('Save failed: '+friendlyError(ex),'⚠️');}};
+window.tripRemoveItem=async(id,scope,personId,itemId)=>{const t=tripDoc(id);if(!t)return;const arr=tripGetItems(t,scope,personId).filter(x=>x.id!==itemId);try{await tripWriteItems(t,scope,personId,arr);}catch(ex){notify('Save failed: '+friendlyError(ex),'⚠️');}};
+window.tripAddItem=async(id,scope,personId)=>{const t=tripDoc(id);if(!t)return;const key=scope==='shared'?'shared':('p_'+personId);const el=$('taddin_'+key);const v=el?(el.value||'').trim():'';if(!v)return;const arr=tripGetItems(t,scope,personId);arr.push({id:tripUid(),label:v.slice(0,80),quantity:1,category:'other',owner:'',checked:false,checkedBy:'',source:'manual'});try{await tripWriteItems(t,scope,personId,arr);}catch(ex){notify('Save failed: '+friendlyError(ex),'⚠️');}};
+window.tripToggle=async(id,scope,personId,itemId)=>{const t=tripDoc(id);if(!t)return;const arr=tripGetItems(t,scope,personId);const it=arr.find(x=>x.id===itemId);if(!it)return;it.checked=!it.checked;it.checkedBy=it.checked?((S.user&&S.user.uid)||''):'';try{await tripWriteItems(t,scope,personId,arr);}catch(ex){notify('Save failed: '+friendlyError(ex),'⚠️');}};
+window.tripPublish=async(id)=>{
+  const t=tripDoc(id);if(!t)return;
+  try{
+    let eventId=t.eventId||'';
+    if(!eventId){
+      const childIds=(t.attendees||[]).filter(a=>a.role==='child').map(a=>a.id);
+      const adultUids=(t.attendees||[]).filter(a=>a.role==='adult').map(a=>a.id);
+      const ev=await fadd(['events'],{
+        title:'🧳 '+(t.title||'Trip'),emoji:'🧳',freq:'once',date:t.startDate,endDate:t.endDate,
+        allDay:true,time:'',days:{Mon:false,Tue:false,Wed:false,Thu:false,Fri:false,Sat:false,Sun:false},
+        category:'',sport:'',location:t.place||'',dropoff:false,pickup:false,
+        participantIds:childIds.concat(adultUids),packItems:[],
+        notes:'Trip packing list'+(t.packBy?' · pack by '+tripFmtPackBy(t.packBy):'')+(t.weatherSummary?'\n'+t.weatherSummary:'')
+      });
+      eventId=ev.id;
+    }
+    await fupd(['tripPacking',id],{status:'published',eventId:eventId});
+    notify('Packing list sent · added to Calendar','📤');
+  }catch(ex){notify('Publish failed: '+friendlyError(ex),'⚠️');}
+};
+window.tripDelete=async(id)=>{
+  const t=tripDoc(id);if(!t)return;
+  if(!confirm('Delete this trip and its packing list?'))return;
+  try{
+    if(t.eventId){try{await fdel(['events',t.eventId]);}catch(e){}}
+    await fdel(['tripPacking',id]);
+    go('trips');
+    notify('Trip deleted','🗑️');
+  }catch(ex){notify('Delete failed: '+friendlyError(ex),'⚠️');}
+};
+
 // HTML-escape job labels (free text from users) before injecting into markup.
 function jobEsc(s){return String(s==null?'':s).replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;');}
 // Assignee chip — tap to cycle through adults. Filled pill when assigned,
@@ -9986,7 +10271,8 @@ function render(){
       inboxReview:sInboxReview,inboxSetup:sInboxSetup,
       shoppingListBuilder:sShoppingListBuilder,
       recipeSuggestions:sRecipeSuggestions,
-      quickTraining:sQuickTraining
+      quickTraining:sQuickTraining,
+      trips:sTrips,addTrip:sAddTrip,tripDetail:sTripDetail
     };
     html=(map[S.screen]||sToday)();
   } else {
