@@ -3807,7 +3807,10 @@ function sEvents(){
     ${(S.evSearch||'').trim()?'':`<div class="scroll-view" style="padding:14px 16px 100px">
 
       <!-- Quick add one-off -->
-      <button onclick="go('addEvent')" style="width:100%;padding:14px;border-radius:14px;background:var(--navy);border:none;color:#fff;font-size:15px;font-weight:700;cursor:pointer;font-family:inherit;margin-bottom:18px;display:flex;align-items:center;justify-content:center;gap:6px;box-shadow:0 2px 8px rgba(28,58,107,0.15)">+ Add Event</button>
+      <button onclick="go('addEvent')" style="width:100%;padding:14px;border-radius:14px;background:var(--navy);border:none;color:#fff;font-size:15px;font-weight:700;cursor:pointer;font-family:inherit;margin-bottom:10px;display:flex;align-items:center;justify-content:center;gap:6px;box-shadow:0 2px 8px rgba(28,58,107,0.15)">+ Add Event</button>
+
+      <!-- Trip Packing: create a trip, AI drafts an itemised packing list -->
+      <button onclick="go('trips')" style="width:100%;padding:14px;border-radius:14px;background:var(--card);border:1px solid var(--border);color:var(--text);font-size:15px;font-weight:700;cursor:pointer;font-family:inherit;margin-bottom:18px;display:flex;align-items:center;justify-content:center;gap:8px">🧳 Trips &amp; Packing Lists</button>
 
       <!-- IMPORT TOOLS -->
       <div class="sh" style="padding:0;margin-bottom:8px">Import Events</div>
@@ -8263,7 +8266,6 @@ function sLists(){
   if(S.listTab==='groceries')return sGroceries();
   if(S.listTab==='dinners')return sDinners();
   if(S.listTab==='assessments')return sAssessments();
-  if(S.listTab==='trips')return sTrips();
   const urg=S.assessments.filter(a=>{const dl=assessmentDaysLeft(a);return dl!=null&&dl<=7;}).length;
   return `
     <div style="background:#fff;padding:14px 16px;border-bottom:1px solid #F2F2F7;position:sticky;top:0;z-index:10">
@@ -8272,8 +8274,7 @@ function sLists(){
     <div class="scroll-view" style="padding:16px 0">
       <div class="card">
         ${[{id:'groceries',icon:'🛒',label:'Groceries',sub:'Family shopping list',badge:0},
-           {id:'dinners',icon:'🍲',label:'Dinners',sub:'Weekly meal plan'+(S.dinners?.length?' · '+S.dinners.length+' meals':''),badge:0},
-           {id:'trips',icon:'🧳',label:'Trip Packing',sub:'AI packing lists'+(S.tripPacking?.length?' · '+S.tripPacking.length+' trip'+(S.tripPacking.length>1?'s':''):''),badge:0}
+           {id:'dinners',icon:'🍲',label:'Dinners',sub:'Weekly meal plan'+(S.dinners?.length?' · '+S.dinners.length+' meals':''),badge:0}
           ].map((cat,i,arr)=>`<button class="btn" onclick="S.listTab='${cat.id}';render()" style="width:100%;padding:14px 16px;display:flex;align-items:center;gap:14px;border-bottom:${i<arr.length-1?'1px solid #F2F2F7':'none'};text-align:left">
           <div style="width:48px;height:48px;border-radius:12px;background:#F2F2F7;font-size:26px;display:flex;align-items:center;justify-content:center">${cat.icon}</div>
           <div style="flex:1"><div style="font-size:16px;font-weight:600">${cat.label}</div><div style="font-size:13px;color:#8E8E93">${cat.sub}</div></div>
@@ -8382,7 +8383,7 @@ function sTrips(){
   return `
    <div style="flex:1;display:flex;flex-direction:column">
     <div style="background:var(--card);padding:14px 16px;display:flex;align-items:center;border-bottom:1px solid var(--row-border);position:sticky;top:0;z-index:10">
-      <button class="back-btn" onclick="S.listTab='menu';render()">${bk()} Back</button>
+      <button class="back-btn" onclick="back()">${bk()} Back</button>
       <div style="flex:1;text-align:center;font-size:17px;font-weight:600">🧳 Trip Packing</div>
       <button class="btn" onclick="tripNew()" style="color:var(--navy);font-size:15px;font-weight:600">+ New</button>
     </div>
@@ -8544,7 +8545,7 @@ window.tripNew=()=>{
   const today=new Date();const start=fd(today);const end=fd(new Date(today.getTime()+2*86400000));
   const pb=new Date(start+'T00:00:00');pb.setDate(pb.getDate()-1);
   S.tf={title:'',place:'',startDate:start,endDate:end,season:tripSeason(start),packBy:fd(pb)+'T18:00',activities:[],attendeeIds:[]};
-  S.screen='addTrip';S.screenParams={};render();
+  go('addTrip');
 };
 window.tfSet=(k,v)=>{if(S.tf)S.tf[k]=v;};
 window.tfSetDate=(k,v)=>{if(!S.tf)return;S.tf[k]=v;if(k==='startDate'){S.tf.season=tripSeason(v);if(S.tf.endDate&&S.tf.endDate<v)S.tf.endDate=v;}render();};
@@ -8617,7 +8618,7 @@ window.tripDelete=async(id)=>{
   try{
     if(t.eventId){try{await fdel(['events',t.eventId]);}catch(e){}}
     await fdel(['tripPacking',id]);
-    S.screen=null;S.screenParams={};S.listTab='trips';render();
+    go('trips');
     notify('Trip deleted','🗑️');
   }catch(ex){notify('Delete failed: '+friendlyError(ex),'⚠️');}
 };
@@ -10271,7 +10272,7 @@ function render(){
       shoppingListBuilder:sShoppingListBuilder,
       recipeSuggestions:sRecipeSuggestions,
       quickTraining:sQuickTraining,
-      addTrip:sAddTrip,tripDetail:sTripDetail
+      trips:sTrips,addTrip:sAddTrip,tripDetail:sTripDetail
     };
     html=(map[S.screen]||sToday)();
   } else {
