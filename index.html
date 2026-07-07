@@ -8396,6 +8396,22 @@ function tripSeason(ds){const m=parseInt((ds||'').slice(5,7),10);if(!m)return ''
 function tripFmtDate(ds){if(!ds)return '';const d=new Date(ds+'T00:00:00');if(isNaN(d))return ds;return d.toLocaleDateString('en-AU',{weekday:'short',day:'numeric',month:'short'});}
 function tripFmtPackBy(s){if(!s)return '';const d=new Date(s);if(isNaN(d))return s;return d.toLocaleDateString('en-AU',{weekday:'short',day:'numeric',month:'short'})+' · '+d.toLocaleTimeString('en-AU',{hour:'numeric',minute:'2-digit'});}
 function tripTimeLabel(hhmm){if(!hhmm)return '';const m=/^(\d{1,2}):(\d{2})/.exec(hhmm);if(!m)return '';let h=+m[1];const min=m[2];const p=h>=12?'pm':'am';h=h%12;if(h===0)h=12;return h+':'+min+p;}
+function tripNowLabel(){try{return new Date().toLocaleTimeString('en-AU',{hour:'numeric',minute:'2-digit'});}catch(e){return '';}}
+// One travel-leg row on the trip screen: label + flight no. + times, plus a
+// "Check status" button (when a flight number + date are set) and the last
+// fetched status.
+function tripLegRow(t,l){
+  const when=(l.date?tripFmtDate(l.date):'')+(l.time?' · '+tripTimeLabel(l.time):'');
+  const st=l.status;const tone=st?(st.tone==='bad'?'#FF3B30':st.tone==='warn'?'#B26B00':'#1B8A3A'):'';
+  return `<div style="padding:7px 0;border-top:1px solid var(--row-border)">
+    <div style="display:flex;gap:8px;align-items:center">
+      <span>✈️</span>
+      <div style="flex:1;min-width:0"><div style="font-size:13px;font-weight:600">${jobEsc(l.label)}${l.flightNumber?` <span style="font-size:11px;color:var(--text-secondary);font-weight:700">${jobEsc(l.flightNumber)}</span>`:''}</div>${when?`<div style="font-size:12px;color:var(--text-secondary)">${when}</div>`:''}</div>
+      ${(l.flightNumber&&l.date)?`<button onclick="tripCheckFlight('${t.id}','${l.id}')" style="flex-shrink:0;background:var(--bg);border:1px solid var(--border);color:var(--navy);font-size:11px;font-weight:700;border-radius:7px;padding:5px 9px;cursor:pointer;font-family:inherit">Check status</button>`:''}
+    </div>
+    ${st?`<div style="font-size:12px;font-weight:600;color:${tone};margin-top:3px;padding-left:26px">${jobEsc(st.text)}${st.at?` <span style="color:var(--text-secondary);font-weight:400">· ${st.at}</span>`:''}</div>`:''}
+  </div>`;
+}
 function tripDoc(id){return (S.tripPacking||[]).find(x=>x.id===id);}
 function tripFindAttendee(t,id){return (t.attendees||[]).find(a=>a.id===id)||{name:'?',color:NAVY,photoURL:''};}
 function tripCandidates(){
@@ -8487,11 +8503,12 @@ function sAddTrip(){
       <div class="card" style="padding:11px 12px">
         ${(tf.travelLegs||[]).map((l,i)=>`<div style="display:flex;align-items:center;gap:8px;padding:7px 2px;border-bottom:${i<((tf.travelLegs||[]).length-1)?'1px solid var(--row-border)':'none'}">
           <span style="font-size:16px">✈️</span>
-          <div style="flex:1;min-width:0"><div style="font-size:14px;font-weight:600">${jobEsc(l.label)}</div><div style="font-size:12px;color:var(--text-secondary)">${l.date?tripFmtDate(l.date):'No date'}${l.time?' · '+tripTimeLabel(l.time):''}</div></div>
+          <div style="flex:1;min-width:0"><div style="font-size:14px;font-weight:600">${jobEsc(l.label)}${l.flightNumber?` <span style="font-size:11px;color:var(--text-secondary);font-weight:700">${jobEsc(l.flightNumber)}</span>`:''}</div><div style="font-size:12px;color:var(--text-secondary)">${l.date?tripFmtDate(l.date):'No date'}${l.time?' · '+tripTimeLabel(l.time):''}</div></div>
           <button onclick="tfRemoveLeg(${i})" aria-label="Remove" style="color:#FF3B30;font-size:18px;border:none;background:none;cursor:pointer">×</button>
         </div>`).join('')}
         <div style="display:flex;flex-wrap:wrap;gap:6px;align-items:center;margin-top:${(tf.travelLegs||[]).length?'8px':'0'}">
-          <input id="tf_leg_label" placeholder="e.g. Flight QF123 to Hobart" style="flex:1;min-width:150px;border:1px solid var(--border);background:var(--bg);border-radius:8px;padding:8px 10px;font-size:14px;font-family:inherit;color:var(--text);outline:none">
+          <input id="tf_leg_label" placeholder="e.g. Flight to Hobart" style="flex:1;min-width:140px;border:1px solid var(--border);background:var(--bg);border-radius:8px;padding:8px 10px;font-size:14px;font-family:inherit;color:var(--text);outline:none">
+          <input id="tf_leg_flight" placeholder="Flight no." aria-label="Flight number" style="width:100px;border:1px solid var(--border);background:var(--bg);border-radius:8px;padding:8px 10px;font-size:14px;font-family:inherit;color:var(--text);outline:none;text-transform:uppercase">
           <input id="tf_leg_date" type="date" aria-label="Travel date" style="border:1px solid var(--border);background:var(--bg);border-radius:8px;padding:7px 8px;font-size:13px;font-family:inherit;color:var(--text)">
           <input id="tf_leg_time" type="time" aria-label="Travel time" style="border:1px solid var(--border);background:var(--bg);border-radius:8px;padding:7px 8px;font-size:13px;font-family:inherit;color:var(--text)">
           <button onclick="tfAddLeg()" style="background:var(--navy);color:#fff;border:none;border-radius:8px;padding:8px 12px;font-size:14px;font-weight:600;cursor:pointer;font-family:inherit">+ Add</button>
@@ -8538,7 +8555,7 @@ function sTripDetail(){
           ${tripFact('Packed',pr.done+'/'+pr.total)}
         </div>
         ${t.weatherSummary?`<div style="display:flex;gap:9px;margin-top:11px;padding:11px 12px;background:#EAF1F8;border-radius:12px"><span style="font-size:18px">🌦️</span><div style="font-size:12.5px;line-height:1.45;color:#33475b">${jobEsc(t.weatherSummary)}</div></div>`:''}
-        ${(t.travelLegs&&t.travelLegs.length)?`<div style="margin-top:11px;border-top:1px solid var(--row-border);padding-top:9px">${t.travelLegs.map(l=>`<div style="display:flex;gap:8px;align-items:center;padding:3px 0"><span>✈️</span><div style="flex:1;min-width:0;font-size:13px;font-weight:500">${jobEsc(l.label)}</div><div style="font-size:12px;color:var(--text-secondary);white-space:nowrap">${l.date?tripFmtDate(l.date):''}${l.time?' · '+tripTimeLabel(l.time):''}</div></div>`).join('')}</div>`:''}
+        ${(t.travelLegs&&t.travelLegs.length)?`<div style="margin-top:9px">${t.travelLegs.map(l=>tripLegRow(t,l)).join('')}</div>`:''}
       </div>
       ${!pub?`<div style="display:flex;gap:9px;margin:12px 16px;padding:11px 12px;background:#EAF3FF;border:1px solid #DCEAFF;border-radius:12px"><span>✨</span><div style="font-size:12.5px;line-height:1.4;color:#0A4B93">Drafted from your trip. Remove anything, change a quantity, or add your own — nothing sends until you tap <b>Publish</b>.</div></div>`:''}
       ${tripSection(t,'shared',null,'Shared')}
@@ -8607,7 +8624,29 @@ window.tfSetDate=(k,v)=>{if(!S.tf)return;S.tf[k]=v;if(k==='startDate'){S.tf.seas
 window.tfToggleAttendee=(id)=>{if(!S.tf)return;const a=S.tf.attendeeIds||(S.tf.attendeeIds=[]);const i=a.indexOf(id);if(i<0)a.push(id);else a.splice(i,1);render();};
 window.tfAddActivity=()=>{if(!S.tf)return;const el=$('tf_activity');if(!el)return;const v=(el.value||'').trim();if(!v)return;(S.tf.activities||(S.tf.activities=[])).push(v.slice(0,60));el.value='';render();};
 window.tfRemoveActivity=(i)=>{if(!S.tf||!S.tf.activities)return;S.tf.activities.splice(i,1);render();};
-window.tfAddLeg=()=>{if(!S.tf)return;const l=$('tf_leg_label'),d=$('tf_leg_date'),tm=$('tf_leg_time');const label=(l&&l.value||'').trim();if(!label)return notify('Add a description (e.g. Flight to Hobart)','✏️');(S.tf.travelLegs||(S.tf.travelLegs=[])).push({id:tripUid(),label:label.slice(0,80),date:(d&&d.value)||'',time:(tm&&tm.value)||'',eventId:''});render();};
+window.tfAddLeg=()=>{if(!S.tf)return;const l=$('tf_leg_label'),d=$('tf_leg_date'),tm=$('tf_leg_time'),fn=$('tf_leg_flight');const label=(l&&l.value||'').trim();if(!label)return notify('Add a description (e.g. Flight to Hobart)','✏️');(S.tf.travelLegs||(S.tf.travelLegs=[])).push({id:tripUid(),label:label.slice(0,80),date:(d&&d.value)||'',time:(tm&&tm.value)||'',flightNumber:(fn&&fn.value||'').trim().toUpperCase().replace(/\s+/g,'').slice(0,10),eventId:''});render();};
+// Fetch live flight status for a leg via the checkFlightStatus callable and
+// store the result on the leg so it shows on the trip screen.
+window.tripCheckFlight=async(tripId,legId)=>{
+  const t=tripDoc(tripId);if(!t)return;
+  const legs=(t.travelLegs||[]).map(l=>Object.assign({},l));
+  const leg=legs.find(l=>l.id===legId);
+  if(!leg||!leg.flightNumber||!leg.date)return;
+  if(typeof httpsCallable==='undefined'||!functions)return notify('Cloud functions not loaded — try again','⚠️');
+  notify('Checking '+leg.flightNumber+'…','✈️');
+  try{
+    const callable=httpsCallable(functions,'checkFlightStatus');
+    const resp=await callable({familyId:S.familyId||'',flightNumber:leg.flightNumber,date:leg.date});
+    const d=(resp&&resp.data)||{};
+    let tone='ok';
+    if(!d.found)tone='warn';
+    else if((d.status||'').toLowerCase().includes('cancel'))tone='bad';
+    else if(d.delayMin&&d.delayMin>=15)tone='bad';
+    else if(d.delayMin&&d.delayMin>=5)tone='warn';
+    leg.status={text:d.summary||'No status available',tone:tone,at:tripNowLabel()};
+    await fupd(['tripPacking',tripId],{travelLegs:legs});
+  }catch(ex){notify('Could not check flight: '+friendlyError(ex),'⚠️');}
+};
 window.tfRemoveLeg=(i)=>{if(!S.tf||!S.tf.travelLegs)return;S.tf.travelLegs.splice(i,1);render();};
 // Fold-in: choosing the "Trip" category in Add Event carries the entered
 // title/dates/people into the trip setup (packing-list flow).
