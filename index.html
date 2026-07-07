@@ -2217,35 +2217,30 @@ function sToday(){
     <div style="padding:16px 0 130px">
       ${(()=>{
         if((S.dayOffset||0)!==0)return '';
-        const trips=(S.tripPacking||[]).filter(t=>t.status==='published'&&(!t.endDate||t.endDate>=todayStr));
+        const trips=(S.tripPacking||[]).filter(t=>t.status==='published'&&(!t.endDate||t.endDate>=todayStr)&&tripInvolvesViewer(t));
         if(!trips.length)return '';
-        const myUid=S.user?.uid||'';
-        const meMem=members().find(m=>m.uid===myUid);
-        const myIds=[myUid];if(meMem&&meMem.linkedChildId)myIds.push(meMem.linkedChildId);
         const cards=trips.map(t=>{
-          let mine=[];myIds.forEach(id=>{mine=mine.concat((t.people&&t.people[id])||[]);});
-          (t.shared||[]).forEach(it=>{if(it.owner&&myIds.includes(it.owner))mine.push(it);});
-          const isMine=mine.length>0;
-          const scope=isMine?mine:[].concat(...Object.values(t.people||{}),(t.shared||[]));
+          const va=tripVisibleAttendees(t);
+          let scope=[];va.forEach(a=>{scope=scope.concat((t.people&&t.people[a.id])||[]);});
+          scope=scope.concat(t.shared||[]); // the viewer's own list + the whole shared list
           const done=scope.filter(i=>i.checked).length,total=scope.length;
           const pct=total?Math.round(done/total*100):0;
           const complete=total>0&&done===total;
           const pbDate=t.packBy?t.packBy.slice(0,10):'';
           const overdue=pbDate&&pbDate<todayStr&&!complete;
-          return `<button class="btn card" onclick="go('tripDetail',{id:'${t.id}'})" style="width:100%;text-align:left;padding:13px 15px;display:flex;flex-direction:column;gap:8px;margin-bottom:10px">
-            <div style="display:flex;align-items:center;gap:9px">
-              <span style="font-size:18px">🧳</span>
-              <div style="flex:1;min-width:0"><div style="font-size:15px;font-weight:700">${jobEsc(t.title||'Trip')}</div>
-              <div style="font-size:12px;color:${overdue?'#FF3B30':'var(--text-secondary)'}">${isMine?'Your packing':'Packing'}${t.packBy?' · pack by '+tripFmtPackBy(t.packBy):''}</div></div>
-              ${complete?`<span style="font-size:11px;font-weight:800;color:#1B8A3A;background:#34C75920;padding:3px 8px;border-radius:20px">DONE ✓</span>`:''}
+          return `<button class="card" onclick="go('tripDetail',{id:'${t.id}'})" style="display:block;width:auto;text-align:left;padding:14px 16px;margin-bottom:10px;border:none;cursor:pointer;font-family:inherit">
+            <div style="display:flex;align-items:center;gap:12px">
+              <div style="width:32px;height:32px;border-radius:16px;background:${NAVY}18;border:2px solid ${NAVY};display:flex;align-items:center;justify-content:center;font-size:15px;flex-shrink:0">🧳</div>
+              <div style="flex:1;min-width:0">
+                <div style="font-size:14px;font-weight:600;color:var(--text);overflow:hidden;text-overflow:ellipsis;white-space:nowrap">${jobEsc(t.title||'Trip')}</div>
+                <div style="font-size:12px;color:${overdue?'#FF3B30':'var(--text-secondary)'};overflow:hidden;text-overflow:ellipsis;white-space:nowrap">Your packing${t.packBy?' · pack by '+tripFmtPackBy(t.packBy):''}</div>
+              </div>
+              <span style="font-size:12px;font-weight:700;color:${complete?'#1B8A3A':'var(--text-secondary)'};flex-shrink:0">${complete?'Done ✓':done+'/'+total}</span>
             </div>
-            <div style="display:flex;align-items:center;gap:9px">
-              <div style="flex:1;height:7px;background:var(--bg);border-radius:4px;overflow:hidden"><div style="height:100%;width:${pct}%;background:${complete?'#34C759':NAVY}"></div></div>
-              <span style="font-size:12px;font-weight:700;color:var(--text-secondary)">${done}/${total}</span>
-            </div>
+            <div style="height:6px;background:var(--bg);border-radius:3px;overflow:hidden;margin-top:10px"><div style="height:100%;width:${pct}%;background:${complete?'#34C759':NAVY}"></div></div>
           </button>`;
         }).join('');
-        return `<div class="sh" style="margin-bottom:6px">🧳 Trip packing</div><div style="padding:0 16px">${cards}</div>`;
+        return `<div class="sh" style="margin-bottom:6px">🧳 Trip packing</div>${cards}`;
       })()}
       ${!S.weather?`<div style="margin:0 16px 14px;background:#fff;border-radius:12px;padding:10px 14px;display:flex;align-items:center;gap:8px;box-shadow:0 1px 3px rgba(0,0,0,0.05);border:1px solid #F2F2F7"><span style="font-size:18px">🌤</span><span style="flex:1;font-size:13px;color:#8E8E93">No weather — set location</span><button onclick="setTab('settings')" style="padding:5px 10px;border-radius:8px;background:#1C3A6B;border:none;color:#fff;font-size:12px;font-weight:600;cursor:pointer;font-family:inherit">Set up →</button></div>`:''}
 
@@ -8416,6 +8411,16 @@ function tripCandidates(){
   return kids.concat(adults);
 }
 function tripProgress(t){let done=0,total=0;(t.shared||[]).forEach(i=>{total++;if(i.checked)done++;});Object.values(t.people||{}).forEach(arr=>(arr||[]).forEach(i=>{total++;if(i.checked)done++;}));return {done,total,pct:total?done/total:0};}
+// ── Trip visibility: each person sees only THEIR OWN list(s) + the shared list.
+// "Their own" = the viewer's uid, the child profile their login is linked to,
+// and anyone whose list they've been assigned to manage (managedBy). The trip
+// creator sees everyone while it's still a DRAFT (so they can curate it).
+function tripViewerIds(){const uid=(S.user&&S.user.uid)||'';const ids=uid?[uid]:[];const me=members().find(m=>m.uid===uid);if(me&&me.linkedChildId)ids.push(me.linkedChildId);return ids;}
+function tripCanManage(t,a){if(!a)return false;const uid=(S.user&&S.user.uid)||'';return tripViewerIds().includes(a.id)||a.managedBy===uid;}
+function tripInvolvesViewer(t){const uid=(S.user&&S.user.uid)||'';if(t.createdBy===uid)return true;return (t.attendees||[]).some(a=>tripCanManage(t,a));}
+function tripVisibleAttendees(t){const uid=(S.user&&S.user.uid)||'';if(t.createdBy===uid&&t.status!=='published')return (t.attendees||[]);return (t.attendees||[]).filter(a=>tripCanManage(t,a));}
+function tripProgressVisible(t){let done=0,total=0;(t.shared||[]).forEach(i=>{total++;if(i.checked)done++;});tripVisibleAttendees(t).forEach(a=>((t.people||{})[a.id]||[]).forEach(i=>{total++;if(i.checked)done++;}));return{done,total,pct:total?done/total:0};}
+function tripChildHasLogin(childId){return members().some(m=>m.linkedChildId===childId);}
 function tripOverlay(emoji,title,sub){
   const o=document.createElement('div');
   o.style.cssText='position:fixed;inset:0;z-index:9999;background:rgba(20,25,35,.55);backdrop-filter:blur(4px);display:flex;align-items:center;justify-content:center;padding:24px';
@@ -8425,7 +8430,7 @@ function tripOverlay(emoji,title,sub){
 
 // ── Trip list (under Kitchen › Trip Packing) ──
 function sTrips(){
-  const trips=(S.tripPacking||[]).slice().sort((a,b)=>(b.startDate||'').localeCompare(a.startDate||''));
+  const trips=(S.tripPacking||[]).filter(t=>tripInvolvesViewer(t)).sort((a,b)=>(b.startDate||'').localeCompare(a.startDate||''));
   return `
    <div style="flex:1;display:flex;flex-direction:column">
     <div style="background:var(--card);padding:14px 16px;display:flex;align-items:center;border-bottom:1px solid var(--row-border);position:sticky;top:0;z-index:10">
@@ -8442,7 +8447,7 @@ function sTrips(){
    </div>`;
 }
 function tripCard(t){
-  const pr=tripProgress(t);const pub=t.status==='published';
+  const pr=tripProgressVisible(t);const pub=t.status==='published';
   const avatars=(t.attendees||[]).slice(0,5).map(a=>av(a.name,a.color,26,a.photoURL)).join('');
   return `<button class="btn card" onclick="go('tripDetail',{id:'${t.id}'})" style="width:100%;text-align:left;padding:14px;display:flex;flex-direction:column;gap:9px">
     <div style="display:flex;align-items:flex-start;gap:10px">
@@ -8493,7 +8498,22 @@ function sAddTrip(){
       <div class="sh">Who's going</div>
       <div class="card" style="padding:11px 12px">
         ${cands.length===0?`<div style="color:var(--text-secondary);font-size:13px;padding:4px">Add family members first (Family tab).</div>`:
-        `<div style="display:flex;flex-wrap:wrap;gap:8px">${cands.map(c=>tripAttendeeToggle(c)).join('')}</div>`}
+        `<div style="display:flex;flex-wrap:wrap;gap:8px">${cands.map(c=>tripAttendeeToggle(c)).join('')}</div>${(()=>{
+          const sel=(S.tf&&S.tf.attendeeIds)||[];
+          const adults=cands.filter(c=>c.role==='adult');
+          const needMgr=sel.map(id=>cands.find(c=>c.id===id)).filter(c=>c&&c.role==='child'&&!tripChildHasLogin(c.id));
+          if(!needMgr.length||!adults.length)return '';
+          return `<div style="margin-top:11px;border-top:1px solid var(--row-border);padding-top:10px">
+            <div style="font-size:12px;color:var(--text-secondary);margin-bottom:8px">No login of their own? Assign the adult who packs for them.</div>
+            ${needMgr.map(c=>`<div style="display:flex;align-items:center;gap:8px;padding:4px 0">
+              ${av(c.name,c.color,24,c.photoURL)}<span style="flex:1;font-size:14px;font-weight:600">${jobEsc(c.name)}</span>
+              <select onchange="tfSetManaged('${c.id}',this.value)" style="border:1px solid var(--border);background:var(--bg);border-radius:8px;padding:6px 8px;font-size:13px;font-family:inherit;color:var(--text)">
+                <option value="">— pick adult —</option>
+                ${adults.map(ad=>`<option value="${ad.id}" ${(((S.tf&&S.tf.managed)||{})[c.id]===ad.id)?'selected':''}>${jobEsc(ad.name)}</option>`).join('')}
+              </select>
+            </div>`).join('')}
+          </div>`;
+        })()}`}
       </div>
       <div class="sh">Travel details <span style="font-weight:500;text-transform:none;letter-spacing:0;color:var(--text-secondary)">(optional)</span></div>
       <div class="card" style="padding:11px 12px">
@@ -8533,7 +8553,7 @@ function tripFact(k,v,vcol){return `<div style="flex:1;min-width:90px;background
 function sTripDetail(){
   const id=S.screenParams&&S.screenParams.id;const t=tripDoc(id);
   if(!t)return `<div style="flex:1;display:flex;flex-direction:column"><div style="background:var(--card);padding:14px 16px;display:flex;align-items:center;border-bottom:1px solid var(--row-border)"><button class="back-btn" onclick="back()">${bk()} Back</button><div style="flex:1;text-align:center;font-size:17px;font-weight:600">Packing list</div><div style="width:60px"></div></div><div style="padding:40px 24px;text-align:center;color:var(--text-secondary)">This trip no longer exists.</div></div>`;
-  const pub=t.status==='published';const pr=tripProgress(t);
+  const pub=t.status==='published';const pr=tripProgressVisible(t);
   return `
    <div style="flex:1;display:flex;flex-direction:column">
     <div style="background:var(--card);padding:14px 16px;display:flex;align-items:center;border-bottom:1px solid var(--row-border);position:sticky;top:0;z-index:10">
@@ -8558,7 +8578,7 @@ function sTripDetail(){
       </div>
       ${!pub?`<div style="display:flex;gap:9px;margin:12px 16px;padding:11px 12px;background:#EAF3FF;border:1px solid #DCEAFF;border-radius:12px"><span>✨</span><div style="font-size:12.5px;line-height:1.4;color:#0A4B93">Drafted from your trip. Remove anything, change a quantity, or add your own — nothing sends until you tap <b>Publish</b>.</div></div>`:''}
       ${tripSection(t,'shared',null,'Shared')}
-      ${(t.attendees||[]).map(a=>tripSection(t,'person',a.id,a.name)).join('')}
+      ${tripVisibleAttendees(t).map(a=>tripSection(t,'person',a.id,a.name)).join('')}
     </div>
    </div>`;
 }
@@ -8594,6 +8614,7 @@ function tripItemRow(t,scope,personId,it,border){
       <div class="cb ${it.checked?'on':''}" style="${it.checked?'background:#34C759;border:none':''}" onclick="tripToggle('${t.id}','${scope}','${personId||''}','${it.id}')">${it.checked?ck():''}</div>
       <span style="flex:1;font-size:15px;${it.checked?'color:var(--text-secondary);text-decoration:line-through':''}">${jobEsc(it.label)}${it.quantity>1?' <span style="color:var(--text-secondary);font-weight:700">×'+it.quantity+'</span>':''}</span>
       ${ownerAv}
+      <button onclick="event.stopPropagation();tripRemoveItem('${t.id}','${scope}','${personId||''}','${it.id}')" aria-label="Remove item" style="margin-left:4px;color:#FF3B30;font-size:18px;opacity:.5;border:none;background:none;cursor:pointer;flex-shrink:0">×</button>
     </div>`;
   }
   return `<div class="row" style="border-bottom:${bd};gap:10px">
@@ -8623,6 +8644,7 @@ window.tfSetDate=(k,v)=>{if(!S.tf)return;S.tf[k]=v;if(k==='startDate'){S.tf.seas
 window.tfToggleAttendee=(id)=>{if(!S.tf)return;const a=S.tf.attendeeIds||(S.tf.attendeeIds=[]);const i=a.indexOf(id);if(i<0)a.push(id);else a.splice(i,1);render();};
 window.tfAddActivity=()=>{if(!S.tf)return;const el=$('tf_activity');if(!el)return;const v=(el.value||'').trim();if(!v)return;(S.tf.activities||(S.tf.activities=[])).push(v.slice(0,60));el.value='';render();};
 window.tfRemoveActivity=(i)=>{if(!S.tf||!S.tf.activities)return;S.tf.activities.splice(i,1);render();};
+window.tfSetManaged=(childId,adultUid)=>{if(!S.tf)return;(S.tf.managed||(S.tf.managed={}))[childId]=adultUid;};
 window.tfAddLeg=()=>{if(!S.tf)return;const l=$('tf_leg_label'),d=$('tf_leg_date'),tm=$('tf_leg_time'),fn=$('tf_leg_flight');const label=(l&&l.value||'').trim();if(!label)return notify('Add a description (e.g. Flight to Hobart)','✏️');(S.tf.travelLegs||(S.tf.travelLegs=[])).push({id:tripUid(),label:label.slice(0,80),date:(d&&d.value)||'',time:(tm&&tm.value)||'',flightNumber:(fn&&fn.value||'').trim().toUpperCase().replace(/\s+/g,'').slice(0,10),eventId:''});render();};
 // Fetch live flight status for a leg via the checkFlightStatus callable and
 // store the result on the leg so it shows on the trip screen.
@@ -8690,7 +8712,7 @@ window.hGenerateTrip=async()=>{
     attendees.forEach(a=>{if(!people[a.id])people[a.id]=[];});
     const doc={
       title:tf.title.trim(),place:(tf.place||'').trim(),startDate:tf.startDate,endDate:tf.endDate,season:tf.season||'',packBy:tf.packBy||'',
-      activities:tf.activities||[],travelLegs:tf.travelLegs||[],attendees:attendees.map(a=>({id:a.id,name:a.name,role:a.role,color:a.color,ageYears:a.ageYears,photoURL:a.photoURL||''})),
+      activities:tf.activities||[],travelLegs:tf.travelLegs||[],attendees:attendees.map(a=>({id:a.id,name:a.name,role:a.role,color:a.color,ageYears:a.ageYears,photoURL:a.photoURL||'',managedBy:(tf.managed||{})[a.id]||''})),
       weatherSummary:data.weatherSummary||'',status:'draft',shared:(data.shared||[]).map(stamp),people:people,eventId:'',createdBy:(S.user&&S.user.uid)||''
     };
     const ref=await fadd(['tripPacking'],doc);
@@ -8759,6 +8781,7 @@ window.tripEdit=(id)=>{
     season:t.season||tripSeason(t.startDate),packBy:t.packBy||'',
     activities:(t.activities||[]).slice(),
     attendeeIds:(t.attendees||[]).map(a=>a.id),
+    managed:(function(){const m={};(t.attendees||[]).forEach(a=>{if(a.managedBy)m[a.id]=a.managedBy;});return m;})(),
     travelLegs:(t.travelLegs||[]).map(l=>Object.assign({},l))
   };
   go('addTrip');
@@ -8776,7 +8799,7 @@ window.hSaveTripEdit=async()=>{
   if(!(tf.attendeeIds||[]).length)return notify('Pick who is going','👥');
   const cands=tripCandidates();
   const attendees=(tf.attendeeIds||[]).map(cid=>cands.find(c=>c.id===cid)).filter(Boolean)
-    .map(a=>({id:a.id,name:a.name,role:a.role,color:a.color,ageYears:a.ageYears,photoURL:a.photoURL||''}));
+    .map(a=>({id:a.id,name:a.name,role:a.role,color:a.color,ageYears:a.ageYears,photoURL:a.photoURL||'',managedBy:(tf.managed||{})[a.id]||''}));
   const people={};attendees.forEach(a=>{people[a.id]=(old.people&&old.people[a.id])||[];});
   const upd={
     title:tf.title.trim(),place:(tf.place||'').trim(),startDate:tf.startDate,endDate:tf.endDate,
