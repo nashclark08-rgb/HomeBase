@@ -563,6 +563,11 @@ function parseTimeRange(timeStr){
   return {start,end:end!==null?end:start+60};
 }
 
+// Trip-generated calendar events (trip range 🧳, pack-by 🧳, flight ✈️) belong
+// to ONE trip and must never be flagged as clashing — with each other or with
+// other events. Detected by the source tag or the emoji (covers pre-existing).
+function isTripEv(ev){return !!ev&&(ev.source==='trip'||ev.emoji==='🧳'||ev.emoji==='✈️');}
+
 // Determine if a draft event conflicts (overlaps in time) with any existing event
 // for the same person on the same date. Returns array of conflicting events.
 function findConflicts(draft,excludeId){
@@ -576,6 +581,7 @@ function findConflicts(draft,excludeId){
   const draftDayName=DAYSH[new Date(draftDate+'T12:00').getDay()];
   return S.events.filter(ev=>{
     if(ev.id===excludeId)return false;
+    if(isTripEv(ev))return false; // trip logistics aren't real conflicts
     // Check participant overlap
     const evIds=Array.isArray(ev.participantIds)&&ev.participantIds.length?ev.participantIds:[ev.childId,ev.adultUid].filter(Boolean);
     const sharesPerson=evIds.some(id=>draftIds.includes(id));
@@ -743,6 +749,9 @@ function findUpcomingClashes(daysAhead){
         // if the auto-created event lacks a specific time and gets the default
         // {0,1440} all-day window.
         if(a.source==='assessment'||b.source==='assessment')continue;
+        // Trip events (trip range / pack-by / flights) are one logical trip —
+        // never clash them against each other or anything else.
+        if(isTripEv(a)||isTripEv(b))continue;
 
         // Determine reason for the clash:
         const aIds=Array.isArray(a.participantIds)&&a.participantIds.length?a.participantIds:[a.childId,a.adultUid].filter(Boolean);
@@ -2347,7 +2356,11 @@ function sToday(){
         const renderRow=(ev,i,arr)=>{
           const ec=S.children.find(c=>c.id===ev.childId);
           const adultMember=ev.adultUid?members().find(x=>x.uid===ev.adultUid):null;
-          const col=ec?.color||adultMember?.color||NAVY;
+          // Resolve people from participantIds (source of truth) so multi-person
+          // events (e.g. a trip for Alby + Nash) show real names, not "Family".
+          const evPids=Array.isArray(ev.participantIds)&&ev.participantIds.length?ev.participantIds:[ev.childId,ev.adultUid].filter(Boolean);
+          const evPeople=evPids.map(pid=>S.children.find(x=>x.id===pid)||members().find(x=>x.uid===pid)).filter(Boolean);
+          const col=ec?.color||adultMember?.color||evPeople[0]?.color||NAVY;
           // One-off events accepted from email get a lighter shade of their
           // allocated colour as a visual point of difference.
           const isEmailOneOff=ev.source==='email';
@@ -2360,7 +2373,7 @@ function sToday(){
           const dotBg=isAssessment?dotCol+'55':dotCol+'18';
           const dotBorderW=isAssessment?'3px':'2px';
           const titleCol=isAssessment?dotCol:'var(--text)';
-          const ownerName=ec?ec.name:adultMember?adultMember.name:'Family';
+          const ownerName=evPeople.length?evPeople.map(p=>p.name.split(' ')[0]).join(', '):'Family';
           const isMyDropoff=ev.dropoff&&(ev.dropoff===myName||ev.dropoff===myFirstName);
           const isMyPickup=ev.pickup&&(ev.pickup===myName||ev.pickup===myFirstName);
           const isMine=isMyDropoff||isMyPickup;
