@@ -8454,8 +8454,8 @@ function sAddTrip(){
   return `
    <div style="flex:1;display:flex;flex-direction:column">
     <div style="background:var(--card);padding:14px 16px;display:flex;align-items:center;border-bottom:1px solid var(--row-border);position:sticky;top:0;z-index:10">
-      <button class="back-btn" onclick="back()">${bk()} Cancel</button>
-      <div style="flex:1;text-align:center;font-size:17px;font-weight:600">New Trip</div>
+      <button class="back-btn" onclick="${(S.tf&&S.tf._editId)?`go('tripDetail',{id:'${S.tf._editId}'})`:'back()'}">${bk()} Cancel</button>
+      <div style="flex:1;text-align:center;font-size:17px;font-weight:600">${(S.tf&&S.tf._editId)?'Edit Trip':'New Trip'}</div>
       <div style="width:60px"></div>
     </div>
     <div class="scroll-view" style="padding:8px 0 24px">
@@ -8498,9 +8498,11 @@ function sAddTrip(){
         </div>
         <div style="font-size:11px;color:var(--text-secondary);margin-top:8px">Flights, transfers, check-in times — added to the calendar when you publish.</div>
       </div>
-      <div style="padding:12px 18px;font-size:12.5px;color:var(--text-secondary);line-height:1.5">HomeBase drafts the list from these details — activities, season, the forecast and each person's age. You review and edit every item before anyone sees it.</div>
+      <div style="padding:12px 18px;font-size:12.5px;color:var(--text-secondary);line-height:1.5">${(S.tf&&S.tf._editId)?'Changes save to this trip — your packing items are kept. If the trip is already sent, its calendar entries update too.':'HomeBase drafts the list from these details — activities, season, the forecast and each person\'s age. You review and edit every item before anyone sees it.'}</div>
       <div style="padding:0 16px">
-        <button onclick="hGenerateTrip()" style="width:100%;background:var(--navy);color:#fff;border:none;border-radius:14px;padding:16px;font-size:17px;font-weight:650;cursor:pointer;font-family:inherit">✨ Generate packing list</button>
+        ${(S.tf&&S.tf._editId)
+          ?`<button onclick="hSaveTripEdit()" style="width:100%;background:var(--navy);color:#fff;border:none;border-radius:14px;padding:16px;font-size:17px;font-weight:650;cursor:pointer;font-family:inherit">Save changes</button>`
+          :`<button onclick="hGenerateTrip()" style="width:100%;background:var(--navy);color:#fff;border:none;border-radius:14px;padding:16px;font-size:17px;font-weight:650;cursor:pointer;font-family:inherit">✨ Generate packing list</button>`}
       </div>
     </div>
    </div>`;
@@ -8525,7 +8527,10 @@ function sTripDetail(){
     </div>
     <div class="scroll-view" style="padding:12px 0 34px">
       <div class="card" style="padding:14px 16px">
-        <div style="font-size:19px;font-weight:800">${jobEsc(t.title||'Trip')}</div>
+        <div style="display:flex;align-items:flex-start;gap:8px">
+          <div style="flex:1;min-width:0;font-size:19px;font-weight:800">${jobEsc(t.title||'Trip')}</div>
+          <button onclick="tripEdit('${id}')" style="flex-shrink:0;background:var(--bg);border:1px solid var(--border);color:var(--navy);font-size:12px;font-weight:700;border-radius:8px;padding:5px 10px;cursor:pointer;font-family:inherit">✏️ Edit</button>
+        </div>
         <div style="font-size:13px;color:var(--text-secondary);margin-top:2px">${jobEsc(t.place||'')}${t.place?' · ':''}${tripFmtDate(t.startDate)} – ${tripFmtDate(t.endDate)}${t.season?' · '+t.season:''}</div>
         <div style="display:flex;gap:8px;margin-top:12px;flex-wrap:wrap">
           ${tripFact('Status',pub?'Sent to family':'Draft · not sent')}
@@ -8702,6 +8707,82 @@ window.tripDelete=async(id)=>{
     notify('Trip deleted','🗑️');
   }catch(ex){notify('Delete failed: '+friendlyError(ex),'⚠️');}
 };
+
+// Load an existing trip's details into the form for editing (does NOT touch
+// the curated packing items — only trip metadata + travel legs).
+window.tripEdit=(id)=>{
+  const t=tripDoc(id);if(!t)return;
+  S.tf={
+    _editId:id,
+    title:t.title||'',place:t.place||'',startDate:t.startDate||'',endDate:t.endDate||t.startDate||'',
+    season:t.season||tripSeason(t.startDate),packBy:t.packBy||'',
+    activities:(t.activities||[]).slice(),
+    attendeeIds:(t.attendees||[]).map(a=>a.id),
+    travelLegs:(t.travelLegs||[]).map(l=>Object.assign({},l))
+  };
+  go('addTrip');
+};
+
+// Save edited trip details. Preserves existing per-person packing items,
+// adds empty lists for newly-added people, and — if the trip is already
+// published — re-syncs the linked calendar events (dates/place/travel).
+window.hSaveTripEdit=async()=>{
+  const tf=S.tf||{};const id=tf._editId;const old=tripDoc(id);
+  if(!id||!old)return notify('Trip not found','⚠️');
+  if(!tf.title||!tf.title.trim())return notify('Give the trip a name','✏️');
+  if(!tf.startDate||!tf.endDate)return notify('Pick start and end dates','📅');
+  if(tf.endDate<tf.startDate)return notify('The end date is before the start date','📅');
+  if(!(tf.attendeeIds||[]).length)return notify('Pick who is going','👥');
+  const cands=tripCandidates();
+  const attendees=(tf.attendeeIds||[]).map(cid=>cands.find(c=>c.id===cid)).filter(Boolean)
+    .map(a=>({id:a.id,name:a.name,role:a.role,color:a.color,ageYears:a.ageYears,photoURL:a.photoURL||''}));
+  const people={};attendees.forEach(a=>{people[a.id]=(old.people&&old.people[a.id])||[];});
+  const upd={
+    title:tf.title.trim(),place:(tf.place||'').trim(),startDate:tf.startDate,endDate:tf.endDate,
+    season:tf.season||'',packBy:tf.packBy||'',activities:tf.activities||[],travelLegs:tf.travelLegs||[],
+    attendees:attendees,people:people
+  };
+  try{
+    // Delete calendar events for any travel legs that were removed in the edit.
+    const keptIds=new Set((tf.travelLegs||[]).map(l=>l.eventId).filter(Boolean));
+    for(const l of (old.travelLegs||[])){ if(l.eventId&&!keptIds.has(l.eventId)){ try{await fdel(['events',l.eventId]);}catch(e){} } }
+    await fupd(['tripPacking',id],upd);
+    if(old.status==='published'){ await tripSyncCalendar(Object.assign({},old,upd,{id:id,status:'published'})); }
+    S.tf=null;S.screen='tripDetail';S.screenParams={id:id};render();
+    notify('Trip updated','✅');
+  }catch(ex){notify('Save failed: '+friendlyError(ex),'⚠️');}
+};
+
+// Bring a published trip's calendar events in line with its current details:
+// updates the date-range event, upserts/removes the pack-by event, and
+// creates/updates/removes a calendar event per travel leg. Writes any new
+// event ids back onto the trip. Each op is guarded so one failure won't abort.
+async function tripSyncCalendar(t){
+  const parts=(t.attendees||[]).map(a=>a.id);
+  const DAYS={Mon:false,Tue:false,Wed:false,Thu:false,Fri:false,Sat:false,Sun:false};
+  const patch={};
+  try{
+    if(t.eventId){ await fupd(['events',t.eventId],{title:'🧳 '+(t.title||'Trip'),date:t.startDate,endDate:t.endDate,location:t.place||''}); }
+    else { const ev=await fadd(['events'],{title:'🧳 '+(t.title||'Trip'),emoji:'🧳',freq:'once',date:t.startDate,endDate:t.endDate,allDay:true,time:'',days:DAYS,category:'',sport:'',location:t.place||'',dropoff:false,pickup:false,participantIds:parts,packItems:[],notes:'Trip'}); patch.eventId=ev.id; }
+  }catch(e){}
+  try{
+    if(t.packBy){
+      if(t.packByEventId){ await fupd(['events',t.packByEventId],{title:'🧳 Pack for '+(t.title||'trip'),date:t.packBy.slice(0,10),time:tripTimeLabel(t.packBy.slice(11,16)),location:t.place||''}); }
+      else { const ev=await fadd(['events'],{title:'🧳 Pack for '+(t.title||'trip'),emoji:'🧳',freq:'once',date:t.packBy.slice(0,10),allDay:false,time:tripTimeLabel(t.packBy.slice(11,16)),days:DAYS,category:'',sport:'',location:t.place||'',dropoff:false,pickup:false,participantIds:parts,packItems:[],notes:'Finish packing for '+(t.title||'trip')}); patch.packByEventId=ev.id; }
+    } else if(t.packByEventId){ try{await fdel(['events',t.packByEventId]);}catch(e){} patch.packByEventId=''; }
+  }catch(e){}
+  const legs=(t.travelLegs||[]).map(l=>Object.assign({},l));let changed=false;
+  for(const leg of legs){
+    try{
+      if(leg.date){
+        if(leg.eventId){ await fupd(['events',leg.eventId],{title:'✈️ '+(leg.label||'Travel'),date:leg.date,allDay:!leg.time,time:leg.time?tripTimeLabel(leg.time):'',location:t.place||''}); }
+        else { const ev=await fadd(['events'],{title:'✈️ '+(leg.label||'Travel'),emoji:'✈️',freq:'once',date:leg.date,allDay:!leg.time,time:leg.time?tripTimeLabel(leg.time):'',days:DAYS,category:'',sport:'',location:t.place||'',dropoff:false,pickup:false,participantIds:parts,packItems:[],notes:'Trip travel · '+(t.title||'')}); leg.eventId=ev.id;changed=true; }
+      } else if(leg.eventId){ try{await fdel(['events',leg.eventId]);}catch(e){} leg.eventId='';changed=true; }
+    }catch(e){}
+  }
+  if(changed)patch.travelLegs=legs;
+  if(Object.keys(patch).length){ try{await fupd(['tripPacking',t.id],patch);}catch(e){} }
+}
 
 // HTML-escape job labels (free text from users) before injecting into markup.
 function jobEsc(s){return String(s==null?'':s).replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;');}
