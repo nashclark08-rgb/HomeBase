@@ -11127,8 +11127,9 @@ function sAddMember(){
           <input class="input" id="am-name" type="text" placeholder="e.g. Alby Clark" style="margin-top:6px"/>
         </div>
         <div>
-          <label style="font-size:13px;font-weight:600;color:#1C1C1E">Mobile number</label>
-          <input class="input" id="am-mobile" type="tel" inputmode="tel" placeholder="0412 345 678" style="margin-top:6px"/>
+          <label style="font-size:13px;font-weight:600;color:#1C1C1E">Mobile or email</label>
+          <input class="input" id="am-contact" type="text" placeholder="0412 345 678  or  name@email.com" style="margin-top:6px"/>
+          <div style="font-size:11.5px;color:#8E8E93;margin-top:4px">Whatever they have — they'll sign in with this.</div>
         </div>
         <div>
           <label style="font-size:13px;font-weight:600;color:#1C1C1E">Role</label>
@@ -11163,21 +11164,21 @@ function sAddMember(){
 }
 window.hCreateMemberAccount=async function(){
   const name=$('am-name')?.value?.trim();
-  const mobile=$('am-mobile')?.value?.trim();
+  const contact=$('am-contact')?.value?.trim();
   const role=$('am-role')?.value||'Member';
   const linkedChildId=$('am-child')?.value||'';
   const password=$('am-pw')?.value||'';
   const err=$('amerr');
   if(!name){if(err)err.textContent='Enter a name';return;}
-  if(!mobile){if(err)err.textContent='Enter a mobile number';return;}
+  if(!contact){if(err)err.textContent='Enter a mobile number or email';return;}
   if(!password||password.length<6){if(err)err.textContent='Temporary password must be at least 6 characters';return;}
   if(typeof httpsCallable==='undefined'||!functions){if(err)err.textContent='Cloud functions not loaded — try again in a moment';return;}
   try{
     const call=httpsCallable(functions,'createFamilyMemberAccount');
-    const res=await call({name,mobile,role,linkedChildId,password});
+    const res=await call({name,contact,role,linkedChildId,password});
     const d=(res&&res.data)||{};
     S._formTouched=false;S._newMemberPw=null;
-    S.memberCreated={name:d.name||name,mobile:d.mobile||mobile,password:d.password||password};
+    S.memberCreated={name:d.name||name,loginId:d.loginId||contact,loginType:d.loginType||(contact.includes('@')?'email':'mobile'),password:d.password||password};
     S.screen='memberCreated';S.screenParams={};render();
   }catch(ex){if(err)err.textContent=(ex&&ex.message)||'Could not create the account. Please try again.';}
 };
@@ -11196,7 +11197,7 @@ function sMemberCreated(){
       </div>
       <div style="background:#fff;border-radius:14px;padding:16px;box-shadow:0 1px 4px rgba(0,0,0,0.08);margin-bottom:16px;display:flex;flex-direction:column;gap:12px">
         ${row('🔗','App',url)}
-        ${row('📱','Mobile',r.mobile||'')}
+        ${row(r.loginType==='email'?'📧':'📱',r.loginType==='email'?'Email':'Mobile',r.loginId||'')}
         ${row('🔑','Temp password',r.password||'')}
       </div>
       <button onclick="copyMemberDetails()" class="primary-btn" style="width:100%;margin-bottom:10px">📋 Copy details to share</button>
@@ -11206,7 +11207,8 @@ function sMemberCreated(){
 }
 window.copyMemberDetails=()=>{
   const r=S.memberCreated||{};const url=(typeof APP_URL!=='undefined'&&APP_URL)||'https://app.ourhomebase.com.au';
-  const text='Join '+(S.family?.name||'our family')+' on HomeBase!\n\nApp: '+url+'\nSign in with:\nMobile: '+(r.mobile||'')+'\nTemporary password: '+(r.password||'')+'\n\nOpen the app, enter your mobile number and this password, then change your password in Settings.';
+  const idLabel=r.loginType==='email'?'Email':'Mobile';
+  const text='Join '+(S.family?.name||'our family')+' on HomeBase!\n\nApp: '+url+'\nSign in with:\n'+idLabel+': '+(r.loginId||'')+'\nTemporary password: '+(r.password||'')+'\n\nOpen the app, enter this '+idLabel.toLowerCase()+' and password, then change your password in Settings.';
   if(navigator.share){navigator.share({title:'HomeBase login for '+(r.name||''),text}).catch(()=>{});}
   else if(navigator.clipboard){navigator.clipboard.writeText(text).then(()=>notify('Details copied 📋'));}
   else{notify('Copy these details manually');}
