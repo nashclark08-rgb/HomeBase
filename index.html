@@ -11178,7 +11178,7 @@ window.hCreateMemberAccount=async function(){
     const res=await call({name,contact,role,linkedChildId,password});
     const d=(res&&res.data)||{};
     S._formTouched=false;S._newMemberPw=null;
-    S.memberCreated={name:d.name||name,loginId:d.loginId||contact,loginType:d.loginType||(contact.includes('@')?'email':'mobile'),password:d.password||password};
+    S.memberCreated={name:d.name||name,loginId:d.loginId||contact,loginType:d.loginType||(contact.includes('@')?'email':'mobile'),password:d.password||'',attached:!!d.attached};
     S.screen='memberCreated';S.screenParams={};render();
   }catch(ex){if(err)err.textContent=(ex&&ex.message)||'Could not create the account. Please try again.';}
 };
@@ -11192,13 +11192,13 @@ function sMemberCreated(){
     <div class="scroll-view" style="padding:20px 16px;max-width:520px;margin:auto;width:100%">
       <div style="text-align:center;margin-bottom:18px">
         <div style="font-size:44px;margin-bottom:6px">✅</div>
-        <div style="font-size:20px;font-weight:800;color:#1C1C1E">${jobEsc(r.name||'Member')}'s account is ready</div>
-        <div style="font-size:13.5px;color:#8E8E93;margin-top:6px;line-height:1.5">Send them these details. They open the app, sign in with their <strong>mobile</strong> + <strong>temporary password</strong>, then can change it in Settings.</div>
+        <div style="font-size:20px;font-weight:800;color:#1C1C1E">${r.attached?(jobEsc(r.name||'They')+' is now linked'):(jobEsc(r.name||'Member')+"'s account is ready")}</div>
+        <div style="font-size:13.5px;color:#8E8E93;margin-top:6px;line-height:1.5">${r.attached?('They already had an account, so it is now linked to your family and profile. They sign in normally with the '+(r.loginType==='email'?'email':'mobile')+' below — using their existing password, or Continue with Google if that is how they set it up. Forgotten it? Tap Forgot password on the sign-in screen.'):('Send them these details. They open the app, sign in with the '+(r.loginType==='email'?'email':'mobile')+' + <strong>temporary password</strong>, then can change it in Settings.')}</div>
       </div>
       <div style="background:#fff;border-radius:14px;padding:16px;box-shadow:0 1px 4px rgba(0,0,0,0.08);margin-bottom:16px;display:flex;flex-direction:column;gap:12px">
         ${row('🔗','App',url)}
         ${row(r.loginType==='email'?'📧':'📱',r.loginType==='email'?'Email':'Mobile',r.loginId||'')}
-        ${row('🔑','Temp password',r.password||'')}
+        ${r.attached?'':row('🔑','Temp password',r.password||'')}
       </div>
       <button onclick="copyMemberDetails()" class="primary-btn" style="width:100%;margin-bottom:10px">📋 Copy details to share</button>
       <button onclick="S.memberCreated=null;setTab('family')" style="width:100%;padding:14px;border-radius:12px;background:#fff;color:#1C1C1E;border:1px solid #dfe3ea;font-size:15px;font-weight:600;cursor:pointer;font-family:inherit">Done</button>
@@ -11208,7 +11208,9 @@ function sMemberCreated(){
 window.copyMemberDetails=()=>{
   const r=S.memberCreated||{};const url=(typeof APP_URL!=='undefined'&&APP_URL)||'https://app.ourhomebase.com.au';
   const idLabel=r.loginType==='email'?'Email':'Mobile';
-  const text='Join '+(S.family?.name||'our family')+' on HomeBase!\n\nApp: '+url+'\nSign in with:\n'+idLabel+': '+(r.loginId||'')+'\nTemporary password: '+(r.password||'')+'\n\nOpen the app, enter this '+idLabel.toLowerCase()+' and password, then change your password in Settings.';
+  const text=r.attached
+    ? 'You already have a HomeBase account — it is now linked to '+(S.family?.name||'our family')+'.\n\nApp: '+url+'\nSign in with your '+idLabel.toLowerCase()+': '+(r.loginId||'')+'\nUse your existing password (or Continue with Google). Forgotten it? Tap Forgot password on the sign-in screen.'
+    : 'Join '+(S.family?.name||'our family')+' on HomeBase!\n\nApp: '+url+'\nSign in with:\n'+idLabel+': '+(r.loginId||'')+'\nTemporary password: '+(r.password||'')+'\n\nOpen the app, enter this '+idLabel.toLowerCase()+' and password, then change your password in Settings.';
   if(navigator.share){navigator.share({title:'HomeBase login for '+(r.name||''),text}).catch(()=>{});}
   else if(navigator.clipboard){navigator.clipboard.writeText(text).then(()=>notify('Details copied 📋'));}
   else{notify('Copy these details manually');}
