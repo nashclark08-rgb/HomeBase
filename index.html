@@ -1806,10 +1806,7 @@ function eventsForChildOnDate(child, dateStr){
     if(dateObj<start||(end&&dateObj>end))return false;
     const dn=DAYSH[dateObj.getDay()];
     if(!ev.days||!ev.days[dn])return false;
-    if(ev.freq==='fortnightly'){
-      const wks=Math.floor((dateObj-start)/(7*86400000));
-      return wks%2===0;
-    }
+    if(ev.freq==='fortnightly')return _fortnightVisible(ev,dateObj,start.getTime());
     return true;
   }).sort((a,b)=>parseTimeToMinutes(a.time)-parseTimeToMinutes(b.time));
 }
@@ -1852,14 +1849,67 @@ function todayEventsForChild(child){
       if(now<start||(end&&now>end))return false;
       const dn=DAYSH[now.getDay()];
       if(!ev.days||!ev.days[dn])return false;
-      if(ev.freq==='fortnightly'){
-        const wks=Math.floor((now-start)/(7*86400000));
-        return wks%2===0;
-      }
+      if(ev.freq==='fortnightly')return _fortnightVisible(ev,now,start.getTime());
       return true;
     }
     return false;
   }).sort((a,b)=>parseTimeToMinutes(a.time)-parseTimeToMinutes(b.time));
+}
+
+// === FORTNIGHTLY WEEK A/B — single source of truth ===
+// The School Term Dates screen (Settings) declares which week (A or B) each
+// term STARTS on. These helpers derive the A/B parity for ANY date from those
+// term settings, so the term-dates screen is authoritative — and lessons stay
+// aligned across holiday breaks (each term re-anchors from its own start week).
+function _mondayOfWeek(d){
+  const x=new Date(d.getTime());const dow=x.getDay();
+  x.setDate(x.getDate()-((dow+6)%7)); // step back to Monday (getDay: 0=Sun..6=Sat)
+  x.setHours(12,0,0,0);return x;
+}
+// Which fortnight week (A/B) a date falls in, per the term settings.
+// Returns 'A' | 'B' | null (null = the date isn't inside any configured term).
+function schoolWeekParityFor(dateObj){
+  const td=S.termDates||{};
+  for(const t of ['t1','t2','t3','t4']){
+    const s=td[t+'s'];if(!s)continue;
+    const start=new Date(s+'T12:00');
+    if(!Number.isFinite(start.getTime()))continue;
+    const end=td[t+'e']?new Date(td[t+'e']+'T23:59'):null;
+    if(dateObj<start||(end&&dateObj>end))continue;
+    const mon=_mondayOfWeek(start);
+    const wks=Math.floor((dateObj-mon)/(7*86400000));
+    const base=(td[t+'w']==='B')?'B':'A';
+    return (wks%2===0)?base:(base==='A'?'B':'A');
+  }
+  return null;
+}
+// Should a fortnightly event show on dateObj? School-subject events carry a
+// tWeek ('A'/'B') and follow the TERM parity above. Everything else falls back
+// to the classic count of fortnights from the event's own start date.
+function _fortnightVisible(ev,dateObj,startMs){
+  if(ev.category==='school-subject'&&(ev.tWeek==='A'||ev.tWeek==='B')){
+    const p=schoolWeekParityFor(dateObj);
+    if(p!==null)return p===ev.tWeek;
+  }
+  const wks=Math.floor((dateObj.getTime()-startMs)/(7*86400000));
+  return wks%2===0;
+}
+// startDate anchor for imported lessons: the current term (if we're in one) or
+// the next upcoming term, so lessons begin on the right date. Parity itself is
+// term-derived (see _fortnightVisible), so this only sets the lower bound.
+function _importTermStart(){
+  const td=S.termDates||{};
+  const now=new Date(todayStr+'T12:00');
+  let upcoming=null;
+  for(const t of ['t1','t2','t3','t4']){
+    const s=td[t+'s'];if(!s)continue;
+    const start=new Date(s+'T12:00');
+    if(!Number.isFinite(start.getTime()))continue;
+    const end=td[t+'e']?new Date(td[t+'e']+'T23:59'):null;
+    if(now>=start&&(!end||now<=end))return s;
+    if(start>now&&(!upcoming||start<upcoming.d))upcoming={s,d:start};
+  }
+  return upcoming?upcoming.s:todayStr;
 }
 
 function sEditChild(){
@@ -2111,10 +2161,7 @@ function sToday(){
     if(now<start||(end&&now>end))return false;
     const dn=DAYSH[now.getDay()];
     if(!ev.days||!ev.days[dn])return false;
-    if(ev.freq==='fortnightly'){
-      const wks=Math.floor((now-start)/(7*86400000));
-      return wks%2===0;
-    }
+    if(ev.freq==='fortnightly')return _fortnightVisible(ev,now,start.getTime());
     return true;
   }).filter(ev=>{
     // When viewing today, hide events that have finished.
@@ -5390,60 +5437,24 @@ function sTimetableImport(){
             <button onclick="S.timetableImport.cycle='fortnightly';render()" class="freq-btn ${ti.cycle==='fortnightly'?'on':''}" style="flex:1;padding:10px">🔁 Fortnightly</button>
           </div>
           ${ti.cycle==='fortnightly'?(()=>{
-            // Try to suggest an anchor from saved term dates. If any term has
-            // a start date and a week marker (A or B), use it as the reference
-            // point and project forward to the next Monday matching the
-            // user's chosen current week. This is the auto-pick the user can
-            // override if they want.
-            const today=new Date();today.setHours(0,0,0,0);
-            const td=S.termDates||{};
-            let suggestion='';
-            let suggestionReason='';
-            for(const tk of ['t1','t2','t3','t4']){
-              const ts=td[tk+'s'];const tw=td[tk+'w']||'A';
-              if(!ts)continue;
-              const termStart=new Date(ts+'T12:00');
-              if(!Number.isFinite(termStart.getTime()))continue;
-              // Find the Monday of the term-start week
-              const dow=termStart.getDay();
-              const mondayOfTermStart=new Date(termStart);
-              mondayOfTermStart.setDate(termStart.getDate()-((dow+6)%7));
-              // The picked week for THIS upload defaults to A. The anchor we
-              // suggest is the next Monday of the user's picked week.
-              const wantWeek=ti.uploadWeek||'A';
-              // Walk forward week-by-week from term start until we hit a
-              // Monday that is the right A/B parity AND in the future.
-              let candidate=new Date(mondayOfTermStart);
-              let candidateWeek=tw;
-              for(let i=0;i<60&&candidate<today;i++){
-                candidate.setDate(candidate.getDate()+7);
-                candidateWeek=candidateWeek==='A'?'B':'A';
-              }
-              // If we landed on the wrong week, step one more week forward
-              if(candidateWeek!==wantWeek){
-                candidate.setDate(candidate.getDate()+7);
-                candidateWeek=candidateWeek==='A'?'B':'A';
-              }
-              if(candidate>=today&&candidateWeek===wantWeek){
-                suggestion=fd(candidate);
-                const termIdx=parseInt(tk.slice(1),10);
-                suggestionReason='from Term '+termIdx+' settings (starts Wk '+tw+')';
-                break;
-              }
-            }
-            if(suggestion&&!ti.weekAStart)ti.weekAStart=suggestion;
+            // Week A/B alignment is derived from the School Term Dates (single
+            // source of truth) — no Monday anchor to pick anymore. This picker
+            // only covers single-week images the AI can't tag A vs B itself.
             const upWeek=ti.uploadWeek||'A';
+            const td=S.termDates||{};
+            const hasTerms=['t1','t2','t3','t4'].some(t=>td[t+'s']);
             return `
-            <div style="margin-bottom:14px">
-              <div style="font-size:12px;color:var(--text-secondary);margin-bottom:6px;font-weight:600">This timetable shows…</div>
+            <div style="margin-bottom:10px">
+              <div style="font-size:12px;color:var(--text-secondary);margin-bottom:6px;font-weight:600">If this image shows only ONE week, which is it?</div>
               <div style="display:flex;gap:8px">
-                <button onclick="S.timetableImport.uploadWeek='A';S.timetableImport.weekAStart='';render()" class="freq-btn ${upWeek==='A'?'on':''}" style="flex:1;padding:9px">Week A</button>
-                <button onclick="S.timetableImport.uploadWeek='B';S.timetableImport.weekAStart='';render()" class="freq-btn ${upWeek==='B'?'on':''}" style="flex:1;padding:9px">Week B</button>
+                <button onclick="S.timetableImport.uploadWeek='A';render()" class="freq-btn ${upWeek==='A'?'on':''}" style="flex:1;padding:9px">Week A</button>
+                <button onclick="S.timetableImport.uploadWeek='B';render()" class="freq-btn ${upWeek==='B'?'on':''}" style="flex:1;padding:9px">Week B</button>
               </div>
+              <div style="font-size:11px;color:var(--text-secondary);line-height:1.45;margin-top:6px">If the image has both Week A and Week B columns, HomeBase reads each lesson's own week — this just covers single-week images.</div>
             </div>
-            <div style="font-size:12px;color:var(--text-secondary);margin-bottom:6px;font-weight:600">Monday of an upcoming Week ${upWeek}</div>
-            <input class="input" type="date" value="${ti.weekAStart||''}" onchange="S.timetableImport.weekAStart=this.value;render()" style="margin-bottom:6px"/>
-            ${suggestion?`<div style="font-size:11px;color:#34C759;font-weight:600;margin-bottom:6px">✓ Auto-suggested ${suggestionReason}. Change above if you want a different anchor.</div>`:`<div style="font-size:11px;color:var(--text-secondary);line-height:1.45">Tip: if you set School Term Dates (with Week A/B markers) in Settings, HomeBase will auto-suggest this for you next time.</div>`}
+            ${hasTerms
+              ? `<div style="font-size:11px;color:#34C759;font-weight:600;line-height:1.45">✓ Week A/B alignment comes from your School Term Dates in Settings.</div>`
+              : `<div style="font-size:11px;color:#FF9500;font-weight:600;line-height:1.45">⚠️ Set your School Term Dates (with the Wk A/B start toggle) in Settings first, so lessons land on the right week.</div>`}
           `;})():'<div style="font-size:11px;color:var(--text-secondary);line-height:1.45">Same subjects every week.</div>'}
         </div>
 
@@ -5478,7 +5489,7 @@ function sTimetableImport(){
           <div style="font-size:12px;color:var(--text-secondary);line-height:1.6;margin-top:10px">
             <div><strong>Clear photos work best.</strong> Direct overhead shot, no glare, no fingers in frame.</div>
             <div><strong>PDFs from the school portal</strong> usually parse perfectly.</div>
-            <div><strong>Fortnightly timetables</strong> — make sure "Week A" and "Week B" labels are visible. Pick a Week A start date so HomeBase aligns correctly.</div>
+            <div><strong>Fortnightly timetables</strong> — make sure "Week A" and "Week B" labels are visible. Alignment comes from your School Term Dates in Settings.</div>
             <div><strong>Pick only what you need</strong> — no point tracking Maths every day. PE, Library, Music, Sport — that's where reminders help.</div>
           </div>
         </details>
@@ -5491,7 +5502,11 @@ function sTimetableImport(){
 function validateTimetableSetup(){
   const ti=S.timetableImport||{};
   if(!ti.childId)return 'Pick a child first';
-  if(ti.cycle==='fortnightly'&&!ti.weekAStart)return 'Pick the Monday for Week '+(ti.uploadWeek||'A');
+  if(ti.cycle==='fortnightly'){
+    // Week A/B alignment is derived from term dates, so they must exist first.
+    const td=S.termDates||{};
+    if(!['t1','t2','t3','t4'].some(t=>td[t+'s']))return 'Set your School Term Dates in Settings first — that\'s how HomeBase aligns Week A/B';
+  }
   return null;
 }
 
@@ -5861,27 +5876,21 @@ window.confirmTimetableImport=async function(){
       }catch(e){failed++;dwarn('Timetable period failed:',g,e);}
     }
   }else{
-    // Fortnightly: Week A and Week B are separate events because the recurrence
-    // engine uses INTERVAL=2 from startDate. Group by (subjectName + label +
-    // week + time). The user picks which week the uploaded timetable shows
-    // (uploadWeek) and an anchor Monday for that week. If uploadWeek is B,
-    // back-step 7 days to derive the matching Week A Monday.
-    const anchor=ti.weekAStart||todayStr;
+    // Fortnightly: Week A and Week B lessons are separate events, grouped by
+    // (subjectName + label + week + time).
+    // Fortnight A/B parity now comes from the School Term Dates (single source
+    // of truth) via each event's tWeek + schoolWeekParityFor — NOT from a picked
+    // Monday anchor. We anchor startDate to the current/next term start so
+    // lessons begin on the right date; the display engine aligns A/B per term.
     const uploadWeek=ti.uploadWeek==='B'?'B':'A';
-    let weekAStart;
-    if(uploadWeek==='A'){
-      weekAStart=anchor;
-    }else{
-      const a=new Date(anchor+'T12:00');a.setDate(a.getDate()-7);
-      weekAStart=fd(a);
-    }
-    const wbDate=new Date(weekAStart+'T12:00');wbDate.setDate(wbDate.getDate()+7);
-    const weekBStart=fd(wbDate);
+    const termStart=_importTermStart();
     const groups=new Map();
     for(const sl of selectedSlots){
       const dayKey=normaliseDay(sl.day);
       if(!dayKey)continue;
-      const wk=String(sl.week||'A').toUpperCase().startsWith('B')?'B':'A';
+      // Trust the week the AI read off the image; fall back to the "this image
+      // shows Week A/B" picker for single-week timetables the AI didn't tag.
+      const wk=String(sl.week||uploadWeek||'A').toUpperCase().startsWith('B')?'B':'A';
       const key=sl._subjectName+'|'+(sl.label||'')+'|'+wk+'|'+(sl.time||'');
       if(!groups.has(key))groups.set(key,{subjectName:sl._subjectName,label:sl.label||'',week:wk,time:sl.time||'',days:new Set()});
       groups.get(key).days.add(dayKey);
@@ -5889,7 +5898,6 @@ window.confirmTimetableImport=async function(){
     for(const g of groups.values()){
       const days={Mon:false,Tue:false,Wed:false,Thu:false,Fri:false,Sat:false,Sun:false};
       g.days.forEach(d=>{days[d]=true;});
-      const startDate=g.week==='A'?weekAStart:weekBStart;
       // Combine start time with computed end time from the period length.
       const endTime=_timetableEndTimeFor(g.time,S.schoolPeriodMinutes||45);
       const timeStr=g.time?(endTime?g.time+' – '+endTime:g.time):'';
@@ -5899,7 +5907,8 @@ window.confirmTimetableImport=async function(){
           emoji:'📚',
           participantIds:[child.id],childId:child.id,adultUid:'',
           freq:'fortnightly',
-          date:startDate,startDate,endDate:'',
+          date:termStart,startDate:termStart,endDate:'',
+          tWeek:g.week, // A/B parity resolved against term dates at display time
           days,time:timeStr,
           category:'school-subject',
           location:'',dropoff:'',pickup:'',
@@ -7160,8 +7169,7 @@ function eventChronoCmp(a,b){
       const dn=DAYSH[d.getDay()];
       if(ev.days[dn]){
         if(ev.freq==='fortnightly'){
-          const wks=Math.floor((d.getTime()-start)/(7*86400000));
-          if(wks%2!==0)continue;
+          if(!_fortnightVisible(ev,d,start))continue;
         }
         return d.getTime();
       }
