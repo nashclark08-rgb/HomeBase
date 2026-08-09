@@ -41,8 +41,8 @@ messaging.onBackgroundMessage((payload) => {
   const options = {
     body,
     tag,
-    icon: '/favicon-192.png',
-    badge: '/favicon-192.png',
+    icon: '/icon-192.png',
+    badge: '/icon-192.png',
     data: { url },
     requireInteraction: false,
     silent: false
