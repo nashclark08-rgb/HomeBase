@@ -793,7 +793,7 @@ function findUpcomingClashes(daysAhead){
 // ── STATE ────────────────────────────────────────
 const S={
   user:null,familyId:null,family:null,
-  children:[],packing:{},events:[],deletedEvents:[],assessments:[],groceries:[],gifts:[],dinners:[],playdates:[],contacts:[],mealIdeas:[],handoffs:[],reminders:[],medicines:[],medicineDoses:[],jobs:[],tripPacking:[],
+  children:[],packing:{},events:[],deletedEvents:[],assessments:[],groceries:[],gifts:[],dinners:[],playdates:[],contacts:[],mealIdeas:[],handoffs:[],reminders:[],medicines:[],medicineDoses:[],jobs:[],tripPacking:[],pantry:[],pantryLog:[],
   tf:null, // trip-packing create form
   tab:'today',screen:null,screenParams:{},
   activeChild:null,morningMode:false,
@@ -1623,6 +1623,10 @@ function subscribe(){
   S.unsubs.push(onSnapshot(fcol(['jobs']),s=>{S.jobs=s.docs.map(d=>({id:d.id,...d.data()}));queueRender();}));
   S.unsubs.push(onSnapshot(fcol(['gifts']),s=>{S.gifts=s.docs.map(d=>({id:d.id,...d.data()}));queueRender();}));
   S.unsubs.push(onSnapshot(fcol(['dinners']),s=>{S.dinners=s.docs.map(d=>({id:d.id,...d.data()}));queueRender();}));
+  // Pantry — "what's in the kitchen" (evidence log): one doc per canonical item
+  // (last seen / last bought), plus an append-only observation log (pantryLog).
+  S.unsubs.push(onSnapshot(fcol(['pantry']),s=>{S.pantry=s.docs.map(d=>({id:d.id,...d.data()}));queueRender();}));
+  S.unsubs.push(onSnapshot(fcol(['pantryLog']),s=>{S.pantryLog=s.docs.map(d=>({id:d.id,...d.data()}));queueRender();}));
   S.unsubs.push(onSnapshot(fcol(['playdates']),s=>{S.playdates=s.docs.map(d=>({id:d.id,...d.data()}));queueRender();}));
   S.unsubs.push(onSnapshot(fcol(['contacts']),s=>{S.contacts=s.docs.map(d=>({id:d.id,...d.data()}));queueRender();}));
   S.unsubs.push(onSnapshot(fcol(['mealIdeas']),s=>{S.mealIdeas=s.docs.map(d=>({id:d.id,...d.data()}));queueRender();}));
@@ -7626,6 +7630,375 @@ function sGifts(tabBar){
 }
 
 // ── LISTS ─────────────────────────────────────────
+// ========================= PANTRY / "WHAT'S IN THE KITCHEN" =========================
+// Evidence-log model: photos + receipts are dated OBSERVATIONS upserted into the
+// per-item `pantry` collection (last seen / last bought), plus an append-only
+// `pantryLog`. The chat answers from that evidence; recipes can "cook with what's
+// home". No images are stored — the AI extracts structured data, photo discarded.
+const PANTRY_CATS=[
+  {id:'produce',icon:'🥦',label:'Fruit & Veg'},
+  {id:'dairy',icon:'🧀',label:'Dairy & Eggs'},
+  {id:'meat',icon:'🥩',label:'Meat'},
+  {id:'seafood',icon:'🐟',label:'Seafood'},
+  {id:'bakery',icon:'🍞',label:'Bakery'},
+  {id:'pantry',icon:'🥫',label:'Pantry & Cans'},
+  {id:'spices',icon:'🧂',label:'Spices'},
+  {id:'frozen',icon:'🧊',label:'Frozen'},
+  {id:'drinks',icon:'🧃',label:'Drinks'},
+  {id:'condiments',icon:'🫙',label:'Condiments'},
+  {id:'snacks',icon:'🍪',label:'Snacks'},
+  {id:'other',icon:'📦',label:'Other'}
+];
+const PANTRY_LOCS=[
+  {id:'fridge',icon:'❄️',label:'Fridge'},
+  {id:'pantry',icon:'🥫',label:'Pantry'},
+  {id:'freezer',icon:'🧊',label:'Freezer'},
+  {id:'spices',icon:'🧂',label:'Spice drawer'},
+  {id:'other',icon:'📦',label:'Other'}
+];
+function pantryCatMeta(id){return PANTRY_CATS.find(c=>c.id===id)||PANTRY_CATS[PANTRY_CATS.length-1];}
+function pantryLocMeta(id){return PANTRY_LOCS.find(l=>l.id===id)||null;}
+function pantryCanonKey(name){return String(name||'').toLowerCase().replace(/[^a-z0-9]+/g,' ').trim();}
+function pantryFmtDate(iso){if(!iso)return '';const d=new Date(iso+'T12:00');if(isNaN(d))return iso;return d.getDate()+' '+MONTHS[d.getMonth()].slice(0,3)+(d.getFullYear()!==today.getFullYear()?" '"+String(d.getFullYear()).slice(2):'');}
+function pantryEvidenceLabel(it){
+  const bits=[];
+  if(it.lastBought)bits.push('Bought '+(it.lastBoughtQty?it.lastBoughtQty+(it.unit?' '+it.unit:'')+' ':'')+pantryFmtDate(it.lastBought));
+  if(it.lastSeen&&it.lastSeen!==it.lastBought)bits.push('Seen '+pantryFmtDate(it.lastSeen));
+  return bits.join(' · ')||'Added manually';
+}
+// Compact pantry payload for the chat/recipe callables.
+function pantryPayload(){
+  return (S.pantry||[]).map(p=>({name:p.name,category:p.category,location:p.location,lastSeen:p.lastSeen||'',lastBought:p.lastBought||'',lastBoughtQty:p.lastBoughtQty||null,unit:p.unit||''}));
+}
+
+// Upsert extracted items into the pantry collection by canonical name, and (for
+// photo/receipt observations) append one entry to the pantryLog. source is one
+// of 'photo' | 'receipt' | 'manual'. opts: {date, location, store}.
+window.pantryUpsertItems=async function(items,source,opts){
+  opts=opts||{};
+  if(!S.familyId){notify('Sign in first','⚠️');return 0;}
+  const nowIso=fd(new Date());
+  const seenDate=source==='receipt'?(opts.date||nowIso):nowIso;
+  let n=0;
+  for(const raw of items){
+    const name=String(raw.name||'').trim();
+    if(!name)continue;
+    const key=pantryCanonKey(name);
+    const existing=(S.pantry||[]).find(p=>p.key===key);
+    const base={
+      key,name,
+      category:raw.category||existing?.category||'other',
+      location:raw.location||opts.location||existing?.location||'',
+      unit:raw.unit||existing?.unit||'',
+      lastSeen:seenDate,
+      lastSeenSource:source,
+      timesSeen:(existing?.timesSeen||0)+1,
+      updatedAt:Date.now()
+    };
+    if(source==='receipt'){
+      base.lastBought=opts.date||nowIso;
+      base.lastBoughtQty=raw.qty||1;
+      if(typeof raw.price==='number'&&raw.price>0)base.lastBoughtPrice=raw.price;
+    }
+    try{
+      if(existing)await fupd(['pantry',existing.id],base);
+      else await fadd(['pantry'],{...base,createdAt:Date.now()});
+      n++;
+    }catch(e){dwarn('pantry upsert failed',name,e);}
+  }
+  if(source!=='manual'){
+    try{
+      await fadd(['pantryLog'],{
+        type:source,date:seenDate,location:opts.location||'',store:opts.store||'',
+        itemCount:n,items:items.slice(0,60).map(i=>({name:i.name,qty:i.qty||1,unit:i.unit||''})),
+        createdBy:(S.user&&S.user.uid)||'',createdAt:Date.now()
+      });
+    }catch(e){dwarn('pantryLog add failed',e);}
+  }
+  return n;
+};
+
+window.pantryRemoveItem=async function(id){
+  try{await fdel(['pantry',id]);notify('Removed','🗑️');}catch(e){notify('Remove failed: '+friendlyError(e),'⚠️');}
+};
+window.pantrySetItemField=async function(id,field,val){
+  try{await fupd(['pantry',id],{[field]:val,updatedAt:Date.now()});}catch(e){dwarn('pantry field update failed',e);}
+};
+window.pantryAddManual=async function(){
+  const el=document.getElementById('pantry-add-input');
+  const sel=document.getElementById('pantry-add-cat');
+  const name=(el?.value||'').trim();
+  if(!name){notify('Type an item first','⚠️');return;}
+  await pantryUpsertItems([{name,qty:1,category:(sel&&sel.value)||'other'}],'manual',{});
+  if(el)el.value='';
+  notify('Added to the kitchen 🥫','✅');
+  render();
+};
+window.pantrySetQuery=function(v){S.pantryQuery=v;render();};
+
+// ---- MAIN SCREEN: What's in the Kitchen ----
+function sPantry(){
+  const all=(S.pantry||[]).slice().sort((a,b)=>(a.name||'').localeCompare(b.name||''));
+  const q=(S.pantryQuery||'').toLowerCase().trim();
+  const items=q?all.filter(it=>(it.name||'').toLowerCase().includes(q)):all;
+  // Group by category, in PANTRY_CATS order
+  const groups=PANTRY_CATS.map(c=>({cat:c,rows:items.filter(it=>(it.category||'other')===c.id)})).filter(g=>g.rows.length);
+  const catOptions=PANTRY_CATS.map(c=>`<option value="${c.id}">${c.icon} ${c.label}</option>`).join('');
+  const body=all.length===0
+    ? `<div style="padding:10px 16px">${emptyState('🥫','Your kitchen is empty','Snap a photo of your fridge, pantry or spice drawer — or a receipt — and HomeBase will fill this in. You can also add items by hand below.','',"",true)}</div>`
+    : (items.length===0
+      ? `<div style="padding:40px 20px;text-align:center;color:var(--text-secondary);font-size:14px">No items match “${q.replace(/</g,'&lt;')}”.</div>`
+      : groups.map(g=>`
+        <div class="sh" style="margin-bottom:6px">${g.cat.icon} ${g.cat.label} (${g.rows.length})</div>
+        <div class="card" style="margin-bottom:14px">
+          ${g.rows.map((it,i,arr)=>{
+            const loc=pantryLocMeta(it.location);
+            return `<div class="row" style="border-bottom:${i<arr.length-1?'1px solid var(--row-border)':'none'}">
+              <div style="flex:1;min-width:0">
+                <div style="font-size:15px;font-weight:600;color:var(--text);overflow:hidden;text-overflow:ellipsis;white-space:nowrap">${(it.name||'').replace(/</g,'&lt;')}${loc?` <span style="font-size:11px;color:var(--text-secondary);font-weight:500">· ${loc.icon} ${loc.label}</span>`:''}</div>
+                <div style="font-size:11px;color:var(--text-secondary);margin-top:2px">${pantryEvidenceLabel(it)}</div>
+              </div>
+              <button onclick="pantryRemoveItem('${it.id}')" aria-label="Remove" style="color:#FF3B30;font-size:20px;opacity:0.5;border:none;background:none;cursor:pointer;padding:0 4px;flex-shrink:0">×</button>
+            </div>`;
+          }).join('')}
+        </div>`).join(''));
+  return `<div style="min-height:100%;display:flex;flex-direction:column">
+    <div style="background:var(--card);padding:14px 16px;display:flex;align-items:center;border-bottom:1px solid var(--row-border);position:sticky;top:0;z-index:10">
+      <button class="back-btn" onclick="back()">${bk()} Back</button>
+      <div style="flex:1;text-align:center;font-size:17px;font-weight:600">🥫 What's in the Kitchen</div>
+      <div style="width:52px"></div>
+    </div>
+    <div style="padding:14px 0 100px">
+      <div style="margin:0 16px 12px;display:flex;gap:8px">
+        <button onclick="go('pantryScan')" style="flex:1;padding:12px 8px;border-radius:12px;background:linear-gradient(135deg,#34C759,#28A745);border:none;color:#fff;font-size:12px;font-weight:700;cursor:pointer;font-family:inherit;display:flex;flex-direction:column;align-items:center;gap:4px"><span style="font-size:20px">📷</span>Scan shelf</button>
+        <button onclick="go('receiptScan')" style="flex:1;padding:12px 8px;border-radius:12px;background:linear-gradient(135deg,#5856D6,#4240B0);border:none;color:#fff;font-size:12px;font-weight:700;cursor:pointer;font-family:inherit;display:flex;flex-direction:column;align-items:center;gap:4px"><span style="font-size:20px">🧾</span>Scan receipt</button>
+        <button onclick="go('pantryAsk')" style="flex:1;padding:12px 8px;border-radius:12px;background:linear-gradient(135deg,#FF9500,#F08000);border:none;color:#fff;font-size:12px;font-weight:700;cursor:pointer;font-family:inherit;display:flex;flex-direction:column;align-items:center;gap:4px"><span style="font-size:20px">💬</span>Ask</button>
+      </div>
+      ${all.length?`<div style="margin:0 16px 12px"><input class="input" type="search" placeholder="🔍 Search the kitchen…" value="${(S.pantryQuery||'').replace(/"/g,'&quot;')}" oninput="pantrySetQuery(this.value)" style="width:100%;font-size:14px;padding:10px 12px"/></div>`:''}
+      ${body}
+      <div class="sh" style="margin-bottom:6px">➕ Add by hand</div>
+      <div class="card" style="margin-bottom:14px"><div style="padding:12px 14px;display:flex;gap:6px;flex-wrap:wrap">
+        <input class="input" id="pantry-add-input" type="text" placeholder="e.g. Tinned tomatoes" style="flex:1;min-width:140px;font-size:13px;padding:10px" onkeydown="if(event.key==='Enter')pantryAddManual()"/>
+        <select class="input" id="pantry-add-cat" style="font-size:13px;padding:10px;flex-shrink:0">${catOptions}</select>
+        <button onclick="pantryAddManual()" style="padding:10px 14px;border-radius:10px;background:var(--navy);border:none;color:#fff;font-size:13px;font-weight:600;cursor:pointer;font-family:inherit">+ Add</button>
+      </div></div>
+      <div style="font-size:11px;color:var(--text-secondary);text-align:center;padding:0 24px;line-height:1.5">This is an <strong>evidence log</strong>, not a live count — it shows when things were last seen or bought. Something may have been used since.</div>
+    </div>
+  </div>`;
+}
+
+// ---- SCAN A SHELF (fridge/pantry/spice/freezer photo) ----
+function sPantryScan(){
+  const ps=S.pantryScan||(S.pantryScan={location:'pantry',busy:false,review:null,summary:''});
+  const review=ps.review;
+  const catOptions=(sel)=>PANTRY_CATS.map(c=>`<option value="${c.id}"${c.id===sel?' selected':''}>${c.icon} ${c.label}</option>`).join('');
+  return `<div style="min-height:100%;display:flex;flex-direction:column;background:var(--bg)">
+    <div style="background:var(--card);padding:14px 16px;display:flex;align-items:center;border-bottom:1px solid var(--row-border);position:sticky;top:0;z-index:10">
+      <button class="back-btn" onclick="S.pantryScan=null;back()">${bk()} Back</button>
+      <div style="flex:1;text-align:center;font-size:17px;font-weight:600">📷 Scan a shelf</div>
+      <div style="width:52px"></div>
+    </div>
+    <div style="padding:16px 16px 100px">
+      ${!review?`
+      <div style="background:var(--card);border-radius:14px;padding:16px;margin-bottom:14px;border:1px solid var(--row-border)">
+        <div style="font-size:13px;font-weight:700;color:var(--text);margin-bottom:8px">Where is this?</div>
+        <div style="display:flex;gap:6px;flex-wrap:wrap">
+          ${PANTRY_LOCS.map(l=>`<button onclick="S.pantryScan.location='${l.id}';render()" class="freq-btn ${ps.location===l.id?'on':''}" style="padding:8px 12px;font-size:12px">${l.icon} ${l.label}</button>`).join('')}
+        </div>
+      </div>
+      <div style="background:var(--card);border-radius:14px;padding:18px;border:1px solid var(--row-border)">
+        <div style="font-size:11px;color:#34C759;background:#34C75914;border:1px solid #34C75933;border-radius:8px;padding:8px 10px;margin-bottom:12px;line-height:1.45">✨ Snap the ${(pantryLocMeta(ps.location)||{}).label||'shelf'}. AI lists what it can see — you check it before saving.</div>
+        <input type="file" id="pantry-photo" accept="image/png,image/jpeg,image/jpg,image/webp" style="display:none" onchange="handlePantryPhotoUpload(this)"/>
+        <button onclick="document.getElementById('pantry-photo').click()" ${ps.busy?'disabled':''} style="width:100%;padding:14px;border-radius:12px;background:${ps.busy?'#8E8E93':'linear-gradient(135deg,#34C759,#28A745)'};border:none;color:#fff;font-size:15px;font-weight:700;cursor:${ps.busy?'wait':'pointer'};font-family:inherit">${ps.busy?'⏳ Reading photo…':'📷 Take / choose photo'}</button>
+        ${ps.busy?`<div style="background:#34C75914;border:1px solid #34C75933;border-radius:10px;padding:12px;margin-top:14px;display:flex;align-items:center;gap:10px"><div style="width:18px;height:18px;border:2px solid #34C759;border-top-color:transparent;border-radius:9px;animation:spin 0.8s linear infinite;flex-shrink:0"></div><div style="font-size:13px;color:#34C759;font-weight:600">AI is reading the photo… ~5–15 seconds</div></div>`:''}
+      </div>
+      `:`
+      <div style="font-size:13px;color:var(--text-secondary);margin-bottom:10px;line-height:1.5">${(ps.summary||'').replace(/</g,'&lt;')} — check, tweak, then save to your kitchen. Remove anything wrong.</div>
+      <div class="card" style="margin-bottom:14px">
+        ${review.length===0?`<div style="padding:20px;text-align:center;color:var(--text-secondary);font-size:13px">Nothing found. Try a clearer photo.</div>`:
+          review.map((it,i)=>`<div class="row" style="border-bottom:${i<review.length-1?'1px solid var(--row-border)':'none'};gap:6px">
+            <input class="input" type="text" value="${(it.name||'').replace(/"/g,'&quot;')}" onchange="pantryReviewSet(${i},'name',this.value)" style="flex:1;min-width:0;font-size:13px;padding:8px"/>
+            <select class="input" onchange="pantryReviewSet(${i},'category',this.value)" style="font-size:12px;padding:8px;flex-shrink:0;max-width:120px">${catOptions(it.category)}</select>
+            <button onclick="pantryReviewRemove(${i})" aria-label="Remove" style="color:#FF3B30;font-size:20px;opacity:0.5;border:none;background:none;cursor:pointer;padding:0 2px;flex-shrink:0">×</button>
+          </div>`).join('')}
+      </div>
+      <button onclick="pantryConfirmScan()" style="width:100%;padding:14px;border-radius:12px;background:var(--navy);border:none;color:#fff;font-size:15px;font-weight:700;cursor:pointer;font-family:inherit">Save ${review.length} item${review.length===1?'':'s'} to kitchen</button>
+      <button onclick="S.pantryScan.review=null;render()" style="width:100%;padding:12px;margin-top:8px;border-radius:12px;background:none;border:none;color:var(--text-secondary);font-size:13px;font-weight:600;cursor:pointer;font-family:inherit">↺ Scan a different shelf</button>
+      `}
+    </div>
+  </div>`;
+}
+window.pantryReviewSet=function(i,field,val){if(S.pantryScan&&S.pantryScan.review&&S.pantryScan.review[i])S.pantryScan.review[i][field]=val;};
+window.pantryReviewRemove=function(i){if(S.pantryScan&&S.pantryScan.review){S.pantryScan.review.splice(i,1);render();}};
+window.handlePantryPhotoUpload=async function(input){
+  if(!input?.files?.[0])return;
+  const file=input.files[0];
+  const ps=S.pantryScan;
+  if(typeof httpsCallable==='undefined'||!functions){notify('⚠️ Cloud functions not loaded — refresh','❌');input.value='';return;}
+  ps.busy=true;render();
+  try{
+    const {base64,mediaType}=await imageFileToBase64(file);
+    const call=httpsCallable(functions,'parsePantryPhoto');
+    const resp=await call({images:[{base64,mediaType}],location:ps.location,familyId:S.familyId||''});
+    const data=resp?.data||{};
+    const items=Array.isArray(data.items)?data.items:[];
+    ps.busy=false;ps.summary=data.summary||'';
+    if(items.length===0){notify(data.summary||'No items found','⚠️');render();return;}
+    ps.review=items.map(it=>({name:it.name,category:it.category||'other',qty:it.qty||1,unit:it.unit||'',location:ps.location}));
+    render();
+  }catch(ex){console.error('[pantry-photo] failed',ex);ps.busy=false;notify('Read failed: '+friendlyError(ex),'❌');render();}
+  finally{if(input)input.value='';}
+};
+window.pantryConfirmScan=async function(){
+  const ps=S.pantryScan;if(!ps||!ps.review)return;
+  const n=await pantryUpsertItems(ps.review,'photo',{location:ps.location});
+  S.pantryScan=null;
+  notify('Added '+n+' item'+(n===1?'':'s')+' to your kitchen 🥫','✅');
+  S.screen='pantry';render();
+};
+
+// ---- SCAN A RECEIPT ----
+function sReceiptScan(){
+  const rs=S.receiptScan||(S.receiptScan={busy:false,review:null,store:'',date:'',summary:''});
+  const review=rs.review;
+  const catOptions=(sel)=>PANTRY_CATS.map(c=>`<option value="${c.id}"${c.id===sel?' selected':''}>${c.icon} ${c.label}</option>`).join('');
+  return `<div style="min-height:100%;display:flex;flex-direction:column;background:var(--bg)">
+    <div style="background:var(--card);padding:14px 16px;display:flex;align-items:center;border-bottom:1px solid var(--row-border);position:sticky;top:0;z-index:10">
+      <button class="back-btn" onclick="S.receiptScan=null;back()">${bk()} Back</button>
+      <div style="flex:1;text-align:center;font-size:17px;font-weight:600">🧾 Scan a receipt</div>
+      <div style="width:52px"></div>
+    </div>
+    <div style="padding:16px 16px 100px">
+      ${!review?`
+      <div style="background:var(--card);border-radius:14px;padding:18px;border:1px solid var(--row-border)">
+        <div style="font-size:11px;color:#5856D6;background:#5856D614;border:1px solid #5856D633;border-radius:8px;padding:8px 10px;margin-bottom:12px;line-height:1.45">✨ Snap your grocery receipt. AI reads what you bought (with the date) and adds it to your kitchen. Lay it flat, good light.</div>
+        <input type="file" id="receipt-photo" accept="image/png,image/jpeg,image/jpg,image/webp" style="display:none" onchange="handleReceiptUpload(this)"/>
+        <button onclick="document.getElementById('receipt-photo').click()" ${rs.busy?'disabled':''} style="width:100%;padding:14px;border-radius:12px;background:${rs.busy?'#8E8E93':'linear-gradient(135deg,#5856D6,#4240B0)'};border:none;color:#fff;font-size:15px;font-weight:700;cursor:${rs.busy?'wait':'pointer'};font-family:inherit">${rs.busy?'⏳ Reading receipt…':'🧾 Take / choose photo'}</button>
+        ${rs.busy?`<div style="background:#5856D614;border:1px solid #5856D633;border-radius:10px;padding:12px;margin-top:14px;display:flex;align-items:center;gap:10px"><div style="width:18px;height:18px;border:2px solid #5856D6;border-top-color:transparent;border-radius:9px;animation:spin 0.8s linear infinite;flex-shrink:0"></div><div style="font-size:13px;color:#5856D6;font-weight:600">AI is reading the receipt… ~10–20 seconds</div></div>`:''}
+      </div>
+      `:`
+      <div class="card" style="margin-bottom:12px"><div style="padding:12px 14px;display:flex;gap:8px;align-items:center;flex-wrap:wrap">
+        <input class="input" type="text" value="${(rs.store||'').replace(/"/g,'&quot;')}" placeholder="Store" onchange="S.receiptScan.store=this.value" style="flex:1;min-width:110px;font-size:13px;padding:8px"/>
+        <input class="input" type="date" value="${rs.date||''}" onchange="S.receiptScan.date=this.value" style="font-size:13px;padding:8px"/>
+      </div></div>
+      <div style="font-size:13px;color:var(--text-secondary);margin-bottom:8px;line-height:1.5">${(rs.summary||'').replace(/</g,'&lt;')} — check the items and date, then save.</div>
+      <div class="card" style="margin-bottom:14px">
+        ${review.length===0?`<div style="padding:20px;text-align:center;color:var(--text-secondary);font-size:13px">No items read. Try a clearer photo.</div>`:
+          review.map((it,i)=>`<div class="row" style="border-bottom:${i<review.length-1?'1px solid var(--row-border)':'none'};gap:6px">
+            <input class="input" type="text" value="${(it.name||'').replace(/"/g,'&quot;')}" onchange="receiptReviewSet(${i},'name',this.value)" style="flex:1;min-width:0;font-size:13px;padding:8px"/>
+            <select class="input" onchange="receiptReviewSet(${i},'category',this.value)" style="font-size:12px;padding:8px;flex-shrink:0;max-width:120px">${catOptions(it.category)}</select>
+            <button onclick="receiptReviewRemove(${i})" aria-label="Remove" style="color:#FF3B30;font-size:20px;opacity:0.5;border:none;background:none;cursor:pointer;padding:0 2px;flex-shrink:0">×</button>
+          </div>`).join('')}
+      </div>
+      <label style="display:flex;align-items:center;gap:8px;font-size:13px;color:var(--text);margin:0 4px 12px;cursor:pointer"><input type="checkbox" id="receipt-tick-groceries" checked style="width:18px;height:18px"/> Also tick these off my Groceries shopping list</label>
+      <button onclick="pantryConfirmReceipt()" style="width:100%;padding:14px;border-radius:12px;background:var(--navy);border:none;color:#fff;font-size:15px;font-weight:700;cursor:pointer;font-family:inherit">Save ${review.length} item${review.length===1?'':'s'} to kitchen</button>
+      <button onclick="S.receiptScan.review=null;render()" style="width:100%;padding:12px;margin-top:8px;border-radius:12px;background:none;border:none;color:var(--text-secondary);font-size:13px;font-weight:600;cursor:pointer;font-family:inherit">↺ Scan another receipt</button>
+      `}
+    </div>
+  </div>`;
+}
+window.receiptReviewSet=function(i,field,val){if(S.receiptScan&&S.receiptScan.review&&S.receiptScan.review[i])S.receiptScan.review[i][field]=val;};
+window.receiptReviewRemove=function(i){if(S.receiptScan&&S.receiptScan.review){S.receiptScan.review.splice(i,1);render();}};
+window.handleReceiptUpload=async function(input){
+  if(!input?.files?.[0])return;
+  const file=input.files[0];
+  const rs=S.receiptScan;
+  if(typeof httpsCallable==='undefined'||!functions){notify('⚠️ Cloud functions not loaded — refresh','❌');input.value='';return;}
+  rs.busy=true;render();
+  try{
+    const {base64,mediaType}=await imageFileToBase64(file);
+    const call=httpsCallable(functions,'parseReceiptPhoto');
+    const resp=await call({images:[{base64,mediaType}],familyId:S.familyId||''});
+    const data=resp?.data||{};
+    const items=Array.isArray(data.items)?data.items:[];
+    rs.busy=false;rs.summary=data.summary||'';rs.store=data.store||'';rs.date=data.date||fd(new Date());
+    if(items.length===0){notify(data.summary||'No items found','⚠️');render();return;}
+    rs.review=items.map(it=>({name:it.name,category:it.category||'other',qty:it.qty||1,unit:it.unit||'',price:it.price||0}));
+    render();
+  }catch(ex){console.error('[receipt] failed',ex);rs.busy=false;notify('Read failed: '+friendlyError(ex),'❌');render();}
+  finally{if(input)input.value='';}
+};
+window.pantryConfirmReceipt=async function(){
+  const rs=S.receiptScan;if(!rs||!rs.review)return;
+  const tick=document.getElementById('receipt-tick-groceries')?.checked;
+  const n=await pantryUpsertItems(rs.review,'receipt',{date:rs.date||fd(new Date()),store:rs.store||''});
+  // Optionally tick matching items off the groceries list
+  if(tick){
+    for(const it of rs.review){
+      const k=pantryCanonKey(it.name);
+      if(!k)continue;
+      (S.groceries||[]).forEach(g=>{
+        if(g.checked||!g.addedToList)return;
+        const gk=pantryCanonKey(g.label);
+        if(gk&&(k.includes(gk)||gk.includes(k))){
+          fupd(['groceries',g.id],{checked:true}).catch(()=>{});
+        }
+      });
+    }
+  }
+  S.receiptScan=null;
+  notify('Added '+n+' item'+(n===1?'':'s')+' from your receipt 🧾','✅');
+  S.screen='pantry';render();
+};
+
+// ---- ASK (grounded chat) ----
+function sPantryAsk(){
+  const kc=S.kitchenChat||(S.kitchenChat={messages:[],busy:false});
+  const msgs=kc.messages;
+  const suggestions=['Do I have tinned tomatoes?','What can I make for dinner tonight?','When did I last buy milk?','Do I have everything for spaghetti bolognese?'];
+  return `<div style="min-height:100%;display:flex;flex-direction:column;background:var(--bg)">
+    <div style="background:var(--card);padding:14px 16px;display:flex;align-items:center;border-bottom:1px solid var(--row-border);position:sticky;top:0;z-index:10">
+      <button class="back-btn" onclick="back()">${bk()} Back</button>
+      <div style="flex:1;text-align:center;font-size:17px;font-weight:600">💬 Ask the Kitchen</div>
+      <div style="width:52px"></div>
+    </div>
+    <div style="flex:1;padding:16px 16px 12px;overflow-y:auto">
+      ${msgs.length===0?`
+        <div style="text-align:center;color:var(--text-secondary);font-size:13px;margin:20px 0 16px;line-height:1.5">Ask about what's at home. I answer from your kitchen log and tell you when things were last seen or bought.</div>
+        <div style="display:flex;flex-direction:column;gap:8px">${suggestions.map(s=>`<button onclick="pantryAskSend('${s.replace(/'/g,"\\'")}')" style="text-align:left;padding:11px 14px;border-radius:12px;background:var(--card);border:1px solid var(--row-border);color:var(--text);font-size:13px;cursor:pointer;font-family:inherit">💬 ${s}</button>`).join('')}</div>
+      `:msgs.map(m=>m.role==='user'
+        ? `<div style="display:flex;justify-content:flex-end;margin-bottom:10px"><div style="max-width:80%;background:var(--navy);color:#fff;padding:10px 14px;border-radius:16px 16px 4px 16px;font-size:14px;line-height:1.45">${(m.text||'').replace(/</g,'&lt;')}</div></div>`
+        : `<div style="display:flex;justify-content:flex-start;margin-bottom:10px"><div style="max-width:85%;background:var(--card);border:1px solid var(--row-border);color:var(--text);padding:10px 14px;border-radius:16px 16px 16px 4px;font-size:14px;line-height:1.5">${(m.text||'').replace(/</g,'&lt;')}</div></div>`
+      ).join('')}
+      ${kc.busy?`<div style="display:flex;justify-content:flex-start;margin-bottom:10px"><div style="background:var(--card);border:1px solid var(--row-border);padding:12px 16px;border-radius:16px"><div style="display:flex;gap:4px"><span style="width:7px;height:7px;background:var(--text-secondary);border-radius:4px;animation:spin 0.8s linear infinite"></span><span style="width:7px;height:7px;background:var(--text-secondary);border-radius:4px;opacity:.6">·</span></div></div></div>`:''}
+    </div>
+    <div style="padding:10px 12px;border-top:1px solid var(--row-border);background:var(--card);display:flex;gap:8px">
+      <input class="input" id="kitchen-chat-input" type="text" placeholder="Ask about your kitchen…" ${kc.busy?'disabled':''} style="flex:1;font-size:14px;padding:11px 14px" onkeydown="if(event.key==='Enter')pantryAskSend()"/>
+      <button onclick="pantryAskSend()" ${kc.busy?'disabled':''} style="padding:11px 16px;border-radius:12px;background:var(--navy);border:none;color:#fff;font-size:14px;font-weight:700;cursor:pointer;font-family:inherit">Ask</button>
+    </div>
+  </div>`;
+}
+window.pantryAskSend=async function(preset){
+  const kc=S.kitchenChat||(S.kitchenChat={messages:[],busy:false});
+  const el=document.getElementById('kitchen-chat-input');
+  const q=(preset||(el?el.value:'')||'').trim();
+  if(!q||kc.busy)return;
+  if(el)el.value='';
+  kc.messages.push({role:'user',text:q});
+  kc.busy=true;render();
+  try{
+    const call=httpsCallable(functions,'pantryChat');
+    const resp=await call({question:q,items:pantryPayload(),familyId:S.familyId||''});
+    const ans=(resp?.data&&resp.data.answer)||'Sorry, I couldn’t work that out.';
+    kc.busy=false;kc.messages.push({role:'assistant',text:ans});render();
+  }catch(ex){console.error('[pantry-chat] failed',ex);kc.busy=false;kc.messages.push({role:'assistant',text:'⚠️ '+friendlyError(ex)});render();}
+};
+// From a "cook with what's home" suggestion: add its missing ingredients to the
+// Groceries shopping list (skip anything already on the list).
+window.pantryAddMissingToShopping=async function(idx){
+  const rs=S._recipeSuggestions;
+  const s=rs&&Array.isArray(rs.suggestions)?rs.suggestions[idx]:null;
+  if(!s||!Array.isArray(s.missing)||!s.missing.length){notify('Nothing to add','⚠️');return;}
+  let added=0;
+  for(const raw of s.missing){
+    const label=String(raw||'').trim();if(!label)continue;
+    const exists=(S.groceries||[]).some(g=>(g.label||'').toLowerCase().trim()===label.toLowerCase());
+    if(exists)continue;
+    try{await fadd(['groceries'],{label,quantity:1,isFrequent:false,addedToList:true,checked:false});added++;}catch(e){dwarn('add grocery failed',e);}
+  }
+  notify(added?('Added '+added+' item'+(added===1?'':'s')+' to Groceries 🛒'):'Already on your list ✅','✅');
+};
+
 function sDinners(){
   // Get this week (today + 6 forward)
   const days=[];
@@ -7657,6 +8030,10 @@ function sDinners(){
           <span>Suggest recipes</span>
         </button>
         <div style="font-size:11px;color:var(--text-secondary);text-align:center;margin-top:6px">AI suggests new recipes using your family's tastes, ages and dietary needs.</div>
+      </div>
+      <div style="margin:0 16px 10px;display:flex;gap:8px">
+        <button onclick="go('pantry')" style="flex:1;padding:11px 8px;border-radius:12px;background:var(--card);border:1px solid var(--row-border);color:var(--text);font-size:12px;font-weight:700;cursor:pointer;font-family:inherit;display:flex;align-items:center;justify-content:center;gap:6px">🥫 What's in the kitchen</button>
+        <button onclick="openRecipeSuggestions('weekly','',false,true)" ${(S.pantry||[]).length===0?'disabled':''} title="${(S.pantry||[]).length===0?'Add items to your kitchen first':'Suggest recipes using what you already have'}" style="flex:1;padding:11px 8px;border-radius:12px;background:${(S.pantry||[]).length===0?'var(--bg)':'#34C75914'};border:1px solid ${(S.pantry||[]).length===0?'var(--border)':'#34C75955'};color:${(S.pantry||[]).length===0?'var(--text-secondary)':'#28A745'};font-size:12px;font-weight:700;cursor:${(S.pantry||[]).length===0?'not-allowed':'pointer'};font-family:inherit;display:flex;align-items:center;justify-content:center;gap:6px">🍳 Cook with what's home</button>
       </div>
       ${(()=>{
         // Show the AI shopping-list button when at least one meal is planned
@@ -8006,6 +8383,8 @@ function sRecipeSuggestions(){
     // Suggestion data needs to survive a render — store via index. Use a
     // base64-ish encoding to round-trip through onclick safely.
     const idx=suggestions.indexOf(s);
+    const missingBlock=(Array.isArray(s.missing)&&s.missing.length)?
+      '<div style="margin-top:8px;padding:8px 10px;background:#34C75912;border-left:3px solid #34C759;border-radius:6px"><div style="font-size:11px;font-weight:700;color:#28A745;margin-bottom:4px;line-height:1.4">🛒 You may need: '+s.missing.map(m=>String(m).replace(/</g,'&lt;')).join(', ')+'</div><button onclick="pantryAddMissingToShopping('+idx+')" style="font-size:11px;font-weight:700;color:var(--navy);background:none;border:none;padding:0;cursor:pointer;font-family:inherit;text-decoration:underline">Add these to Groceries →</button></div>':'';
     return '<div style="background:var(--card);border-radius:14px;padding:14px;margin-bottom:10px;border:1px solid var(--row-border);box-shadow:var(--shadow-sm)">'
       +'<div style="display:flex;align-items:flex-start;gap:10px">'
       +'<div style="flex:1;min-width:0">'
@@ -8017,6 +8396,7 @@ function sRecipeSuggestions(){
       +'</div>'
       +allergenBadges
       +conflictBlock
+      +missingBlock
       +'</div>'
       +'</div>'
       +'<div style="display:flex;gap:6px;margin-top:10px;flex-wrap:wrap">'
@@ -8313,6 +8693,13 @@ function sLists(){
           ${cat.badge>0?`<div style="background:#FF3B30;border-radius:12px;min-width:24px;height:24px;display:flex;align-items:center;justify-content:center;padding:0 7px"><span style="font-size:13px;font-weight:700;color:#fff">${cat.badge}</span></div>`:''}
           <span class="chev"></span>
         </button>`).join('')}
+      </div>
+      <div class="card" style="margin-top:14px">
+        <button class="btn" onclick="go('pantry')" style="width:100%;padding:14px 16px;display:flex;align-items:center;gap:14px;text-align:left">
+          <div style="width:48px;height:48px;border-radius:12px;background:#34C75918;font-size:26px;display:flex;align-items:center;justify-content:center">🥫</div>
+          <div style="flex:1"><div style="font-size:16px;font-weight:600">What's in the Kitchen</div><div style="font-size:13px;color:#8E8E93">Snap your fridge, pantry or receipts${S.pantry?.length?' · '+S.pantry.length+' items':''}</div></div>
+          <span class="chev"></span>
+        </button>
       </div>
     </div>`;
 }
@@ -10506,6 +10893,7 @@ function render(){
       recipeSuggestions:sRecipeSuggestions,
       quickTraining:sQuickTraining,
       trips:sTrips,addTrip:sAddTrip,tripDetail:sTripDetail,
+      pantry:sPantry,pantryScan:sPantryScan,receiptScan:sReceiptScan,pantryAsk:sPantryAsk,
       inviteShare:sInviteShare,addMember:sAddMember,memberCreated:sMemberCreated
     };
     html=(map[S.screen]||sToday)();
@@ -13196,9 +13584,10 @@ window.openSavedRecipeUrl=function(dinnerId,which){
 //   weekly  — 8 sectioned suggestions
 //   single  — 1 suggestion for a specific day (dayHint)
 // Setting forceRefresh=true bypasses any cached state and re-fetches.
-window.openRecipeSuggestions=async function(mode,dayHint,forceRefresh){
+window.openRecipeSuggestions=async function(mode,dayHint,forceRefresh,useWhatIHave){
   if(!S.familyId){notify('Sign in first','⚠️');return;}
   mode=mode==='single'?'single':'weekly';
+  const cookFromPantry=!!useWhatIHave&&(S.pantry||[]).length>0;
   // Build family-context payload from current state
   const childrenWithAge=(S.children||[]).map(c=>{
     let ageYears=null;
@@ -13247,6 +13636,8 @@ window.openRecipeSuggestions=async function(mode,dayHint,forceRefresh){
       hasThermomix,
       mode,
       dayHint:dayLabel,
+      pantryItems:cookFromPantry?pantryPayload().map(p=>({name:p.name})):[],
+      useWhatIHave:cookFromPantry,
       familyId:S.familyId
     });
     const data=resp?.data||{};
